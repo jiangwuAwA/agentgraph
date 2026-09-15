@@ -283,19 +283,18 @@ impl Store {
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
              FROM refs WHERE name = ?1 ORDER BY path, line LIMIT ?2"
         } else {
+            // Exclusive: when a type qualifier is present, do not mix bare-name hits.
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
              FROM refs
              WHERE (qualifier || '.' || name) = ?1
                 OR (qualifier || '::' || name) = ?1
-                OR name = ?1
-                OR name = ?3
              ORDER BY path, line LIMIT ?2"
         };
         let mut stmt = self.conn.prepare(sql)?;
         let rows = if qual_dot.is_empty() {
             stmt.query_map(params![bare, limit as i64], map_ref)?
         } else {
-            stmt.query_map(params![qual_dot, limit as i64, bare], map_ref)?
+            stmt.query_map(params![qual_dot, limit as i64], map_ref)?
         };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
@@ -360,24 +359,13 @@ impl Store {
 
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT name, kind, path, line, enclosing, module, resolved
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
              FROM refs
              WHERE resolved = ?1 AND kind = 'import'
              ORDER BY path, line
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![file_path, limit as i64], |r| {
-            Ok(ReferenceRecord {
-                name: r.get(0)?,
-                kind: EdgeKind::parse(&r.get::<_, String>(1)?),
-                path: r.get(2)?,
-                line: r.get::<_, i64>(3)? as usize,
-                enclosing: r.get(4)?,
-                module: r.get(5)?,
-                resolved: r.get(6)?,
-                qualifier: r.get(7)?,
-            })
-        })?;
+        let rows = stmt.query_map(params![file_path, limit as i64], map_ref)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 

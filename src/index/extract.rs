@@ -190,8 +190,8 @@ fn make_symbol(
         name,
         qualified_name,
         kind,
-        start_line: ctx.lines.line_of(node.start_byte()),
-        end_line: ctx.lines.line_of(node.end_byte()),
+        start_line: ctx.lines.line_of(range_node.start_byte()),
+        end_line: ctx.lines.line_of(range_node.end_byte()),
         parent,
         start_col: ctx.lines.col_utf16(source, range_node.start_byte()),
         end_col: ctx

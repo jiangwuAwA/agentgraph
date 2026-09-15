@@ -8,14 +8,27 @@ use std::path::Path;
 
 use super::store::Store;
 
-/// SCIP-like global symbol: `scip-agentgraph . {lang} . {path} . {qualified}`
-/// No trailing `#` (that marks local-only symbols and breaks cross-file links).
+/// SCIP global symbol (5 space-separated segments):
+/// `scip-agentgraph . {package} . {lang} . {path} . {descriptor}`
+/// descriptor uses `.` methods / `#` types style without making everything local.
 fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
+    let descriptor = if qualified.contains("::") {
+        // rust Module::Type::fn → Module/Type#fn
+        let parts: Vec<&str> = qualified.split("::").collect();
+        let (last, head) = parts.split_last().unwrap();
+        format!("{}#{}", head.join("/"), last)
+    } else if qualified.contains('.') {
+        let parts: Vec<&str> = qualified.split('.').collect();
+        let (last, head) = parts.split_last().unwrap();
+        format!("{}#{}", head.join("/"), last)
+    } else {
+        qualified.to_string()
+    };
     format!(
-        "scip-agentgraph . {} . {} . {}",
+        "scip-agentgraph . agentgraph . {} . {} . {}",
         lang.replace('.', "_"),
         path.replace('\\', "/"),
-        qualified.replace('.', "_")
+        descriptor
     )
 }
 
@@ -175,12 +188,13 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
             );
             id
         });
+        // LSIF: definition range --next--> resultSet (not contains rs→range)
         lines.push(serde_json::to_string(&json!({
             "id": next(),
             "type": "edge",
-            "label": "contains",
-            "outV": rs_id,
-            "inV": rid,
+            "label": "next",
+            "outV": rid,
+            "inV": rs_id,
         }))?);
         lines.push(serde_json::to_string(&json!({
             "id": next(),

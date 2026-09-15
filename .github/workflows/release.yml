@@ -22,12 +22,15 @@ jobs:
             target: x86_64-unknown-linux-gnu
             asset: agentgraph-linux-x86_64
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset: agentgraph-linux-x86_64-musl
+          - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             asset: agentgraph-linux-aarch64
             cross: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            asset: agentgraph-windows-x86_64.exe
+            asset: agentgraph-windows-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
             asset: agentgraph-macos-aarch64
@@ -43,10 +46,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - name: Install cross (linux aarch64)
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install cross
         if: matrix.cross
         run: cargo install cross --locked
-      - name: Build
+      - name: Build (cross)
         if: matrix.cross
         run: cross build --release --target ${{ matrix.target }}
       - name: Build
@@ -59,19 +65,24 @@ jobs:
           chmod +x "$stage"
           cp "$stage" "${{ matrix.asset }}"
           tar -czf "${{ matrix.asset }}.tar.gz" "${{ matrix.asset }}"
+          sha256sum "${{ matrix.asset }}.tar.gz" | tee "${{ matrix.asset }}.tar.gz.sha256"
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $src = "target/${{ matrix.target }}/release/agentgraph.exe"
-          Copy-Item $src "${{ matrix.asset }}"
-          Compress-Archive -Path "${{ matrix.asset }}" -DestinationPath "${{ matrix.asset }}.zip" -Force
+          Copy-Item $src "${{ matrix.asset }}.exe"
+          Compress-Archive -Path "${{ matrix.asset }}.exe" -DestinationPath "${{ matrix.asset }}.zip" -Force
+          $h = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}.zip").Hash.ToLower()
+          "$h  ${{ matrix.asset }}.zip" | Out-File -Encoding ascii "${{ matrix.asset }}.zip.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
           path: |
             ${{ matrix.asset }}.zip
+            ${{ matrix.asset }}.zip.sha256
             ${{ matrix.asset }}.tar.gz
+            ${{ matrix.asset }}.tar.gz.sha256
           if-no-files-found: ignore
 
   release:
@@ -83,8 +94,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Aggregate SHA256SUMS
+        run: |
+          cd dist
+          cat *.sha256 > SHA256SUMS || true
+          cat SHA256SUMS
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
           generate_release_notes: true

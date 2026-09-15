@@ -22,3 +22,15 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets
       - run: cargo test
+      - name: CLI end-to-end
+        run: cargo test --test e2e_cli -- --nocapture
+      - name: Official scip CLI lint (linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/scip.tgz https://github.com/scip-code/scip/releases/download/v0.10.0/scip-linux-amd64.tar.gz
+          tar -xzf /tmp/scip.tgz -C /tmp
+          sudo install -m 755 /tmp/scip /usr/local/bin/scip
+          cargo run --quiet -- --root fixtures/sample-app index --force
+          cargo run --quiet -- --root fixtures/sample-app export scip --out /tmp/index.scip
+          scip lint /tmp/index.scip

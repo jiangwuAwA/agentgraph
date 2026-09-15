@@ -132,9 +132,15 @@ Call resolution is **name-based** with optional `qualifier` hints — pragmatic,
 
 ```bash
 cargo test
+# CLI E2E only
+cargo test --test e2e_cli
+# Full local gate + fixture smoke
+pwsh scripts/e2e.ps1
 ```
 
-Covers line index, TS import resolve, BFS impact, description preservation across reindex, and export shape (LSIF metaData first, `file:///` Windows URIs, distinct resultSets per qualified name).
+Covers unit/integration (`tests/*.rs`), **CLI binary E2E** (`tests/e2e_cli.rs`: index/query/export/MCP), and optional official `scip lint` when the CLI is on PATH. CI runs fmt, clippy, tests, E2E, and `scip lint` on Linux.
+
+**Process**: new feature work is TDD-first — see [AGENTS.md](AGENTS.md).
 
 ## License
 

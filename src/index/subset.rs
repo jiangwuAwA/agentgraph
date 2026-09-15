@@ -97,7 +97,7 @@ pub fn scan_subset(source: &str, lang: Language, path: &str) -> SubsetReport {
     let mut violations = Vec::new();
     match lang {
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
-            scan_js(source, path, &mut violations)
+            scan_js(source, lang, path, &mut violations)
         }
         Language::Rust => scan_rust(source, path, &mut violations),
         // Python / Go S v1: conservative lexical/AST escapes leave S.
@@ -158,8 +158,9 @@ fn snippet_at(source: &str, node: Node) -> String {
     source.get(node.byte_range()).unwrap_or("").to_string()
 }
 
-fn scan_js(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
-    let Ok(tree) = parser::parse(source, Language::TypeScript) else {
+fn scan_js(source: &str, lang: Language, path: &str, violations: &mut Vec<SubsetViolation>) {
+    // m9: use the file's real Language so .tsx/.jsx parse as TSX, not TS.
+    let Ok(tree) = parser::parse(source, lang) else {
         push_v(
             violations,
             path,
@@ -170,6 +171,63 @@ fn scan_js(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         return;
     };
     walk_js(tree.root_node(), source, path, violations);
+}
+
+/// Unwrap `( ... )` and comma/sequence expressions so `(0, eval)(x)` /
+/// `(eval)(x)` resolve to the actual callee.
+fn unwrap_js_callee<'a>(mut n: Node<'a>) -> Node<'a> {
+    loop {
+        match n.kind() {
+            "parenthesized_expression" => {
+                let mut pc = n.walk();
+                let mut inner = None;
+                for child in n.children(&mut pc) {
+                    if !matches!(child.kind(), "(" | ")") {
+                        inner = Some(child);
+                        break;
+                    }
+                }
+                match inner {
+                    Some(i) => n = i,
+                    None => break,
+                }
+            }
+            "sequence_expression" => {
+                // Last operand of a comma expression is the effective callee.
+                let mut pc = n.walk();
+                let mut last = None;
+                for child in n.named_children(&mut pc) {
+                    last = Some(child);
+                }
+                match last {
+                    Some(i) => n = i,
+                    None => break,
+                }
+            }
+            _ => break,
+        }
+    }
+    n
+}
+
+fn string_lit_inner(text: &str) -> &str {
+    text.trim_matches(|ch| ch == '\'' || ch == '"' || ch == '`')
+}
+
+/// True when the call's single argument is a plain `string` node (static module specifier).
+fn static_module_specifier(args: Option<Node>) -> bool {
+    let Some(args) = args else {
+        return false;
+    };
+    let mut cursor = args.walk();
+    let mut named = args.named_children(&mut cursor);
+    let Some(first) = named.next() else {
+        return false;
+    };
+    if named.next().is_some() {
+        return false;
+    }
+    first.kind() == "string"
 }
 
 fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
@@ -192,65 +250,63 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 .child_by_field_name("function")
                 .or_else(|| node.child_by_field_name("constructor"));
             if let Some(c) = callee {
-                let text = snippet_at(source, c);
-                let last = text.rsplit('.').next().unwrap_or(&text);
-                // eval / (0,eval) — last segment must be exactly eval
-                if last == "eval" {
-                    push_v(
-                        violations,
-                        path,
-                        line,
-                        "eval",
-                        &snippet_at(source, node).replace('\n', " "),
-                    );
+                let snippet = snippet_at(source, node).replace('\n', " ");
+                // Unwrap `(0, eval)` / `(eval)` BEFORE eval/Function detection.
+                let unwrapped = unwrap_js_callee(c);
+                let text = snippet_at(source, unwrapped);
+                let last = text.rsplit('.').next().unwrap_or(text.as_str());
+                let is_ident = unwrapped.kind() == "identifier";
+
+                // Bare identifier named eval/Function (incl. after unwrap).
+                // Member access `foo.eval` / `window.Function` via last segment.
+                if last == "eval" || (is_ident && text == "eval") {
+                    push_v(violations, path, line, "eval", &snippet);
                 }
-                // Function('...') with or without new (C2)
-                if last == "Function" {
-                    push_v(
-                        violations,
-                        path,
-                        line,
-                        "Function",
-                        &snippet_at(source, node).replace('\n', " "),
-                    );
+                if last == "Function" || (is_ident && text == "Function") {
+                    push_v(violations, path, line, "Function", &snippet);
                 }
                 if last == "Proxy" && kind == "new_expression" {
-                    push_v(
-                        violations,
-                        path,
-                        line,
-                        "Proxy",
-                        &snippet_at(source, node).replace('\n', " "),
-                    );
+                    push_v(violations, path, line, "Proxy", &snippet);
                 }
                 // Reflect.* — left S.
-                if text == "Reflect" || text.starts_with("Reflect.") {
-                    push_v(
-                        violations,
-                        path,
-                        line,
-                        "Reflect",
-                        &snippet_at(source, node).replace('\n', " "),
-                    );
+                if text == "Reflect" || text.starts_with("Reflect.") || last == "Reflect" {
+                    push_v(violations, path, line, "Reflect", &snippet);
                 }
-                // Computed call keys: only string literals stay in S (C2).
-                let mut n = c;
-                while n.kind() == "parenthesized_expression" {
-                    let mut pc = n.walk();
-                    let Some(inner) = n.children(&mut pc).find(|x| !matches!(x.kind(), "(" | ")"))
-                    else {
-                        break;
-                    };
-                    n = inner;
+
+                // require(non-literal) / dynamic import(non-literal): S_js requires
+                // a static module graph.
+                let is_require = is_ident && text == "require";
+                let is_dyn_import = unwrapped.kind() == "import";
+                if is_require || is_dyn_import {
+                    let args = node.child_by_field_name("arguments");
+                    if !static_module_specifier(args) {
+                        let kind_s = if is_require {
+                            "require_dynamic"
+                        } else {
+                            "import_dynamic"
+                        };
+                        push_v(violations, path, line, kind_s, &snippet);
+                    }
                 }
-                if n.kind() == "subscript_expression" {
-                    if let Some(key) = n.child_by_field_name("index") {
+
+                // Subscript callee: obj['eval'] / obj[k]
+                if unwrapped.kind() == "subscript_expression" {
+                    if let Some(key) = unwrapped.child_by_field_name("index") {
                         let kt = snippet_at(source, key);
-                        // Only string / template nodes can be finite-domain keys.
                         let key_kind = key.kind();
                         let is_stringish = key_kind == "string" || key_kind == "template_string";
+                        let inner = string_lit_inner(&kt);
+                        // String key eval/Function is still an escape hatch.
+                        if is_stringish && (inner == "eval" || inner == "Function") {
+                            push_v(
+                                violations,
+                                path,
+                                line,
+                                if inner == "eval" { "eval" } else { "Function" },
+                                &snippet,
+                            );
+                        }
                         let is_plain_string_lit = is_stringish && {
-                            let inner = kt.trim_matches(|ch| ch == '\'' || ch == '"' || ch == '`');
                             !inner.is_empty()
                                 && !kt.contains("${")
                                 && inner.chars().all(|ch| {
@@ -294,23 +350,93 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
     }
 }
 
+/// Drop whitespace that sits immediately before `(` so `eval (` matches `eval(`.
+fn strip_space_before_paren(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut pending_ws = String::new();
+    for ch in s.chars() {
+        if ch == ' ' || ch == '\t' {
+            pending_ws.push(ch);
+            continue;
+        }
+        if ch == '(' {
+            pending_ws.clear();
+        } else {
+            out.push_str(&pending_ws);
+            pending_ws.clear();
+        }
+        out.push(ch);
+    }
+    out.push_str(&pending_ws);
+    out
+}
+
+/// True when `getattr(`'s second argument is a plain string literal.
+/// Conservative: anything else (identifiers, concatenations, calls) is dynamic.
+fn getattr_second_is_string_literal(line: &str) -> bool {
+    let Some(start) = line.find("getattr(") else {
+        return true;
+    };
+    let rest = &line[start + "getattr(".len()..];
+    let mut depth = 0i32;
+    let mut in_str: Option<char> = None;
+    let mut comma_at: Option<usize> = None;
+    for (i, ch) in rest.char_indices() {
+        if let Some(q) = in_str {
+            if ch == q {
+                in_str = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => in_str = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => {
+                if depth == 0 {
+                    return true; // no second arg
+                }
+                depth -= 1;
+            }
+            ',' if depth == 0 => {
+                comma_at = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let Some(ci) = comma_at else {
+        return true; // single-arg getattr — not a name lookup
+    };
+    let after = rest[ci + 1..].trim_start();
+    after.starts_with('\'') || after.starts_with('"')
+}
+
 fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
-    // Lightweight lexical scan: eval( / exec( / __import__ with dynamic name.
-    // Also: monkey-patching callables via setattr(obj, ...) leaves S_py v1.
+    // v1 conservative lexical scanner (not a full freeze / AST analysis).
+    // Prefer over-flag: a false violation is cheaper than a missed escape.
     for (idx, raw_line) in source.lines().enumerate() {
         let line_no = idx + 1;
         let t = raw_line.trim();
         if t.starts_with('#') {
             continue;
         }
-        if t.contains("eval(") || t.contains("exec(") {
+        let compact = strip_space_before_paren(t);
+        if compact.contains("eval(") || compact.contains("exec(") {
             push_v(violations, path, line_no, "py_eval_exec", t);
         }
-        if t.contains("__import__(") {
+        if compact.contains("__import__(") {
             push_v(violations, path, line_no, "py___import__", t);
         }
-        if t.contains("setattr(") {
+        if compact.contains("setattr(") {
             push_v(violations, path, line_no, "py_setattr", t);
+        }
+        // M3: non-literal getattr second arg invents call targets.
+        if t.contains("getattr(") && !getattr_second_is_string_literal(t) {
+            push_v(violations, path, line_no, "py_getattr_dynamic", t);
+        }
+        // M3: `__builtins__['eval']` / `__builtins__.eval` escapes S_py.
+        if t.contains("__builtins__") {
+            push_v(violations, path, line_no, "py_builtins", t);
         }
     }
 }

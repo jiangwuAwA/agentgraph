@@ -273,6 +273,158 @@ fn e2e_mcp_empty_index_returns_error() {
     assert!(found_error, "expected id=2 response in MCP output:\n{text}");
 }
 
+/// C1: MCP root jail must reject `..` escapes and must not create `.agentgraph` outside.
+#[test]
+fn e2e_mcp_root_jail_rejects_dotdot_escape() {
+    use std::io::Write;
+    let base = temp_root("mcp-jail");
+    write_fixture(&base);
+
+    let parent = base.parent().unwrap().to_path_buf();
+    let outside = parent.join("agentgraph-e2e-mcp-jail-outside");
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(outside.join("src")).unwrap();
+    std::fs::write(
+        outside.join("src/x.ts"),
+        "export function x() { return 1; }\n",
+    )
+    .unwrap();
+
+    let escape = base.join("..").join("agentgraph-e2e-mcp-jail-outside");
+    let escape_json = serde_json::to_string(&escape.to_string_lossy()).unwrap();
+
+    let mut child = Command::new(bin())
+        .arg("--root")
+        .arg(&base)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msgs = format!(
+            concat!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2024-11-05","capabilities":{{}},"clientInfo":{{"name":"e2e","version":"0"}}}}}}"#,
+                "\n",
+                r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"index","arguments":{{"root":{escape_json},"force":true}}}}}}"#,
+                "\n",
+            ),
+            escape_json = escape_json
+        );
+        stdin.write_all(msgs.as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+    drop(child.stdin.take());
+
+    let out = child.wait_with_output().expect("mcp output");
+    let text = stdout(&out);
+    let mut found_reject = false;
+    for line in text.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if v["id"] == 2 {
+                let is_tool_err = v["result"]["isError"] == true;
+                let is_rpc_err = v.get("error").is_some();
+                assert!(
+                    is_tool_err || is_rpc_err,
+                    "jail escape must be rejected (error or isError), got: {line}"
+                );
+                let msg = format!(
+                    "{}{}",
+                    v["error"]["message"].as_str().unwrap_or(""),
+                    v["result"]["content"][0]["text"].as_str().unwrap_or("")
+                );
+                assert!(
+                    msg.to_lowercase().contains("outside") || msg.to_lowercase().contains("root"),
+                    "rejection message must mention outside/root: {msg}"
+                );
+                found_reject = true;
+            }
+        }
+    }
+    assert!(found_reject, "expected id=2 rejection:\n{text}");
+    assert!(
+        !outside.join(".agentgraph").exists(),
+        "must not create .agentgraph outside the jail"
+    );
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
+/// M6: MCP callers tool accepts sound=true and returns CLI-shaped promise JSON.
+#[test]
+fn e2e_mcp_callers_sound_flag() {
+    use std::io::Write;
+    let root = temp_root("mcp-sound");
+    write_fixture(&root);
+
+    let mut child = Command::new(bin())
+        .arg("--root")
+        .arg(&root)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msgs = concat!(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"index","arguments":{"force":true}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"callers","arguments":{"name":"validateEmail","sound":true}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"callers","arguments":{"name":"validateEmail","sound":true,"exact_only":true}}}"#,
+            "\n",
+        );
+        stdin.write_all(msgs.as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+    drop(child.stdin.take());
+
+    let out = child.wait_with_output().expect("mcp output");
+    let text = stdout(&out);
+    let mut saw_sound = false;
+    let mut saw_mutex = false;
+    for line in text.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if v["id"] == 3 {
+                assert_eq!(
+                    v["result"]["isError"], false,
+                    "callers sound must succeed: {line}"
+                );
+                let payload: serde_json::Value =
+                    serde_json::from_str(v["result"]["content"][0]["text"].as_str().unwrap())
+                        .expect("callers sound payload json");
+                assert_eq!(payload["mode"], "sound");
+                assert_eq!(payload["subset_ok"], true);
+                assert!(
+                    payload["promise"]
+                        .as_str()
+                        .map(|s| s.contains("sound-eligible"))
+                        .unwrap_or(false),
+                    "promise shape must match CLI: {payload}"
+                );
+                assert!(payload["callers"].is_array());
+                saw_sound = true;
+            }
+            if v["id"] == 4 {
+                assert_eq!(
+                    v["result"]["isError"], true,
+                    "sound+exact_only must be rejected: {line}"
+                );
+                saw_mutex = true;
+            }
+        }
+    }
+    assert!(saw_sound, "expected id=3 sound result:\n{text}");
+    assert!(saw_mutex, "expected id=4 mutex error:\n{text}");
+}
+
 /// Same-line multi-ref fixture: scip lint must exit 0 (distinct ranges for duplicate refs).
 #[test]
 fn e2e_scip_lint_same_line_multi_ref() {

@@ -1,18 +1,54 @@
 //! TDD: multi-file ESM S_js corpus — sound graph must contain the export call chain.
+//! M4: each test copies the fixture to a unique temp dir (no shared `.agentgraph` race).
 
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
 
-fn fixture() -> PathBuf {
+fn fixture_src() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/eval-l2/s-js-esm")
 }
 
-fn run(root: &PathBuf, args: &[&str]) -> (bool, String, String) {
+fn unique_tag() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("{}-{n}", std::process::id())
+}
+
+fn copy_dir(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for e in std::fs::read_dir(src).unwrap() {
+        let e = e.unwrap();
+        let name = e.file_name();
+        // Never copy a pre-existing index DB into the isolated fixture.
+        if name == ".agentgraph" {
+            continue;
+        }
+        let t = dst.join(&name);
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&e.path(), &t);
+        } else {
+            let _ = std::fs::copy(e.path(), &t);
+        }
+    }
+}
+
+fn isolated_fixture() -> PathBuf {
+    let src = fixture_src();
+    let dst = std::env::temp_dir().join(format!("agentgraph-l2-esm-{}", unique_tag()));
+    let _ = std::fs::remove_dir_all(&dst);
+    copy_dir(&src, &dst);
+    dst
+}
+
+fn run(root: &Path, args: &[&str]) -> (bool, String, String) {
     let out = Command::new(bin())
         .arg("--root")
         .arg(root)
@@ -44,7 +80,7 @@ fn enclosing_of(e: &Value) -> Option<&str> {
 
 #[test]
 fn multi_file_esm_in_subset_and_sound_contains_chain() {
-    let root = fixture();
+    let root = isolated_fixture();
     let (ok, _, err) = run(&root, &["index"]);
     assert!(ok, "index failed: {err}");
 
@@ -109,7 +145,7 @@ fn multi_file_esm_in_subset_and_sound_contains_chain() {
 
 #[test]
 fn multi_file_esm_imports_resolve_across_modules() {
-    let root = fixture();
+    let root = isolated_fixture();
     let (ok, _, err) = run(&root, &["index"]);
     assert!(ok, "index failed: {err}");
     let (ok, stdout, err) = run(&root, &["importers", "src/util.js"]);

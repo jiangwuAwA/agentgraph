@@ -237,10 +237,14 @@ pub struct IndexStats {
     pub root: String,
     #[serde(default)]
     pub described: usize,
+    /// Unchanged (hash-skip) files during incremental index.
     #[serde(default)]
     pub skipped_files: usize,
     #[serde(default)]
     pub failed_files: usize,
+    /// Supported source files skipped because they exceeded the 1.5 MiB cap.
+    #[serde(default)]
+    pub oversized_files: usize,
     /// Edge counts by confidence (`exact` / `heuristic` / `dynamic_candidate`).
     #[serde(default)]
     pub refs_by_confidence: Vec<(String, usize)>,

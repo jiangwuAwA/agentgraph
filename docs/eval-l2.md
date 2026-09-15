@@ -70,7 +70,7 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 ## Explicit non-claims
 
 - No soundness outside S.
-- No completeness for Python/Go S (not frozen; scanner is conservative lexical).
+- No completeness for Python/Go S (v1 conservative lexical scanners — **not** frozen soundness contracts).
 - Over-reporting is allowed (over-approx).
 - Do not market `--sound` as “zero missed dynamic calls” on arbitrary repos.
 
@@ -83,11 +83,23 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 | **C3** DI/event allowlist ≠ runtime call | Documented in promise + sound-subset; still walkable as reference candidates |
 | **C4** vacuous differential assert | Removed pre-insert of `to`; require callers/impact evidence |
 | **C5** SQL LIMIT before sound filter | `callers_uncached_opt(None)` — fetch all then filter then take limit |
-| Parallel test race on shared fixture | Per-test temp copies in `l2_sound.rs` |
+| Parallel test race on shared fixture | Per-test temp copies in `l2_sound.rs` and `l2_esm_diff.rs` |
 
 
 ## Next hardening
 
-- Broader Node DI-container fixtures; property tests for S_py/S_go.
+- Broader Node DI-container fixtures; property tests for S_py/S_go (S_js property tests ship in `tests/l2_property.rs`).
 - Model framework dispatch edges (emit / mux / Depends resolve) if we ever
   want a *runtime call* claim again — currently out of scope by design.
+
+## Adversarial review follow-up (this drop — C1/C2/M3–M7)
+
+| Finding | Fix |
+|---|---|
+| **C1** MCP root jail `..` bypass | Canonicalize candidate **and** base before prefix test; E2E rejects escape and does not create `.agentgraph` outside |
+| **C2** S_js false-negatives | Unwrap `(0,eval)` / `(eval)`; flag `window['eval']`; flag `require`/`import` non-literal |
+| **M3** S_py under-flag | Non-literal `getattr`, spaced `eval (`, `__builtins__`; docs stop calling S_py/S_go frozen |
+| **M4** l2_esm_diff shared fixture race | Per-test unique temp copies |
+| **M5** doc contradictions | One source of truth: property tests exist; S_py/S_go are v1 lexical scanners; --sound stays weakened eligibility |
+| **M6** MCP callers missing `sound` | Schema + handler, mutual exclusion, CLI-shaped promise JSON |
+| **m8/m9/m10** | prune_missing clears cache; scan_js uses file Language; oversized skips counted in `IndexStats.oversized_files` |

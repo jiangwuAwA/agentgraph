@@ -87,6 +87,21 @@ fn replace_file_invalidates_callers_cache() {
 }
 
 #[test]
+fn prune_missing_clears_query_cache() {
+    // m8: prune_missing deletes files/refs but must also clear the in-memory
+    // callers/impact cache or callers() returns stale rows.
+    let (_db, mut store) = seed_db("prune");
+    let before = store.callers("a", 50).unwrap();
+    assert!(!before.is_empty(), "seed must produce callers of a");
+    store.prune_missing(&[]).unwrap();
+    let after = store.callers("a", 50).unwrap();
+    assert!(
+        after.is_empty(),
+        "cache must not return stale callers after prune: {after:?}"
+    );
+}
+
+#[test]
 fn cached_query_not_pathologically_slower_first_time() {
     let (_db, store) = seed_db("perf");
     // First cold query

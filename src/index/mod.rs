@@ -59,7 +59,9 @@ impl Indexer {
     /// Parse/extract runs in parallel; DB writes are batched in one transaction.
     pub fn index(&self, force: bool) -> Result<IndexStats> {
         let mut store = self.open_store()?;
-        let files = walker::collect_source_files(&self.root)?;
+        let collected = walker::collect_source_files_with_stats(&self.root)?;
+        let files = collected.files;
+        let oversized = collected.oversized_skipped;
 
         let known: std::collections::HashSet<String> = files
             .iter()
@@ -191,13 +193,14 @@ impl Indexer {
         let mut stats = store.stats(&self.root.to_string_lossy())?;
         stats.skipped_files = skipped;
         stats.failed_files = failed_read + failed_parse;
+        stats.oversized_files = oversized;
         let conf_summary: Vec<String> = stats
             .refs_by_confidence
             .iter()
             .map(|(k, v)| format!("{k}={v}"))
             .collect();
         eprintln!(
-            "indexed {indexed} file(s), skipped {skipped} unchanged, failed {}; {} symbols, {} refs [{}], {} described",
+            "indexed {indexed} file(s), skipped {skipped} unchanged, failed {}; oversize-skip {oversized}; {} symbols, {} refs [{}], {} described",
             stats.failed_files,
             stats.symbols,
             stats.references,
@@ -332,7 +335,10 @@ fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
         return false;
     }
     ev.paths.iter().any(|p| {
-        if !p.starts_with(root) {
+        // Normalize UNC prefixes so `\\?\C:\...` event paths still match root.
+        let p_n = parser::normalize_root(p);
+        let r_n = parser::normalize_root(root);
+        if !p_n.starts_with(&r_n) && !p.starts_with(root) {
             return false;
         }
         // Ignore our own index db and junk.

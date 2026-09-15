@@ -41,19 +41,21 @@ A program is in S_js when **all** of the following hold:
 3. Trait objects (`dyn Trait`) only with **local** `impl Trait for Type`
    blocks present in the indexed corpus.
 
-## S_py (Python v1 — frozen)
+## S_py (Python v1 — conservative lexical scanner)
 
 A program is in S_py when **all** of the following hold:
 
-1. No `eval` / `exec` / `__import__` with computed names.
+1. No `eval` / `exec` / `__import__` (including spaced forms like `eval (`).
 2. No `setattr` on callables / functions (monkey-patching call targets).
-3. DI only via recognized patterns (`Depends`, `@inject`) with static argument names.
-4. Dynamic import only via `importlib.import_module("literal.path")` (finite domain).
+3. No non-literal `getattr(obj, name)` (dynamic attribute call targets).
+4. No `__builtins__` eval/exec access.
+5. DI only via recognized patterns (`Depends`, `@inject`) with static argument names.
+6. Dynamic import only via `importlib.import_module("literal.path")` (finite domain).
 
-Scanner: lexical (`scan_py` in `src/index/subset.rs`). Conservative — a false
-violation (over-flag) is preferred over a missed escape.
+Scanner: **v1 conservative lexical** (`scan_py` in `src/index/subset.rs`) — **not**
+a frozen soundness contract. Prefer over-flag (false violation) over a missed escape.
 
-## S_go (Go v1 — frozen)
+## S_go (Go v1 — conservative lexical scanner)
 
 A program is in S_go when **all** of the following hold:
 
@@ -63,7 +65,8 @@ A program is in S_go when **all** of the following hold:
 4. Route/DI tables only as composite `map[string]…Handler…` literals
    recognized by `go.di.handler_map`.
 
-Scanner: lexical (`scan_go`). Same conservative bias as S_py.
+Scanner: **v1 conservative lexical** (`scan_go`) — not a frozen soundness contract.
+Same over-flag bias as S_py.
 
 ## Analysis ingredients (implemented v1)
 
@@ -78,7 +81,7 @@ Scanner: lexical (`scan_go`). Same conservative bias as S_py.
 | Method | Role | Status |
 |---|---|---|
 | Differential vs runtime traces | Node export-wrapper tracer | ✅ `scripts/diff_trace.cjs` + `tests/l2_sound.rs` |
-| Property tests | random S programs | ❌ planned |
+| Property tests | random S programs | ✅ `tests/l2_property.rs` (deterministic S_js generator) |
 | Golden corpus | S_js auth fixture | ✅ `fixtures/eval-l2/s-js-auth` |
 | Invariant unit tests | call sites have Exact edges | ✅ `tests/l2_subset.rs` |
 

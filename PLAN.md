@@ -250,11 +250,11 @@ ref {
 
 ### 4.5 L2 交付物
 
-- `docs/sound-subset.md` ✅（S_js / S_py / S_go / S_rs v1 冻结）
+- `docs/sound-subset.md` ✅（S_js 保守 AST 扫描；S_py/S_go/S_rs **v1 保守词法扫描**，非完整冻结）
 - `impact --sound` / `callers --sound` ✅ 实验性（违例则关闭 sound 承诺）
 - 差分测试 harness ✅ Node export tracer + 多文件 ESM `s-js-esm`（`tests/l2_esm_diff.rs`）
 - 属性测试 ✅ `tests/l2_property.rs`（确定性 S_js 生成器：Exact 边 + impact_sound 包含）
-- Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr）
+- Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr/getattr 非字面量）
 - 评测报告 `docs/eval-l2.md` ✅
 
 **M4 实测（fixture 级）：** `s-js-auth` 运行时边 ⊆ `--sound` 边 100%；`s-js-evil`（eval）正确 `subset_ok=false`。非全生态 sound 声明。
@@ -352,7 +352,7 @@ ref {
 | 风险 | 缓解 |
 |---|---|
 | 启发式噪声拖垮 impact 有用性 | 默认过滤阈值；UI/CLI 展示 confidence |
-| L2 范围膨胀成「重写 CodeQL」 | 子集 S 冻结；新特性先进 L1 |
+| L2 范围膨胀成「重写 CodeQL」 | 子集 S 范围受控（S_js 保守 AST；S_py/S_go v1 词法）；新特性先进 L1 |
 | fsnotify 在网络盘/Windows 抖动 | 回退轮询；debounce；集成测试 |
 | 形式化空转 | L3 独立目录与里程碑；不设为 M1–M4 阻塞 |
 | 文档再次「打脸」 | 发布前 doc 与实现对照清单（对抗审核流程） |
@@ -374,7 +374,7 @@ ref {
 2. ~~**M1 / L0.1**：TDD 实现 fsnotify watch。~~ **完成**  
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
-5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM、S_py/S_go 冻结）  
+5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM；S_py/S_go 为 v1 保守词法扫描）  
 6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **formal/ 起步**（IncrementalIndex.tla + I1–I3 不变量测试）；I4 Lean 可选后续
 
 ---

@@ -29,6 +29,30 @@ export function loginHandler(email, password) {
     assert!(report.in_subset, "clean program must be in S");
 }
 
+// m9: scan_subset must parse with the file's real Language (TSX/JSX).
+#[test]
+fn s_tsx_jsx_parses_with_tsx_grammar() {
+    let src = r#"
+export function Panel() {
+  return <div className="x">ok</div>;
+}
+export function usePanel() {
+  return Panel();
+}
+"#;
+    let r = scan_subset(src, Language::Tsx, "src/panel.tsx");
+    assert!(
+        r.in_subset,
+        "TSX source must parse with TSX grammar (no parse_error): {:?}",
+        r.violations
+    );
+    assert!(
+        !r.violations.iter().any(|v| v.kind == "parse_error"),
+        "must not report parse_error for valid TSX: {:?}",
+        r.violations
+    );
+}
+
 #[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
@@ -174,6 +198,96 @@ export function c() { return b(); }
                 .collect::<Vec<_>>()
         );
     }
+}
+
+// --- C2: S_js scanner false-negatives ---
+
+#[test]
+fn s_js_paren_comma_eval_is_violation() {
+    // (0, eval)(x) — indirect eval via parenthesized comma expression.
+    let src = "export function evil(x) { return (0, eval)(x); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/evil.js");
+    assert!(
+        !r.in_subset,
+        "(0, eval)(x) must leave S: {:?}",
+        r.violations
+    );
+    assert!(
+        r.violations.iter().any(|v| v.kind.contains("eval")),
+        "expected eval kind: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_parenthesized_bare_eval_is_violation() {
+    let src = "export function evil(x) { return (eval)(x); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/evil.js");
+    assert!(!r.in_subset, "(eval)(x) must leave S: {:?}", r.violations);
+}
+
+#[test]
+fn s_js_window_eval_subscript_is_violation() {
+    for src in [
+        "export function evil(x) { return window['eval'](x); }\n",
+        "export function evil(x) { return globalThis['eval'](x); }\n",
+        "export function evil(x) { return window['Function']('return 1'); }\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/evil.js");
+        assert!(
+            !r.in_subset,
+            "window/globalThis['eval'/'Function'] must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn s_js_require_nonliteral_is_violation() {
+    for src in [
+        "export function load(n) { return require(n); }\n",
+        "export function load(p) { return require('./' + p); }\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/load.js");
+        assert!(
+            !r.in_subset,
+            "require(non-literal) must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn s_js_require_literal_stays_in_s() {
+    let src = "export function load() { return require('./util'); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/ok.js");
+    assert!(
+        r.in_subset,
+        "require('literal') stays in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_dynamic_import_nonliteral_is_violation() {
+    let src = "export async function load(n) { return import(n); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/dyn.js");
+    assert!(
+        !r.in_subset,
+        "import(non-literal) must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_dynamic_import_literal_stays_in_s() {
+    let src = "export async function load() { return import('./util.js'); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/ok.js");
+    assert!(
+        r.in_subset,
+        "import('literal') stays in S: {:?}",
+        r.violations
+    );
 }
 
 #[test]

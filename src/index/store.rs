@@ -374,11 +374,17 @@ impl Store {
             rows.collect::<Result<Vec<_>, _>>()?
         };
         let keep: std::collections::HashSet<&str> = keep_paths.iter().map(|s| s.as_str()).collect();
+        let mut deleted = false;
         for path in existing {
             if !keep.contains(path.as_str()) {
                 self.conn
                     .execute("DELETE FROM files WHERE path = ?1", params![path])?;
+                deleted = true;
             }
+        }
+        if deleted {
+            // m8: callers/impact cache must not return rows for deleted files.
+            self.cache.borrow_mut().clear();
         }
         Ok(())
     }
@@ -425,6 +431,7 @@ impl Store {
             described: described as usize,
             skipped_files: 0,
             failed_files: 0,
+            oversized_files: 0,
             refs_by_confidence,
         })
     }

@@ -86,6 +86,61 @@ fn py_setattr_dunder_leaves_s() {
 }
 
 #[test]
+fn py_eval_with_space_leaves_s() {
+    let src = "def f(x):\n    return eval (x)\n";
+    let r = scan_subset(src, Language::Python, "a.py");
+    assert!(!r.in_subset, "eval (x) must leave S: {:?}", r.violations);
+}
+
+#[test]
+fn py_exec_with_space_leaves_s() {
+    let src = "def f(x):\n    exec (x)\n";
+    let r = scan_subset(src, Language::Python, "a.py");
+    assert!(!r.in_subset, "exec (x) must leave S: {:?}", r.violations);
+}
+
+#[test]
+fn py_getattr_dynamic_name_leaves_s() {
+    for src in [
+        "def f(obj, name):\n    return getattr(obj, name)\n",
+        "def f(obj):\n    return getattr(obj, name + 'x')\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "getattr with non-literal 2nd arg must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_getattr_literal_stays_in_s() {
+    let src = "def f(obj):\n    return getattr(obj, 'foo')\n";
+    let r = scan_subset(src, Language::Python, "a.py");
+    assert!(
+        r.in_subset,
+        "getattr(obj, 'literal') stays in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn py_builtins_eval_leaves_s() {
+    for src in [
+        "def f(x):\n    return __builtins__['eval'](x)\n",
+        "def f(x):\n    return __builtins__.eval(x)\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "__builtins__ eval access must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
 fn py_clean_depends_stays_in_s() {
     let src = r#"
 def get_service():

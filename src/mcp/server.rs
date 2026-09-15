@@ -117,14 +117,15 @@ fn tools_list() -> Value {
             },
             {
                 "name": "callers",
-                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate.",
+                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate. sound=true uses the L2 sound-eligible edge set (mutually exclusive with exact_only/include_dynamic) and reports S-violations.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
                         "limit": {"type": "integer", "default": 50},
                         "exact_only": {"type": "boolean", "default": false},
-                        "include_dynamic": {"type": "boolean", "default": false}
+                        "include_dynamic": {"type": "boolean", "default": false},
+                        "sound": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
                 }
@@ -229,15 +230,42 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
         let st = state.lock().unwrap();
         let base = st.root.clone();
         if let Some(r) = args.get("root").and_then(|v| v.as_str()) {
-            let candidate = PathBuf::from(r);
+            let raw = PathBuf::from(r);
+            // Relative roots resolve against the server root (not process cwd).
+            let candidate = if raw.is_absolute() {
+                raw
+            } else {
+                base.join(&raw)
+            };
             // Security: reject roots outside the server's initial root unless
             // AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1 (prompt-injection / path escape).
+            // C1: must canonicalize BOTH sides before the prefix test — otherwise
+            // `base/../outside` slips through `starts_with` and Indexer::new
+            // creates `.agentgraph` outside the jail.
             let allow_any = std::env::var("AGENTGRAPH_MCP_ALLOW_ANY_ROOT")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
             if !allow_any {
-                let cand = crate::index::parser::normalize_root(&candidate);
-                let base_n = crate::index::parser::normalize_root(&base);
+                let cand_canon = candidate.canonicalize().map_err(|e| {
+                    tool_error(
+                        -32602,
+                        &format!(
+                            "root '{}' cannot be canonicalized ({e}); set AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1 to override",
+                            candidate.display()
+                        ),
+                    )
+                })?;
+                let base_canon = base.canonicalize().map_err(|e| {
+                    tool_error(
+                        -32602,
+                        &format!(
+                            "server root '{}' cannot be canonicalized ({e})",
+                            base.display()
+                        ),
+                    )
+                })?;
+                let cand = crate::index::parser::normalize_root(&cand_canon);
+                let base_n = crate::index::parser::normalize_root(&base_canon);
                 if cand != base_n && !cand.starts_with(&base_n) {
                     return Err(tool_error(
                         -32602,
@@ -296,9 +324,42 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("include_dynamic")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
+                if sound {
+                    if exact_only || include_dynamic {
+                        return Err(anyhow::anyhow!(
+                            "sound is mutually exclusive with exact_only / include_dynamic \
+                             (sound walk uses its own eligibility filter)"
+                        ));
+                    }
+                    let (hits, violations) = store.callers_sound(sym, limit)?;
+                    let subset_ok = violations.is_empty();
+                    let mapped: Vec<Value> = hits
+                        .into_iter()
+                        .map(|r| {
+                            let mut v = serde_json::to_value(&r).unwrap_or_default();
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
+                            }
+                            v
+                        })
+                        .collect();
+                    let payload = json!({
+                        "mode": "sound",
+                        "subset_ok": subset_ok,
+                        "promise": if subset_ok {
+                            "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
+                        } else {
+                            "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
+                        },
+                        "subset_violations": violations,
+                        "callers": mapped,
+                    });
+                    return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
+                }
                 let filter = parse_confidence_flags(exact_only, include_dynamic);
                 let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))

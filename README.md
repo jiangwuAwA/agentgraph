@@ -28,11 +28,28 @@ Not another embedding RAG. When an agent needs to know *who calls this*, *what b
   - `importers` — who imports this file
 - **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
 - **`watch`**: poll mtime fingerprint and reindex
+- **Type-aware calls (pragmatic)**: `qualifier` on call sites (`ModelClient::connect_websocket`, `s.save`); `callers` matches bare or `Type.method` / `Type::method`
+- **`export scip` / `export lsif`**: write SCIP JSON or LSIF JSONL
+- **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1`
 - **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
 - **Windows-safe**: strips `\\?\` UNC prefix from canonical roots
 - **Interfaces**: CLI + MCP (stdio)
 
 ## Install
+
+### Prebuilt
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.sh | bash
+
+# Windows PowerShell
+iwr -useb https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.ps1 | iex
+```
+
+Tag `v*` to cut a release (CI builds linux/mac/windows artifacts).
+
+### From source
 
 ```bash
 cargo install --path .
@@ -57,6 +74,8 @@ agentgraph importers src/auth.ts
 export OPENAI_API_KEY=sk-...
 # optional: OPENAI_BASE_URL, AGENTGRAPH_MODEL, AGENTGRAPH_ENRICH_CONCURRENCY
 agentgraph enrich --limit 50
+agentgraph export scip --out index.scip
+agentgraph export lsif --out index.lsif
 ```
 
 Index: `<root>/.agentgraph/index.db` (gitignore it).

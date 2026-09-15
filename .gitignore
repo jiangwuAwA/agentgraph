@@ -2,3 +2,7 @@
 **/*.rs.bk
 .agentgraph/
 fixtures/sample-app/.agentgraph/
+/out/
+*.scip
+*.lsif
+

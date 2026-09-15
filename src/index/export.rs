@@ -9,10 +9,12 @@ use super::store::Store;
 use crate::model::SymbolKind;
 
 fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
-    // Simple SCIP-like scheme: `agentgraph {lang} {path} {qualified}`
-    format!("agentgraph . {} . {}#", lang.replace('.', "_"), qualified.replace('.', "_"))
-    // path included for uniqueness across files with same qname
-    .replace(" . ", &format!(" . {path} . "))
+    format!(
+        "agentgraph . {} . {} . {}#",
+        lang,
+        path.replace('.', "_"),
+        qualified.replace('.', "_")
+    )
 }
 
 /// Export SCIP JSON (schema 0.4.0-ish, simplified).

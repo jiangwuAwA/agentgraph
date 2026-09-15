@@ -177,6 +177,8 @@ CI（ubuntu / windows / macos）：`fmt` + `clippy -D warnings` + `build` + `tes
 
 **开发默认 TDD** —— 见 [AGENTS.md](AGENTS.md)。先写失败测试，再实现，最后重构。
 
+**路线图（L0–L3）：** 分析能力计划见 [PLAN.md](PLAN.md)。动态/DI 边与 `--sound` 子集分析属于**规划中**，不得写成已完成。
+
 ## 许可证
 
 MIT

@@ -37,6 +37,10 @@ CI runs the same three (plus multi-OS build/test).
 Descriptors follow official grammar (`Type#`, `fn.`, `method().`).
 Validate with: `scip lint index.scip` (exit 0 required).
 
+## Capability roadmap
+
+Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset → L3 formal track) lives in [PLAN.md](PLAN.md). Do not market L1/L2/L3 as complete until their acceptance criteria in PLAN.md are met.
+
 ## Commits
 
 - Prefer small, test-backed commits.

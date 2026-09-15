@@ -177,6 +177,8 @@ CI (ubuntu / windows / macos): `fmt` + `clippy -D warnings` + `build` + `test` +
 
 **Development is TDD-first** — see [AGENTS.md](AGENTS.md). Write a failing test, implement, refactor.
 
+**Roadmap (L0–L3):** analysis capability plan — [PLAN.md](PLAN.md). Dynamic/DI edges and `--sound` subset analysis are **planned**, not claimed complete.
+
 ## License
 
 MIT

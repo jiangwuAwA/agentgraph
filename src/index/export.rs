@@ -58,13 +58,11 @@ fn scip_language_id(lang: &str) -> &'static str {
     }
 }
 
-/// Build a SCIP descriptor from kind + qualified name.
-///
-/// Examples:
-/// - class `Store` → `Store.`
-/// - method `Store.save` → `Store#save()`
-/// - function `loginHandler` → `loginHandler()`
-/// - rust `ModelClient::connect` → `ModelClient#connect()`
+/// Build a SCIP descriptor from kind + qualified name (official grammar):
+/// - namespace: `ns/`
+/// - type:      `Name#`
+/// - term/fn:   `name.`
+/// - method:    `Type#name().` or `name().`
 fn scip_descriptor(kind: SymbolKind, qualified: &str) -> String {
     let sep = if qualified.contains("::") { "::" } else { "." };
     let parts: Vec<&str> = qualified.split(sep).collect();
@@ -81,22 +79,22 @@ fn scip_descriptor(kind: SymbolKind, qualified: &str) -> String {
         | SymbolKind::Interface
         | SymbolKind::Enum
         | SymbolKind::Trait
-        | SymbolKind::TypeAlias => format!("{ns}{last}."),
-        SymbolKind::Method => format!("{ns}{last}#()"),
-        SymbolKind::Function => format!("{ns}{last}()"),
+        | SymbolKind::TypeAlias => format!("{ns}{last}#"),
+        SymbolKind::Method => format!("{ns}{last}()."),
+        SymbolKind::Function => format!("{ns}{last}."),
         SymbolKind::Module => format!("{ns}{last}/"),
-        SymbolKind::Variable => format!("{ns}{last}"),
+        SymbolKind::Variable => format!("{ns}{last}."),
     }
 }
 
-/// `Store.save` / `Store::save` → `Store#save()`
+/// `Store.save` / `Store::save` → `Store#save().`
 fn scip_method_descriptor(qualified: &str) -> String {
     let sep = if qualified.contains("::") { "::" } else { "." };
     if let Some((ty, method)) = qualified.rsplit_once(sep) {
         let ty_path = ty.split(sep).collect::<Vec<_>>().join("/");
-        return format!("{ty_path}#{method}()");
+        return format!("{ty_path}#{method}().");
     }
-    format!("{qualified}#()")
+    format!("{qualified}().")
 }
 
 fn scip_symbol_name(s: &SymbolRecord) -> String {
@@ -174,24 +172,28 @@ fn name_cols_on_line(root: &Path, rel: &str, line: usize, name: &str) -> (usize,
     (start, end.max(start + 1))
 }
 
-/// Export SCIP JSON following official `scip.Index` protobuf JSON mapping.
-pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
+/// Build official `scip::types::Index` from the store.
+pub fn build_scip_index(store: &Store, root: &Path) -> Result<scip::types::Index> {
+    use protobuf::MessageField;
+    use scip::types::{self, Index, Metadata, Occurrence, ToolInfo};
+
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
-    let mut docs: BTreeMap<String, (String, Vec<Value>)> = BTreeMap::new();
     let by_bare = index_by_bare(&symbols);
 
+    // path -> (language, occurrences)
+    let mut docs: BTreeMap<String, (String, Vec<Occurrence>)> = BTreeMap::new();
+
     for s in &symbols {
-        let line = s.start_line.saturating_sub(1);
-        let symbol = scip_symbol_name(s);
-        let mut occ = json!({
-            "range": [line, s.start_col, s.end_col.max(s.start_col + 1)],
-            "symbol": symbol,
-            "symbolRoles": 1,
-        });
-        if let Some(d) = &s.description {
-            occ["documentation"] = json!([d]);
-        }
+        let line = s.start_line.saturating_sub(1) as i32;
+        let mut occ = Occurrence::new();
+        occ.range = vec![
+            line,
+            s.start_col as i32,
+            s.end_col.max(s.start_col + 1) as i32,
+        ];
+        occ.symbol = scip_symbol_name(s);
+        occ.symbol_roles = 1; // Definition
         docs.entry(s.path.clone())
             .or_insert_with(|| (s.language.clone(), Vec::new()))
             .1
@@ -202,48 +204,67 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
         let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
         };
-        let symbol = scip_symbol_name(def);
-        let line = r.line.saturating_sub(1);
+        let line = r.line.saturating_sub(1) as i32;
         let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
-        let occ = json!({
-            "range": [line, c0, c1],
-            "symbol": symbol,
-            "symbolRoles": 0,
-        });
+        let mut occ = Occurrence::new();
+        occ.range = vec![line, c0 as i32, c1 as i32];
+        occ.symbol = scip_symbol_name(def);
+        occ.symbol_roles = 0;
         docs.entry(r.path.clone())
             .or_insert_with(|| ("plaintext".into(), Vec::new()))
             .1
             .push(occ);
     }
 
-    let documents: Vec<Value> = docs
-        .into_iter()
-        .map(|(path, (lang, occurrences))| {
-            json!({
-                "language": scip_language_id(&lang),
-                "relativePath": path,
-                "occurrences": occurrences,
-            })
-        })
-        .collect();
+    let mut index = Index::new();
+    let mut meta = Metadata::new();
+    let mut tool = ToolInfo::new();
+    tool.name = "agentgraph".into();
+    tool.version = env!("CARGO_PKG_VERSION").into();
+    meta.tool_info = MessageField::some(tool);
+    meta.project_root = file_uri(root, "");
+    index.metadata = MessageField::some(meta);
 
-    // Official scip.Index protobuf JSON (proto3): no schemaVersion field;
-    // Metadata.version is the ProtocolVersion enum (default Unspecified).
-    let scip = json!({
-        "metadata": {
-            "toolInfo": {
-                "name": "agentgraph",
-                "version": env!("CARGO_PKG_VERSION"),
-            },
-            "projectRoot": file_uri(root, ""),
-        },
-        "documents": documents,
-    });
+    // SymbolInformation for every definition (required by scip lint).
+    for s in &symbols {
+        let mut info = types::SymbolInformation::new();
+        info.symbol = scip_symbol_name(s);
+        if let Some(d) = &s.description {
+            info.documentation.push(d.clone());
+        }
+        index.external_symbols.push(info);
+    }
 
+    for (path, (lang, occurrences)) in docs {
+        let mut doc = types::Document::new();
+        doc.language = scip_language_id(&lang).to_string();
+        doc.relative_path = path;
+        doc.occurrences = occurrences;
+        index.documents.push(doc);
+    }
+    Ok(index)
+}
+
+/// Export SCIP **protobuf binary** (what official `scip` CLI reads).
+pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
+    use protobuf::Message;
+    let index = build_scip_index(store, root)?;
+    let bytes = index.write_to_bytes()?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(out, serde_json::to_vec(&scip)?)?;
+    std::fs::write(out, bytes)?;
+    Ok(())
+}
+
+/// Export SCIP JSON (protobuf JSON mapping) — for tests/debugging.
+pub fn export_scip_json(store: &Store, root: &Path, out: &Path) -> Result<()> {
+    let index = build_scip_index(store, root)?;
+    let json = protobuf_json_mapping::print_to_string(&index)?;
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(out, json)?;
     Ok(())
 }
 

@@ -36,8 +36,8 @@ fn scip_json_parses_with_official_crate() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let store = seed(&dir.join("index.db"));
-    let out = dir.join("index.scip");
-    export_scip(&store, Path::new("C:/proj"), &out).unwrap();
+    let out = dir.join("index.scip.json");
+    agentgraph::index::export::export_scip_json(&store, Path::new("C:/proj"), &out).unwrap();
 
     let json = std::fs::read_to_string(&out).unwrap();
     let mut index = scip::types::Index::default();
@@ -70,23 +70,16 @@ fn scip_json_parses_with_official_crate() {
 }
 
 #[test]
-fn scip_json_roundtrip_binary() {
+fn scip_binary_export_parses_with_official_crate() {
     let dir = std::env::temp_dir().join("agentgraph-scip-bin");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let store = seed(&dir.join("index.db"));
     let out = dir.join("index.scip");
     export_scip(&store, Path::new("/proj"), &out).unwrap();
-    let json = std::fs::read_to_string(&out).unwrap();
-    let mut index = scip::types::Index::default();
-    protobuf_json_mapping::merge_from_str(&mut index, &json).unwrap();
-    // Serialize to protobuf binary and re-parse — true wire-format check.
     use protobuf::Message;
-    let bytes = index.write_to_bytes().expect("encode protobuf");
-    let back = scip::types::Index::parse_from_bytes(&bytes).expect("decode protobuf");
-    assert_eq!(back.documents.len(), index.documents.len());
-    assert_eq!(
-        back.documents[0].relative_path,
-        index.documents[0].relative_path
-    );
+    let bytes = std::fs::read(&out).unwrap();
+    let index = scip::types::Index::parse_from_bytes(&bytes).expect("decode protobuf binary");
+    assert!(!index.documents.is_empty());
+    assert_eq!(index.documents[0].relative_path, "src/app.ts");
 }

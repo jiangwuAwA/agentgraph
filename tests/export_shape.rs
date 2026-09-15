@@ -1,5 +1,5 @@
 //! Shape checks for experimental SCIP / LSIF export.
-use agentgraph::index::export::{export_lsif, export_scip, file_uri};
+use agentgraph::index::export::{export_lsif, export_scip_json, file_uri};
 use agentgraph::index::extract::extract_file;
 use agentgraph::index::store::Store;
 use agentgraph::model::Language;
@@ -67,8 +67,8 @@ fn file_uri_windows_drive_has_three_slashes() {
 fn scip_export_parses_and_uses_protocol_v3() {
     let dir = temp_dir("scip");
     let store = seed_store(&dir.join("index.db"));
-    let out = dir.join("index.scip");
-    export_scip(&store, Path::new("C:/fake/root"), &out).unwrap();
+    let out = dir.join("index.scip.json");
+    export_scip_json(&store, Path::new("C:/fake/root"), &out).unwrap();
 
     let text = std::fs::read_to_string(&out).unwrap();
     let v: Value = serde_json::from_str(&text).expect("SCIP JSON must parse");
@@ -81,7 +81,8 @@ fn scip_export_parses_and_uses_protocol_v3() {
         .unwrap_or(false));
     // relativePath camelCase, symbol scheme scip-typescript npm agentgraph ...
     let docs = v["documents"].as_array().unwrap();
-    let mut saw_symbol = false;
+    let mut saw_def = false;
+    let mut saw_scheme = false;
     for d in docs {
         assert!(
             d.get("relativePath").is_some(),
@@ -91,16 +92,24 @@ fn scip_export_parses_and_uses_protocol_v3() {
             for o in occs {
                 let sym = o["symbol"].as_str().unwrap_or("");
                 if sym.starts_with("scip-typescript npm agentgraph 0.0.0 ") {
-                    saw_symbol = true;
-                    assert!(o.get("symbolRoles").is_some());
+                    saw_scheme = true;
+                    let roles = o.get("symbolRoles").and_then(|v| v.as_i64()).unwrap_or(0);
+                    if roles & 1 == 1 {
+                        saw_def = true;
+                        assert!(
+                            sym.ends_with('.') || sym.ends_with('#') || sym.ends_with("()."),
+                            "official descriptor suffix, got {sym}"
+                        );
+                    }
                 }
             }
         }
     }
     assert!(
-        saw_symbol,
+        saw_scheme,
         "expected scip-typescript npm agentgraph symbols"
     );
+    assert!(saw_def, "expected Definition occurrences");
 }
 
 #[test]

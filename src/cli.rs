@@ -76,9 +76,9 @@ pub enum Commands {
         #[arg(long, default_value_t = 5)]
         interval: u64,
     },
-    /// Export index as SCIP protocol-v3 JSON or LSIF JSONL
+    /// Export index as SCIP protobuf binary (official scip CLI) or LSIF JSONL
     Export {
-        #[arg(value_parser = ["scip", "lsif"])]
+        #[arg(value_parser = ["scip", "scip-json", "lsif"])]
         format: String,
         /// Output file path
         #[arg(short, long)]
@@ -177,6 +177,7 @@ pub fn run(cli: Cli) -> Result<()> {
             store.ensure_indexed()?;
             match format.as_str() {
                 "scip" => crate::index::export::export_scip(&store, &indexer.root, &out)?,
+                "scip-json" => crate::index::export::export_scip_json(&store, &indexer.root, &out)?,
                 "lsif" => crate::index::export::export_lsif(&store, &indexer.root, &out)?,
                 other => bail!("unknown export format: {other}"),
             }

@@ -32,7 +32,9 @@ pub fn file_uri(root: &Path, rel: &str) -> String {
     format!("file:///{path}")
 }
 
-/// SCIP protocol version (`scip.Index.metadata.version_protocol`).
+/// SCIP protocol version used for docs (`scip.Metadata.version` enum is
+/// UnspecifiedProtocolVersion in current scip.proto; this is informational).
+#[allow(dead_code)]
 pub const SCIP_PROTOCOL_VERSION: i32 = 3;
 
 fn package_manager(lang: &str) -> &'static str {
@@ -225,16 +227,15 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
         })
         .collect();
 
-    // Official scip.Index JSON (proto3 camelCase).
+    // Official scip.Index protobuf JSON (proto3): no schemaVersion field;
+    // Metadata.version is the ProtocolVersion enum (default Unspecified).
     let scip = json!({
-        "schemaVersion": 0,
         "metadata": {
             "toolInfo": {
                 "name": "agentgraph",
                 "version": env!("CARGO_PKG_VERSION"),
             },
             "projectRoot": file_uri(root, ""),
-            "versionProtocol": SCIP_PROTOCOL_VERSION,
         },
         "documents": documents,
     });

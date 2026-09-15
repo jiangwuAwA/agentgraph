@@ -72,8 +72,8 @@ fn scip_export_parses_and_uses_protocol_v3() {
 
     let text = std::fs::read_to_string(&out).unwrap();
     let v: Value = serde_json::from_str(&text).expect("SCIP JSON must parse");
-    assert_eq!(v["schemaVersion"], 0);
-    assert_eq!(v["metadata"]["versionProtocol"], 3);
+    // Official scip.Index has no schemaVersion field (protobuf).
+    assert!(v.get("schemaVersion").is_none());
     assert_eq!(v["metadata"]["toolInfo"]["name"], "agentgraph");
     assert!(v["documents"]
         .as_array()

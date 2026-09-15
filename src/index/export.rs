@@ -6,7 +6,7 @@
 //! LSIF remains a simplified JSONL dump.
 
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::Path;
 

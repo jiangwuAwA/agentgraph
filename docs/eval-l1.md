@@ -17,9 +17,15 @@ cargo test --test l1_eval -- --nocapture
 | **Heuristic edges** | Heuristic-confidence refs emitted in the corpus files |
 | **matched** | Heuristic edges whose name/evidence aligns with some golden edge (noise proxy: `1 - matched/total`) |
 
-**Honest limits:** this is a *fixture-scale* golden set (DI / event / getattr / handler-map / trait-impl shapes), not a full NestJS monorepo. Numbers demonstrate the rules fire and improve recall without drowning in noise; they are **not** a claim of production-repo completeness. L1 edges remain **candidates** — never sound.
+## Honest limits
+
+- Primary golden set in `fixtures/eval-l1` is **fixture-scale** (DI/event/getattr shapes).
+- Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
+- L1 edges remain **candidates** — never sound.
 
 ## Results (this commit)
+
+### fixtures/eval-l1
 
 | corpus | golden | L0 found | L1 found | L1 recall | Heuristic edges | matched |
 |---|---:|---:|---:|---:|---:|---:|
@@ -28,6 +34,17 @@ cargo test --test l1_eval -- --nocapture
 | rust-shapes | 3 | 1 | 3 | 100% | 2 | 2 |
 | ts-di | 8 | 2 | 8 | 100% | 5 | 5 |
 | **total** | **18** | **4 (22%)** | **18 (100%)** | **+350% relative** | **12** | **12 (0% unmatched)** |
+
+### fixtures/eval-l1-real (framework-idiom multi-module)
+
+| corpus | golden | L0 | L1 | heur | matched |
+|---|---:|---:|---:|---:|---:|
+| nestjs-inversify | 7 | 2 | **7** | 6 | 6 |
+| fastapi-app | 3 | 2 | **3** | 1 | 1 |
+| ginlike-go | 3 | 1 | **3** | 3 | 3 |
+| **total** | **13** | **5 (38%)** | **13 (100%)** | **10** | **10 (0% unmatched)** |
+
+Relative lift on nestjs-inversify: 28% → 100% (**+250%** ≥15% M2).
 
 ### M2 acceptance (PLAN §10)
 

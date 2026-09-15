@@ -156,14 +156,14 @@ ref {
 | `getattr(obj, "foo")()` | 反射 | DynamicCandidate |
 | `importlib.import_module` | 动态导入 | DynamicCandidate |
 | `@inject` / FastAPI `Depends` | DI | Heuristic |
-| `__init_subclass__` / 元类注册表 | 框架 | Heuristic |
+| `__init_subclass__` 子类注册 | 框架 | Heuristic |
 
 #### Go
 
 | 模式 | 规则 | confidence |
 |---|---|---|
-| 接口方法 + 显式实现集 | 实现边 | Heuristic |
-| `map[string]Handler` 注册 | DI 表 | Heuristic |
+| 接口方法 + receiver 实现 / `var _ I = (*T)(nil)` | 实现边 | Heuristic |
+| `map[string]Handler` / `e.GET(path, h)` 注册 | DI 表 / 路由 | Heuristic |
 
 #### Rust
 
@@ -194,7 +194,7 @@ ref {
 - 评测 corpus + 报告 ✅ `fixtures/eval-l1/` + [docs/eval-l1.md](docs/eval-l1.md)
 - 全部 TDD：每个规则先写 fixture 失败测试 ✅ `tests/l1_rules.rs` / `l1_schema.rs` / `l1_eval.rs` / `l1_cli.rs`
 
-**M2 实测（fixture golden，见 eval-l1）：** ts-di 召回 L0 25% → L1 100%（相对 +300% ≥15%）；Heuristic 未匹配噪声代理 0% ≤30%。非「生产大仓完备」声明。
+**M2 实测（fixture + 框架向 multi-module，见 eval-l1 / eval-l1-real）：** ts-di 与 nestjs-inversify 相对提升均 ≥15%；Heuristic 未匹配噪声代理 0%。非「生产 monorepo 完备」声明。
 
 ### 3.7 L1 非目标
 
@@ -252,7 +252,7 @@ ref {
 
 - `docs/sound-subset.md` ✅（S_js 保守 AST 扫描；S_py/S_go/S_rs **v1 保守词法扫描**，非完整冻结）
 - `impact --sound` / `callers --sound` ✅ 实验性（违例则关闭 sound 承诺）
-- 差分测试 harness ✅ Node export tracer + 多文件 ESM `s-js-esm`（`tests/l2_esm_diff.rs`）
+- 差分测试 harness ✅ Node export tracer + 多文件 ESM + **Go cover**（`tests/l2_go_diff.rs`）
 - 属性测试 ✅ `tests/l2_property.rs`（确定性 S_js 生成器：Exact 边 + impact_sound 包含）
 - Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr/getattr 非字面量）
 - 评测报告 `docs/eval-l2.md` ✅
@@ -376,7 +376,8 @@ ref {
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
 5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM；S_py/S_go 为 v1 保守词法扫描）  
-6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **收尾完成**：TLC 无错 + I1–I3 不变量 + **I4** 可执行小语言 containment（非 Lean）
+6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **收尾完成**：TLC 无错 + I1–I3 不变量 + **I4** 可执行小语言 containment（非 Lean）  
+7. ~~验收缺口：Py `__init_subclass__`、Go 接口/路由、框架向 corpus、Go 差分、版本 tag。~~ **完成**（见 eval-l1-real / l2_go_diff；Lean I4 仍在 formal/TODO.md）
 
 ---
 

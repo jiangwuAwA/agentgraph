@@ -63,6 +63,7 @@ fn line_of(ctx: &ExtractContext<'_>, node: Node) -> usize {
 }
 
 /// Bare identifier / type identifier text if the node is one.
+/// Member expressions resolve to the property name (`TYPES.UserRepository` → `UserRepository`).
 fn ident_name(node: Node, source: &str) -> Option<String> {
     let t = node_text(node, source);
     if t.is_empty() {
@@ -70,6 +71,10 @@ fn ident_name(node: Node, source: &str) -> Option<String> {
     }
     match node.kind() {
         "identifier" | "type_identifier" | "property_identifier" => Some(t.to_string()),
+        "member_expression" => node
+            .child_by_field_name("property")
+            .map(|p| node_text(p, source).to_string())
+            .or_else(|| t.rsplit('.').next().map(|s| s.to_string())),
         _ => {
             // `new Foo()` function field may be identifier or nested expression.
             if node.child_count() == 0
@@ -280,10 +285,16 @@ fn ts_call_rules(
     }
 
     // emitter.on('evt', handler) / bus.subscribe('evt', handler)
+    // also gin-like: e.GET("/users", GetUsers) / mux.HandleFunc(path, h)
+    let is_route = matches!(
+        method.as_str(),
+        "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "Handle" | "HandleFunc" | "Any"
+    );
     if matches!(
         method.as_str(),
         "on" | "subscribe" | "addListener" | "addEventListener"
-    ) {
+    ) || is_route
+    {
         if let Some(handler) = nth_arg_identifier(node, source, 1) {
             push_l1(
                 references,
@@ -293,7 +304,11 @@ fn ts_call_rules(
                     line,
                     enclosing: enclosing.clone(),
                     confidence: Confidence::Heuristic,
-                    rule_id: "ts.event.subscribe",
+                    rule_id: if is_route {
+                        "go.di.route_register"
+                    } else {
+                        "ts.event.subscribe"
+                    },
                     snippet: format!("{}(...)", fn_text),
                 },
             );
@@ -470,6 +485,9 @@ fn walk_py(
         "decorator" => {
             py_inject_decorator(node, source, ctx, references, local_enclosing.clone());
         }
+        "class_definition" => {
+            py_init_subclass_rule(node, source, ctx, references);
+        }
         _ => {}
     }
 
@@ -482,6 +500,54 @@ fn py_call_callee_text(call: Node, source: &str) -> String {
     call.child_by_field_name("function")
         .map(|f| node_text(f, source).to_string())
         .unwrap_or_default()
+}
+
+/// Framework registry: base defines `__init_subclass__` → subclass is registered.
+/// PLAN L1 Python: `__init_subclass__` / metaclass registry → Heuristic.
+fn py_init_subclass_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    if !source.contains("__init_subclass__") {
+        return;
+    }
+    // Only subclasses (class C(Base): ...) — not the base defining the hook.
+    let mut has_base = false;
+    let mut cursor = node.walk();
+    for c in node.children(&mut cursor) {
+        if c.kind() == "argument_list" {
+            has_base = true;
+        }
+    }
+    if !has_base {
+        return;
+    }
+    let Some(name) = node
+        .child_by_field_name("name")
+        .map(|n| node_text(n, source).to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    // Skip if this class body itself defines __init_subclass__ (the registrar).
+    let body = node_text(node, source);
+    if body.contains("def __init_subclass__") {
+        return;
+    }
+    push_l1(
+        references,
+        L1Edge {
+            name,
+            qualifier: None,
+            line: line_of(ctx, node),
+            enclosing: None,
+            confidence: Confidence::Heuristic,
+            rule_id: "py.framework.init_subclass",
+            snippet: "class ... (base) with __init_subclass__ registry".to_string(),
+        },
+    );
 }
 
 fn py_call_rules(
@@ -651,10 +717,174 @@ fn walk_go(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut 
     if node.kind() == "composite_literal" {
         go_composite_literal(node, source, ctx, references);
     }
+    if node.kind() == "call_expression" {
+        go_route_register_rule(node, source, ctx, references);
+    }
+    if node.kind() == "method_declaration" {
+        go_method_impl_rule(node, source, ctx, references);
+    }
+    if matches!(
+        node.kind(),
+        "var_declaration" | "short_var_declaration" | "var_spec"
+    ) {
+        go_interface_assertion_rule(node, source, ctx, references);
+    }
 
     for child in node.children(&mut cursor) {
         walk_go(child, source, ctx, references);
     }
+}
+
+/// `func (s *Server) ServeHTTP(...)` — concrete method often implements an
+/// interface with the same name (PLAN: 接口方法 + 显式实现集).
+fn go_method_impl_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let Some(name_node) = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "field_identifier")
+    else {
+        return;
+    };
+    let method = node_text(name_node, source).to_string();
+    if method.is_empty() {
+        return;
+    }
+    // Receiver type from parameter_list: (s *Server) / (s Server)
+    let mut recv_ty = None;
+    if let Some(pl) = node
+        .children(&mut node.walk())
+        .find(|c| c.kind() == "parameter_list")
+    {
+        let t = node_text(pl, source);
+        // last identifier-ish token in receiver list
+        let cleaned = t.trim_start_matches('(').trim_end_matches(')');
+        if let Some(last) = cleaned.split([' ', '*', '(', ')']).rfind(|s| {
+            !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_') && *s != "func"
+        }) {
+            recv_ty = Some(last.to_string());
+        }
+    }
+    let snippet = match &recv_ty {
+        Some(ty) => format!("func ({ty}) {method}"),
+        None => format!("func {method}"),
+    };
+    push_l1(
+        references,
+        L1Edge {
+            name: method,
+            qualifier: recv_ty,
+            line: line_of(ctx, node),
+            enclosing: None,
+            confidence: Confidence::Heuristic,
+            rule_id: "go.di.interface_impl",
+            snippet,
+        },
+    );
+}
+
+/// `var _ Store = (*MemStore)(nil)` — compile-time interface implementation proof.
+fn go_interface_assertion_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let t = node_text(node, source);
+    if !t.contains("= (*") && !t.contains("=(*") {
+        // also allow var _ I = T{}
+        if !(t.contains("var _") && t.contains(" = ")) {
+            return;
+        }
+    }
+    // Extract type after (* or =: (*MemStore) or MemStore{}
+    let ty = if let Some(idx) = t.find("(*") {
+        let rest = &t[idx + 2..];
+        rest.split(')').next().unwrap_or("").trim().to_string()
+    } else if let Some(idx) = t.find(" = ") {
+        t[idx + 3..]
+            .trim()
+            .trim_end_matches("{}")
+            .trim()
+            .to_string()
+    } else {
+        return;
+    };
+    if ty.is_empty()
+        || !ty
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+    {
+        return;
+    }
+    let line = line_of(ctx, node);
+    // Edge to the type (registration/impl proof site).
+    push_l1(
+        references,
+        L1Edge {
+            name: ty.clone(),
+            qualifier: None,
+            line,
+            enclosing: None,
+            confidence: Confidence::Heuristic,
+            rule_id: "go.di.interface_assert",
+            snippet: format!("var _ Iface = (*{ty})(nil)"),
+        },
+    );
+}
+
+/// gin/chi style: e.GET("/users", GetUsers) / mux.HandleFunc(path, h)
+fn go_route_register_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let Some(fn_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    let method = last_segment(node_text(fn_node, source)).to_string();
+    if !matches!(
+        method.as_str(),
+        "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "Handle" | "HandleFunc" | "Any"
+    ) {
+        return;
+    }
+    let mut cursor = node.walk();
+    let Some(args) = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "argument_list")
+    else {
+        return;
+    };
+    let mut ac = args.walk();
+    let named: Vec<Node> = args
+        .children(&mut ac)
+        .filter(|c| !matches!(c.kind(), "," | "(" | ")"))
+        .collect();
+    let Some(handler_node) = named.get(1) else {
+        return;
+    };
+    let Some(handler) =
+        go_handler_name(*handler_node, source).or_else(|| ident_name(*handler_node, source))
+    else {
+        return;
+    };
+    push_l1(
+        references,
+        L1Edge {
+            name: handler,
+            qualifier: None,
+            line: line_of(ctx, node),
+            enclosing: None,
+            confidence: Confidence::Heuristic,
+            rule_id: "go.di.route_register",
+            snippet: format!("{method}(..., handler)"),
+        },
+    );
 }
 
 fn go_composite_literal(

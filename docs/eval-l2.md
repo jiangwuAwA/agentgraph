@@ -47,6 +47,7 @@ MCP: `impact` with `sound: true`; tool `subset`.
 | `impact --sound` on clean corpus | `subset_ok: true`, non-empty caller graph |
 | `impact --sound` on eval corpus | `subset_ok: false`, promise says claim **disabled** |
 | **Differential (Node tracer)** | every runtime edge `from→to` observed by wrapping exports and calling `main` is **contained** in `impact(to, --sound)` (name or enclosing match) |
+| **Differential (Go cover)** | `go test -coverprofile` executed funcs (`tests/l2_go_diff.rs`) — `validateEmail` sound impact includes `Authenticate` |
 
 ### Differential method
 

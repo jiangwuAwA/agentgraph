@@ -20,7 +20,11 @@ const SOUND_HEURISTIC_RULES: &[&str] = &[
     "ts.event.subscribe",
     "py.di.depends",
     "py.di.inject",
+    "py.framework.init_subclass",
     "go.di.handler_map",
+    "go.di.interface_impl",
+    "go.di.interface_assert",
+    "go.di.route_register",
     "rs.di.impl_trait",
 ];
 

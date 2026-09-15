@@ -1,0 +1,24 @@
+{
+  "description": "Framework-idiom multi-file corpus (NestJS/Inversify shapes, FastAPI, Gin-like). Golden edges for M2-style L1 vs L0 measurement.",
+  "corpora": {
+    "nestjs-inversify": [
+      { "symbol": "InMemoryUserRepository", "site_file": "src/container.ts", "site_contains": "bind(TYPES.UserRepository)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "ConsoleLogger", "site_file": "src/container.ts", "site_contains": "bind(TYPES.Logger)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "UserService", "site_file": "src/container.ts", "site_contains": "bind(TYPES.UserService)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "UserRepository", "site_file": "src/users/user.service.ts", "site_contains": "@inject(TYPES.UserRepository)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "Logger", "site_file": "src/users/user.service.ts", "site_contains": "@inject(TYPES.Logger)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "repo.find", "site_file": "src/users/user.service.ts", "site_contains": "this.repo.find", "kind": "call", "min_confidence": "exact" },
+      { "symbol": "log.info", "site_file": "src/users/user.service.ts", "site_contains": "this.log.info", "kind": "call", "min_confidence": "exact" }
+    ],
+    "fastapi-app": [
+      { "symbol": "get_user_service", "site_file": "app/api/users.py", "site_contains": "Depends(get_user_service)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "svc.load", "site_file": "app/api/users.py", "site_contains": "svc.load", "kind": "call", "min_confidence": "exact" },
+      { "symbol": "UserService", "site_file": "app/deps.py", "site_contains": "UserService(", "kind": "call", "min_confidence": "exact" }
+    ],
+    "ginlike-go": [
+      { "symbol": "GetUsers", "site_file": "engine.go", "site_contains": "GET(\"/users\"", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "Healthz", "site_file": "engine.go", "site_contains": "GET(\"/health\"", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "GET", "site_file": "engine.go", "site_contains": "e.GET", "kind": "call", "min_confidence": "exact" }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "description": "Golden dependency edges for L1 eval. Each entry is a known real dependency that a complete call/DI graph should contain.",
+  "corpora": {
+    "ts-di": [
+      { "symbol": "UserRepository", "site_file": "src/container.ts", "site_contains": "register(UserRepository)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "UserService", "site_file": "src/container.ts", "site_contains": "bind(UserService)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "AuditLogger", "site_file": "src/container.ts", "site_contains": "register(AuditLogger)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "repo.find", "site_file": "src/container.ts", "site_contains": "this.repo.find", "kind": "call", "min_confidence": "exact" },
+      { "symbol": "svc.load", "site_file": "src/container.ts", "site_contains": "svc.load", "kind": "call", "min_confidence": "exact" },
+      { "symbol": "onClick", "site_file": "src/events.ts", "site_contains": "bus.on", "kind": "event", "min_confidence": "heuristic" },
+      { "symbol": "onResize", "site_file": "src/events.ts", "site_contains": "registry[\"onResize\"]", "kind": "dynamic", "min_confidence": "dynamic_candidate" },
+      { "symbol": "ClickHandler", "site_file": "src/events.ts", "site_contains": "registry[\"ClickHandler\"]", "kind": "dynamic", "min_confidence": "dynamic_candidate" }
+    ],
+    "py-fastapi": [
+      { "symbol": "get_user_repository", "site_file": "app/api.py", "site_contains": "Depends(get_user_repository)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "get_user_service", "site_file": "app/api.py", "site_contains": "Depends(get_user_service)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "load", "site_file": "app/api.py", "site_contains": "getattr", "kind": "dynamic", "min_confidence": "dynamic_candidate" },
+      { "symbol": "svc.load", "site_file": "app/api.py", "site_contains": "svc.load", "kind": "call", "min_confidence": "exact" }
+    ],
+    "go-routes": [
+      { "symbol": "GetUsers", "site_file": "handlers/routes.go", "site_contains": "GetUsers", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "CreateUser", "site_file": "handlers/routes.go", "site_contains": "CreateUser", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "Healthz", "site_file": "handlers/routes.go", "site_contains": "Healthz", "kind": "di", "min_confidence": "heuristic" }
+    ],
+    "rust-shapes": [
+      { "symbol": "area", "site_file": "src/main.rs", "site_contains": "impl Shape for Circle", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "area", "site_file": "src/main.rs", "site_contains": "impl Shape for Rect", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "s.area", "site_file": "src/main.rs", "site_contains": "s.area()", "kind": "call", "min_confidence": "exact" }
+    ]
+  }
+}

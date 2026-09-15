@@ -94,7 +94,7 @@ AI Agent 改代码前需要回答：
 | ID | 项 | 验收 |
 |---|---|---|
 | L0.1 | **fsnotify 原生 watch**（替换/并存于轮询） | ✅ `watch_events` + CLI 默认；改文件后 < 300ms 触发增量；`notify` crate；防抖 50–200ms；`tests/watch_fsnotify.rs` |
-| L0.2 | 大仓性能预算 | ✅ `scripts/bench_index.ps1`；fixture 增量预算门禁；大仓全量目标见脚本注释 |
+| L0.2 | 大仓性能预算 | ✅ `scripts/bench_index.ps1`；fixture 增量门禁 |
 | L0.3 | 边证据字段 | ✅ CLI `callers` 输出含 `at: path:line`；DB 本就存 path/line |
 | L0.4 | 查询缓存层 | ✅ callers/impact 内存缓存 + 写失效 + hit/miss 计数；`tests/query_cache.rs` |
 | L0.5 | 文档诚实 | ✅ README/AGENTS/PLAN 明确 L0 = best-effort 名字/qualifier；动态边属 L1 规划 |
@@ -188,11 +188,13 @@ ref {
 
 ### 3.6 L1 交付物
 
-- 规则引擎（按语言模块化）  
-- `refs` schema v2 + 迁移  
-- CLI/MCP 过滤开关  
-- 评测 corpus + 报告  
-- 全部 TDD：每个规则先写 fixture 失败测试  
+- 规则引擎（按语言模块化） ✅ `src/index/rules.rs`
+- `refs` schema v2 + 迁移 ✅ `confidence` + `evidence`；旧库回填 `exact`
+- CLI/MCP 过滤开关 ✅ `--exact-only` / `--include-dynamic`
+- 评测 corpus + 报告 ✅ `fixtures/eval-l1/` + [docs/eval-l1.md](docs/eval-l1.md)
+- 全部 TDD：每个规则先写 fixture 失败测试 ✅ `tests/l1_rules.rs` / `l1_schema.rs` / `l1_eval.rs` / `l1_cli.rs`
+
+**M2 实测（fixture golden，见 eval-l1）：** ts-di 召回 L0 25% → L1 100%（相对 +300% ≥15%）；Heuristic 未匹配噪声代理 0% ≤30%。非「生产大仓完备」声明。
 
 ### 3.7 L1 非目标
 
@@ -365,7 +367,8 @@ ref {
 1. 冻结本计划为 `PLAN.md`（本文）。  
 2. ~~**M1 / L0.1**：TDD 实现 fsnotify watch。~~ **完成**  
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
-4. 启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。  
+4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
+5. L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。
 
 ---
 

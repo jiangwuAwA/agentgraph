@@ -41,6 +41,10 @@ Validate with: `scip lint index.scip` (exit 0 required).
 
 Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset → L3 formal track) lives in [PLAN.md](PLAN.md). Do not market L1/L2/L3 as complete until their acceptance criteria in PLAN.md are met.
 
+**L1 (shipped):** heuristic/dynamic-candidate edges with `confidence` + `evidence`; CLI/MCP `--exact-only` / `--include-dynamic`; eval corpus in `fixtures/eval-l1` + [docs/eval-l1.md](docs/eval-l1.md). L1 is **not** sound — candidates only.
+
+**L2 (not shipped):** `impact --sound` and the subset in [docs/sound-subset.md](docs/sound-subset.md) are draft/planned.
+
 ## Commits
 
 - Prefer small, test-backed commits.

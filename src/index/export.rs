@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use super::store::Store;
-use crate::model::{ReferenceRecord, SymbolKind, SymbolRecord};
+use crate::model::{ConfidenceFilter, ReferenceRecord, SymbolKind, SymbolRecord};
 
 /// Build a `file://` URI from a project root and a (possibly empty) relative path.
 pub fn file_uri(root: &Path, rel: &str) -> String {
@@ -210,12 +210,21 @@ fn name_cols_on_line(
 }
 
 /// Build official `scip::types::Index` from the store.
+/// Default filter excludes DynamicCandidate (PLAN: not exported as definition links).
 pub fn build_scip_index(store: &Store, root: &Path) -> Result<scip::types::Index> {
+    build_scip_index_filtered(store, root, ConfidenceFilter::Default)
+}
+
+pub fn build_scip_index_filtered(
+    store: &Store,
+    root: &Path,
+    filter: ConfidenceFilter,
+) -> Result<scip::types::Index> {
     use protobuf::MessageField;
     use scip::types::{self, Index, Metadata, Occurrence, SymbolInformation, ToolInfo};
 
     let symbols = store.all_symbols_for_export()?;
-    let refs = store.all_refs_for_export()?;
+    let refs = store.all_refs_for_export(filter)?;
     let by_bare = index_by_bare(&symbols);
 
     // path -> (language, occurrences, symbols)
@@ -305,8 +314,17 @@ pub fn build_scip_index(store: &Store, root: &Path) -> Result<scip::types::Index
 
 /// Export SCIP **protobuf binary** (what official `scip` CLI reads).
 pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
+    export_scip_filtered(store, root, out, ConfidenceFilter::Default)
+}
+
+pub fn export_scip_filtered(
+    store: &Store,
+    root: &Path,
+    out: &Path,
+    filter: ConfidenceFilter,
+) -> Result<()> {
     use protobuf::Message;
-    let index = build_scip_index(store, root)?;
+    let index = build_scip_index_filtered(store, root, filter)?;
     let bytes = index.write_to_bytes()?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
@@ -317,7 +335,16 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
 
 /// Export SCIP JSON (protobuf JSON mapping) — for tests/debugging.
 pub fn export_scip_json(store: &Store, root: &Path, out: &Path) -> Result<()> {
-    let index = build_scip_index(store, root)?;
+    export_scip_json_filtered(store, root, out, ConfidenceFilter::Default)
+}
+
+pub fn export_scip_json_filtered(
+    store: &Store,
+    root: &Path,
+    out: &Path,
+    filter: ConfidenceFilter,
+) -> Result<()> {
+    let index = build_scip_index_filtered(store, root, filter)?;
     let json = protobuf_json_mapping::print_to_string(&index)?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
@@ -363,7 +390,7 @@ fn ensure_doc(
 /// (path + qualified name), so `A.save` and `B.save` do not share a resultSet.
 pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
-    let refs = store.all_refs_for_export()?;
+    let refs = store.all_refs_for_export(ConfidenceFilter::Default)?;
     let mut lines: Vec<String> = Vec::new();
     let mut next_id = 1u64;
     let by_bare = index_by_bare(&symbols);

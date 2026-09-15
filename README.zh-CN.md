@@ -43,10 +43,18 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 | 命令 | 用途 |
 |---|---|
 | `find` | 符号定义（精确；`--fuzzy` 为 LIKE 模糊） |
-| `callers` | 调用/导入点（含 `module`、`resolved`、`qualifier`） |
-| `impact` | 真 BFS 爆炸半径 |
+| `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`） |
+| `impact` | 真 BFS 爆炸半径（默认 Exact+Heuristic） |
 | `related` | 定义 + 导入方 + 引用（用于收敛阅读范围） |
 | `importers` | 谁 import 了该文件 |
+
+`callers` / `impact`（以及 MCP 工具）的 confidence 窗口：
+
+- 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
+- `--exact-only`：仅 L0 语法确定边
+- `--include-dynamic`：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
+
+所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)。
 
 ### 索引质量
 

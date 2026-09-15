@@ -5,7 +5,7 @@ use tree_sitter::Node;
 
 use super::parser::LineIndex;
 use super::resolve;
-use crate::model::{EdgeKind, Language, SymbolKind};
+use crate::model::{Confidence, EdgeKind, Evidence, Language, SymbolKind};
 
 #[derive(Debug, Clone)]
 pub struct ExtractedSymbol {
@@ -30,6 +30,10 @@ pub struct ExtractedRef {
     pub resolved: Option<String>,
     /// Type/module qualifier for type-aware calls, e.g. `ModelClient` in `ModelClient::connect`.
     pub qualifier: Option<String>,
+    /// L0 edges are Exact; L1 rules set Heuristic / DynamicCandidate.
+    pub confidence: Confidence,
+    /// Rule id + snippet for non-Exact edges.
+    pub evidence: Option<Evidence>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +75,9 @@ pub fn extract_file(
         Language::Go => walk_go(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Rust => walk_rust(root, source, None, &mut symbols, &mut references, &ctx),
     }
+
+    // L1: append Heuristic / DynamicCandidate candidate edges (DI, reflection, maps).
+    super::rules::apply(lang, root, source, &ctx, &mut references);
 
     Ok(ExtractedFile {
         symbols,
@@ -138,6 +145,8 @@ fn push_call_q(
         module: None,
         resolved: None,
         qualifier,
+        confidence: Confidence::Exact,
+        evidence: None,
     });
 }
 
@@ -157,6 +166,8 @@ fn push_import(
         module,
         resolved,
         qualifier: None,
+        confidence: Confidence::Exact,
+        evidence: None,
     });
 }
 
@@ -176,6 +187,8 @@ fn push_assign(
         module: Some(callee),
         resolved: None,
         qualifier: None,
+        confidence: Confidence::Exact,
+        evidence: None,
     });
 }
 

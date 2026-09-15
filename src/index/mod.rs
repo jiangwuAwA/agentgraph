@@ -3,6 +3,7 @@ pub mod extract;
 pub mod llm;
 pub mod parser;
 pub mod resolve;
+pub mod rules;
 pub mod store;
 pub mod walker;
 
@@ -178,9 +179,18 @@ impl Indexer {
         let mut stats = store.stats(&self.root.to_string_lossy())?;
         stats.skipped_files = skipped;
         stats.failed_files = failed_read + failed_parse;
+        let conf_summary: Vec<String> = stats
+            .refs_by_confidence
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
         eprintln!(
-            "indexed {indexed} file(s), skipped {skipped} unchanged, failed {}; {} symbols, {} refs, {} described",
-            stats.failed_files, stats.symbols, stats.references, stats.described
+            "indexed {indexed} file(s), skipped {skipped} unchanged, failed {}; {} symbols, {} refs [{}], {} described",
+            stats.failed_files,
+            stats.symbols,
+            stats.references,
+            conf_summary.join(","),
+            stats.described
         );
         Ok(stats)
     }

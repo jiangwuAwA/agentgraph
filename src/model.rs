@@ -141,6 +141,74 @@ pub struct SymbolRecord {
     pub return_type: Option<String>,
 }
 
+/// How sure we are that a ref edge is real.
+///
+/// - `Exact`: L0 syntactic certainty (direct call / import / define).
+/// - `Heuristic`: DI / factory / subscription patterns — likely, not proven.
+/// - `DynamicCandidate`: reflection / string / computed access — high noise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Confidence {
+    #[default]
+    Exact,
+    Heuristic,
+    DynamicCandidate,
+}
+
+impl Confidence {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Confidence::Exact => "exact",
+            Confidence::Heuristic => "heuristic",
+            Confidence::DynamicCandidate => "dynamic_candidate",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "heuristic" => Confidence::Heuristic,
+            "dynamic_candidate" => Confidence::DynamicCandidate,
+            _ => Confidence::Exact,
+        }
+    }
+}
+
+/// Query-time confidence window for callers / impact / export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfidenceFilter {
+    /// Only Exact (L0 syntactic certainty).
+    ExactOnly,
+    /// Exact + Heuristic (default for callers/impact).
+    #[default]
+    Default,
+    /// Everything including DynamicCandidate.
+    IncludeDynamic,
+}
+
+impl ConfidenceFilter {
+    /// Stored string values accepted by this filter (for SQL / matching).
+    pub fn accepted_strs(self) -> &'static [&'static str] {
+        match self {
+            ConfidenceFilter::ExactOnly => &["exact"],
+            ConfidenceFilter::Default => &["exact", "heuristic"],
+            ConfidenceFilter::IncludeDynamic => &["exact", "heuristic", "dynamic_candidate"],
+        }
+    }
+}
+
+impl Confidence {
+    pub fn included_in(self, filter: ConfidenceFilter) -> bool {
+        filter.accepted_strs().contains(&self.as_str())
+    }
+}
+
+/// Why a non-Exact edge exists (rule id + source fragment).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Evidence {
+    pub rule_id: String,
+    pub snippet: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferenceRecord {
     pub name: String,
@@ -154,6 +222,10 @@ pub struct ReferenceRecord {
     pub resolved: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub qualifier: Option<String>,
+    #[serde(default)]
+    pub confidence: Confidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<Evidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +241,9 @@ pub struct IndexStats {
     pub skipped_files: usize,
     #[serde(default)]
     pub failed_files: usize,
+    /// Edge counts by confidence (`exact` / `heuristic` / `dynamic_candidate`).
+    #[serde(default)]
+    pub refs_by_confidence: Vec<(String, usize)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,6 +257,8 @@ pub struct ImpactNode {
     pub enclosing: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<String>,
+    #[serde(default)]
+    pub confidence: Confidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

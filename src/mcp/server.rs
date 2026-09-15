@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::index::Indexer;
-use crate::query::Query;
+use crate::query::{parse_confidence_flags, Query};
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
     let state = Mutex::new(ServerState { root });
@@ -117,25 +117,29 @@ fn tools_list() -> Value {
             },
             {
                 "name": "callers",
-                "description": "List call sites / references of a symbol. Use before editing a function to see who depends on it.",
+                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "limit": {"type": "integer", "default": 50}
+                        "limit": {"type": "integer", "default": 50},
+                        "exact_only": {"type": "boolean", "default": false},
+                        "include_dynamic": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
                 }
             },
             {
                 "name": "impact",
-                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS).",
+                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; exact_only / include_dynamic adjust the confidence window.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
                         "depth": {"type": "integer", "default": 2},
-                        "limit": {"type": "integer", "default": 100}
+                        "limit": {"type": "integer", "default": 100},
+                        "exact_only": {"type": "boolean", "default": false},
+                        "include_dynamic": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
                 }
@@ -275,10 +279,19 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("name required"))?;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                let exact_only = args
+                    .get("exact_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let include_dynamic = args
+                    .get("include_dynamic")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
-                let hits = Query::new(&store).callers(sym, limit)?;
+                let filter = parse_confidence_flags(exact_only, include_dynamic);
+                let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
             "impact" => {
@@ -288,10 +301,19 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .ok_or_else(|| anyhow::anyhow!("name required"))?;
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+                let exact_only = args
+                    .get("exact_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let include_dynamic = args
+                    .get("include_dynamic")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
-                let hits = Query::new(&store).impact(sym, depth, limit)?;
+                let filter = parse_confidence_flags(exact_only, include_dynamic);
+                let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
             "related_files" => {

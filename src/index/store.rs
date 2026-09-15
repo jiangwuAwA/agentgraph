@@ -5,12 +5,33 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::extract::ExtractedFile;
-use crate::model::{EdgeKind, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord};
+use crate::model::{
+    Confidence, ConfidenceFilter, EdgeKind, Evidence, ImpactNode, IndexStats, ReferenceRecord,
+    SymbolKind, SymbolRecord,
+};
+
+fn filter_key(f: ConfidenceFilter) -> u8 {
+    match f {
+        ConfidenceFilter::ExactOnly => 0,
+        ConfidenceFilter::Default => 1,
+        ConfidenceFilter::IncludeDynamic => 2,
+    }
+}
+
+/// SQL fragment constraining `refs.confidence` for a query filter.
+/// Literals are fixed — never interpolate user input into this.
+fn confidence_where(filter: ConfidenceFilter) -> &'static str {
+    match filter {
+        ConfidenceFilter::ExactOnly => "confidence = 'exact'",
+        ConfidenceFilter::Default => "confidence IN ('exact', 'heuristic')",
+        ConfidenceFilter::IncludeDynamic => "1=1",
+    }
+}
 
 #[derive(Default)]
 struct QueryCache {
-    callers: HashMap<(String, usize), Vec<ReferenceRecord>>,
-    impact: HashMap<(String, usize, usize), Vec<ImpactNode>>,
+    callers: HashMap<(String, usize, u8), Vec<ReferenceRecord>>,
+    impact: HashMap<(String, usize, usize, u8), Vec<ImpactNode>>,
     hits: u64,
     misses: u64,
     max_entries: usize,
@@ -92,6 +113,8 @@ impl Store {
                 resolved TEXT,
                 qualifier TEXT,
                 resolved_symbol_id INTEGER,
+                confidence TEXT NOT NULL DEFAULT 'exact',
+                evidence TEXT,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -107,6 +130,16 @@ impl Store {
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qualifier TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved_symbol_id INTEGER", []);
+        let _ = conn.execute(
+            "ALTER TABLE refs ADD COLUMN confidence TEXT NOT NULL DEFAULT 'exact'",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN evidence TEXT", []);
+        // Backfill: pre-L1 rows are Exact by definition.
+        let _ = conn.execute(
+            "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
+            [],
+        );
         let _ = conn.execute(
             "ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0",
             [],
@@ -267,10 +300,14 @@ impl Store {
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )?;
             for r in &extracted.references {
+                let evidence_json = r
+                    .evidence
+                    .as_ref()
+                    .and_then(|e| serde_json::to_string(e).ok());
                 stmt.execute(params![
                     r.name,
                     r.kind.as_str(),
@@ -280,6 +317,8 @@ impl Store {
                     r.module,
                     r.resolved,
                     r.qualifier,
+                    r.confidence.as_str(),
+                    evidence_json,
                 ])?;
             }
         }
@@ -325,6 +364,16 @@ impl Store {
         for row in rows {
             languages.push(row?);
         }
+        let mut refs_by_confidence: Vec<(String, usize)> = Vec::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT confidence, COUNT(*) FROM refs GROUP BY confidence ORDER BY confidence",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize))
+        })?;
+        for row in rows {
+            refs_by_confidence.push(row?);
+        }
         Ok(IndexStats {
             files: files as usize,
             symbols: symbols as usize,
@@ -334,6 +383,7 @@ impl Store {
             described: described as usize,
             skipped_files: 0,
             failed_files: 0,
+            refs_by_confidence,
         })
     }
 
@@ -448,26 +498,42 @@ impl Store {
     }
 
     pub fn callers(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
+        self.callers_filtered(name, limit, ConfidenceFilter::Default)
+    }
+
+    pub fn callers_filtered(
+        &self,
+        name: &str,
+        limit: usize,
+        filter: ConfidenceFilter,
+    ) -> Result<Vec<ReferenceRecord>> {
+        let fk = filter_key(filter);
         {
             let mut c = self.cache.borrow_mut();
-            if let Some(v) = c.callers.get(&(name.to_string(), limit)).cloned() {
+            if let Some(v) = c.callers.get(&(name.to_string(), limit, fk)).cloned() {
                 c.note_hit();
                 return Ok(v);
             }
             c.note_miss();
         }
-        let result = self.callers_uncached(name, limit)?;
+        let result = self.callers_uncached(name, limit, filter)?;
         {
             let mut c = self.cache.borrow_mut();
             if QueryCache::evict_if_needed(c.callers.len(), c.max_entries) {
                 c.callers.clear();
             }
-            c.callers.insert((name.to_string(), limit), result.clone());
+            c.callers
+                .insert((name.to_string(), limit, fk), result.clone());
         }
         Ok(result)
     }
 
-    fn callers_uncached(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
+    fn callers_uncached(
+        &self,
+        name: &str,
+        limit: usize,
+        filter: ConfidenceFilter,
+    ) -> Result<Vec<ReferenceRecord>> {
         // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
             (n.to_string(), format!("{q}.{n}"))
@@ -483,18 +549,24 @@ impl Store {
             (name.to_string(), String::new())
         };
 
+        let conf = confidence_where(filter);
         let sql = if qual_dot.is_empty() {
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
-             FROM refs WHERE name = ?1 ORDER BY path, line LIMIT ?2"
+            format!(
+                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
+                 FROM refs WHERE name = ?1 AND {conf}
+                 ORDER BY path, line LIMIT ?2"
+            )
         } else {
             // Exclusive: when a type qualifier is present, do not mix bare-name hits.
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
-             FROM refs
-             WHERE (qualifier || '.' || name) = ?1
-                OR (qualifier || '::' || name) = ?1
-             ORDER BY path, line LIMIT ?2"
+            format!(
+                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
+                 FROM refs
+                 WHERE ((qualifier || '.' || name) = ?1 OR (qualifier || '::' || name) = ?1)
+                   AND {conf}
+                 ORDER BY path, line LIMIT ?2"
+            )
         };
-        let mut stmt = self.conn.prepare(sql)?;
+        let mut stmt = self.conn.prepare(&sql)?;
         let rows = if qual_dot.is_empty() {
             stmt.query_map(params![bare, limit as i64], map_ref)?
         } else {
@@ -649,7 +721,7 @@ impl Store {
 
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
              FROM refs
              WHERE resolved = ?1 AND kind = 'import'
              ORDER BY path, line
@@ -685,22 +757,16 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    pub fn all_refs_for_export(&self) -> Result<Vec<ReferenceRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier FROM refs ORDER BY path, line",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(ReferenceRecord {
-                name: r.get(0)?,
-                kind: EdgeKind::parse(&r.get::<_, String>(1)?),
-                path: r.get(2)?,
-                line: r.get::<_, i64>(3)? as usize,
-                enclosing: r.get(4)?,
-                module: r.get(5)?,
-                resolved: r.get(6)?,
-                qualifier: r.get(7)?,
-            })
-        })?;
+    /// Export refs; `filter` drops edges outside the confidence window
+    /// (SCIP default excludes DynamicCandidate).
+    pub fn all_refs_for_export(&self, filter: ConfidenceFilter) -> Result<Vec<ReferenceRecord>> {
+        let conf = confidence_where(filter);
+        let sql = format!(
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
+             FROM refs WHERE {conf} ORDER BY path, line"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], map_ref)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -711,27 +777,44 @@ impl Store {
     /// file). This prevents cross-language last_segment(name) collisions from linking
     /// e.g. Python `validate_email` impact into an unrelated TypeScript `authenticate`.
     pub fn impact(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
+        self.impact_filtered(name, depth, limit, ConfidenceFilter::Default)
+    }
+
+    pub fn impact_filtered(
+        &self,
+        name: &str,
+        depth: usize,
+        limit: usize,
+        filter: ConfidenceFilter,
+    ) -> Result<Vec<ImpactNode>> {
+        let fk = filter_key(filter);
         {
             let mut c = self.cache.borrow_mut();
-            if let Some(v) = c.impact.get(&(name.to_string(), depth, limit)).cloned() {
+            if let Some(v) = c.impact.get(&(name.to_string(), depth, limit, fk)).cloned() {
                 c.note_hit();
                 return Ok(v);
             }
             c.note_miss();
         }
-        let result = self.impact_uncached(name, depth, limit)?;
+        let result = self.impact_uncached(name, depth, limit, filter)?;
         {
             let mut c = self.cache.borrow_mut();
             if QueryCache::evict_if_needed(c.impact.len(), c.max_entries) {
                 c.impact.clear();
             }
             c.impact
-                .insert((name.to_string(), depth, limit), result.clone());
+                .insert((name.to_string(), depth, limit, fk), result.clone());
         }
         Ok(result)
     }
 
-    fn impact_uncached(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
+    fn impact_uncached(
+        &self,
+        name: &str,
+        depth: usize,
+        limit: usize,
+        filter: ConfidenceFilter,
+    ) -> Result<Vec<ImpactNode>> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
@@ -746,7 +829,7 @@ impl Store {
             if d >= depth || out.len() >= limit {
                 continue;
             }
-            let refs = self.callers_uncached(&current, fetch_cap)?;
+            let refs = self.callers_uncached(&current, fetch_cap, filter)?;
             for r in refs {
                 if out.len() >= limit {
                     break;
@@ -763,6 +846,7 @@ impl Store {
                     depth: d + 1,
                     enclosing: r.enclosing.clone(),
                     resolved: r.resolved.clone(),
+                    confidence: r.confidence,
                 });
                 // Only expand via last segment of enclosing when that leaf is a real
                 // symbol, ideally in the same language as the referring file.
@@ -925,6 +1009,9 @@ fn quote_ident(name: &str) -> String {
 }
 
 fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
+    let confidence_s: String = r.get(8)?;
+    let evidence_s: Option<String> = r.get(9)?;
+    let evidence = evidence_s.and_then(|s| serde_json::from_str::<Evidence>(&s).ok());
     Ok(ReferenceRecord {
         name: r.get(0)?,
         kind: EdgeKind::parse(&r.get::<_, String>(1)?),
@@ -934,5 +1021,7 @@ fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
         module: r.get(5)?,
         resolved: r.get(6)?,
         qualifier: r.get(7)?,
+        confidence: Confidence::parse(&confidence_s),
+        evidence,
     })
 }

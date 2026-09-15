@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::index::{llm, Indexer};
-use crate::query::Query;
+use crate::query::{parse_confidence_flags, Query};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -44,6 +44,12 @@ pub enum Commands {
         name: String,
         #[arg(long, default_value_t = 50)]
         limit: usize,
+        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate
+        #[arg(long, default_value_t = false)]
+        exact_only: bool,
+        /// Also include DynamicCandidate edges (higher noise)
+        #[arg(long, default_value_t = false)]
+        include_dynamic: bool,
     },
     /// Blast radius: who transitively depends on this symbol
     Impact {
@@ -52,6 +58,12 @@ pub enum Commands {
         depth: usize,
         #[arg(long, default_value_t = 100)]
         limit: usize,
+        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate
+        #[arg(long, default_value_t = false)]
+        exact_only: bool,
+        /// Also include DynamicCandidate edges (higher noise)
+        #[arg(long, default_value_t = false)]
+        include_dynamic: bool,
     },
     /// Files most related to a symbol (for retrieval scoping)
     Related {
@@ -83,6 +95,12 @@ pub enum Commands {
         /// Output file path
         #[arg(short, long)]
         out: PathBuf,
+        /// Only export Exact edges (drop Heuristic/DynamicCandidate)
+        #[arg(long, default_value_t = false)]
+        exact_only: bool,
+        /// Also export DynamicCandidate edges (default excludes them)
+        #[arg(long, default_value_t = false)]
+        include_dynamic: bool,
     },
     /// Run as an MCP server over stdio
     Mcp,
@@ -130,11 +148,17 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
-        Commands::Callers { name, limit } => {
+        Commands::Callers {
+            name,
+            limit,
+            exact_only,
+            include_dynamic,
+        } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             let q = Query::new(&store);
-            let hits = q.callers(&name, limit)?;
+            let filter = parse_confidence_flags(exact_only, include_dynamic);
+            let hits = q.callers_filtered(&name, limit, filter)?;
             let mapped: Vec<serde_json::Value> = hits
                 .into_iter()
                 .map(|r| {
@@ -150,11 +174,18 @@ pub fn run(cli: Cli) -> Result<()> {
                 .collect();
             println!("{}", serde_json::to_string_pretty(&mapped)?);
         }
-        Commands::Impact { name, depth, limit } => {
+        Commands::Impact {
+            name,
+            depth,
+            limit,
+            exact_only,
+            include_dynamic,
+        } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             let q = Query::new(&store);
-            let hits = q.impact(&name, depth, limit)?;
+            let filter = parse_confidence_flags(exact_only, include_dynamic);
+            let hits = q.impact_filtered(&name, depth, limit, filter)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
         Commands::Related { name, limit } => {
@@ -204,12 +235,25 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Commands::Export { format, out } => {
+        Commands::Export {
+            format,
+            out,
+            exact_only,
+            include_dynamic,
+        } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            let filter = parse_confidence_flags(exact_only, include_dynamic);
             match format.as_str() {
-                "scip" => crate::index::export::export_scip(&store, &indexer.root, &out)?,
-                "scip-json" => crate::index::export::export_scip_json(&store, &indexer.root, &out)?,
+                "scip" => {
+                    crate::index::export::export_scip_filtered(&store, &indexer.root, &out, filter)?
+                }
+                "scip-json" => crate::index::export::export_scip_json_filtered(
+                    &store,
+                    &indexer.root,
+                    &out,
+                    filter,
+                )?,
                 "lsif" => crate::index::export::export_lsif(&store, &indexer.root, &out)?,
                 other => bail!("unknown export format: {other}"),
             }

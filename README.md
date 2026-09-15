@@ -43,10 +43,18 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | Command | Purpose |
 |---|---|
 | `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
-| `callers` | Call/import sites (`module`, `resolved`, `qualifier`) |
-| `impact` | True BFS blast radius |
+| `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`) |
+| `impact` | True BFS blast radius (default Exact+Heuristic) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
+
+Confidence windows on `callers` / `impact` (and MCP tools):
+
+- default: **Exact + Heuristic** (L1 DI/factory/event candidates)
+- `--exact-only`: L0 syntactic edges only
+- `--include-dynamic`: also DynamicCandidate (reflection / computed keys — noisier)
+
+Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md).
 
 ### Index quality
 

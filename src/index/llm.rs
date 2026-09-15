@@ -180,15 +180,17 @@ pub fn enrich(
         })
     });
 
+    // Persist successful descriptions FIRST — even if we later bail on
+    // too many failures, the successes must survive.
+    for (id, desc) in results.into_inner().unwrap() {
+        store.set_description(id, &desc)?;
+    }
+
     if abort.load(Ordering::Relaxed) > 0 && failed.load(Ordering::Relaxed) >= 3 {
         bail!(
             "too many LLM failures ({}), aborting enrich",
             failed.load(Ordering::Relaxed)
         );
-    }
-
-    for (id, desc) in results.into_inner().unwrap() {
-        store.set_description(id, &desc)?;
     }
 
     Ok(EnrichReport {

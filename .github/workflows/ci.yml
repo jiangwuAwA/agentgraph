@@ -34,3 +34,9 @@ jobs:
           cargo run --quiet -- --root fixtures/sample-app index --force
           cargo run --quiet -- --root fixtures/sample-app export scip --out /tmp/index.scip
           scip lint /tmp/index.scip
+          # Adversarial fixture: same-line multi-ref must produce distinct ranges.
+          mkdir -p /tmp/ag-sameline/src
+          printf 'function a(){}; export function b(){ return a(1)+a(2); }\n' > /tmp/ag-sameline/src/mod.js
+          cargo run --quiet -- --root /tmp/ag-sameline index --force
+          cargo run --quiet -- --root /tmp/ag-sameline export scip --out /tmp/ag-sameline/index.scip
+          scip lint /tmp/ag-sameline/index.scip

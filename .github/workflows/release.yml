@@ -64,8 +64,11 @@ jobs:
         run: |
           stage=target/${{ matrix.target }}/release/agentgraph
           chmod +x "$stage"
-          cp "$stage" "${{ matrix.asset }}"
-          tar -czf "${{ matrix.asset }}.tar.gz" "${{ matrix.asset }}"
+          # Pack as plain `agentgraph` inside the tar so install.sh can find it
+          # without depending on the platform-suffixed asset name.
+          cp "$stage" agentgraph
+          tar -czf "${{ matrix.asset }}.tar.gz" agentgraph
+          rm agentgraph
           sha256sum "${{ matrix.asset }}.tar.gz" | tee "${{ matrix.asset }}.tar.gz.sha256"
       - name: Package (windows)
         if: runner.os == 'Windows'

@@ -217,9 +217,11 @@ impl Indexer {
             if let Ok(meta) = std::fs::metadata(&p) {
                 if let Ok(mtime) = meta.modified() {
                     if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                        // Include sub-second precision so same-second edits are detected.
                         h = h
                             .wrapping_mul(31)
                             .wrapping_add(d.as_secs())
+                            .wrapping_add(d.subsec_nanos() as u64)
                             .wrapping_add(meta.len());
                     }
                 }

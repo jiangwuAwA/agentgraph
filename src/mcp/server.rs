@@ -265,6 +265,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
+                store.ensure_indexed()?;
                 let hits = Query::new(&store).find_symbol(sym, limit)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
@@ -276,6 +277,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
+                store.ensure_indexed()?;
                 let hits = Query::new(&store).callers(sym, limit)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
@@ -288,6 +290,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
+                store.ensure_indexed()?;
                 let hits = Query::new(&store).impact(sym, depth, limit)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
@@ -299,6 +302,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
+                store.ensure_indexed()?;
                 let hits = Query::new(&store).related_files(sym, limit)?;
                 let mapped: Vec<Value> = hits
                     .into_iter()
@@ -317,6 +321,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
+                store.ensure_indexed()?;
                 let hits = store.importers_of_file(&path, limit)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }

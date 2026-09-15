@@ -1,13 +1,13 @@
 //! SCIP / LSIF export.
 //!
-//! SCIP follows the official `scip.Index` protobuf JSON mapping (protocol v3):
-//! symbols are `scip-<lang> <manager> <package> <version> <descriptor>` with
-//! standard descriptors (`Type.`, `Type#method()`, `func()`, `ns/`).
+//! `export scip` writes **protobuf binary** readable by the official `scip` CLI.
+//! `export scip-json` writes protobuf JSON mapping (for tests/debugging).
+//! Descriptors follow official grammar (`Type#`, `fn.`, `Type#method().`).
 //! LSIF remains a simplified JSONL dump.
 
 use anyhow::Result;
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use super::store::Store;
@@ -156,62 +156,127 @@ fn index_by_bare(symbols: &[SymbolRecord]) -> BTreeMap<String, Vec<usize>> {
     by_bare
 }
 
-/// Locate `name` on a 1-based line and return UTF-16 [start_col, end_col].
-fn name_cols_on_line(root: &Path, rel: &str, line: usize, name: &str) -> (usize, usize) {
+/// Check if a byte is an identifier character (for word-boundary matching).
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b >= 0x80
+}
+
+/// Locate the `nth` (0-based) non-definition occurrence of `name` on a 1-based line.
+/// Returns UTF-16 [start_col, end_col].
+///
+/// `def_cols` contains UTF-16 start columns already used by definition occurrences
+/// of the same name on this line — those are skipped so refs get distinct ranges.
+fn name_cols_on_line(
+    root: &Path,
+    rel: &str,
+    line: usize,
+    name: &str,
+    nth: usize,
+    def_cols: &HashSet<usize>,
+) -> (usize, usize) {
+    let name_utf16: usize = name.chars().map(|c| c.len_utf16()).sum();
+    let fallback = (0, name_utf16.max(1));
     let Ok(src) = std::fs::read_to_string(root.join(rel)) else {
-        return (0, name.chars().map(|c| c.len_utf16()).sum::<usize>().max(1));
+        return fallback;
     };
     let Some(text) = src.lines().nth(line.saturating_sub(1)) else {
         return (0, 1);
     };
-    let Some(byte_idx) = text.find(name) else {
-        return (0, name.chars().map(|c| c.len_utf16()).sum::<usize>().max(1));
+    // Find all word-boundary occurrences, skipping definition columns.
+    let bytes = text.as_bytes();
+    let mut occurrences: Vec<usize> = Vec::new();
+    let mut search_from = 0usize;
+    while search_from < text.len() {
+        let Some(rel_idx) = text[search_from..].find(name) else {
+            break;
+        };
+        let abs = search_from + rel_idx;
+        let before_ok = abs == 0 || !is_ident_byte(bytes[abs - 1]);
+        let after = abs + name.len();
+        let after_ok = after >= text.len() || !is_ident_byte(bytes[after]);
+        if before_ok && after_ok {
+            let start_col: usize = text[..abs].chars().map(|c| c.len_utf16()).sum();
+            if !def_cols.contains(&start_col) {
+                occurrences.push(start_col);
+            }
+        }
+        search_from = abs + name.len().max(1);
+    }
+    let Some(&start) = occurrences.get(nth) else {
+        return fallback;
     };
-    let start: usize = text[..byte_idx].chars().map(|c| c.len_utf16()).sum();
-    let end = start + name.chars().map(|c| c.len_utf16()).sum::<usize>();
+    let end = start + name_utf16;
     (start, end.max(start + 1))
 }
 
 /// Build official `scip::types::Index` from the store.
 pub fn build_scip_index(store: &Store, root: &Path) -> Result<scip::types::Index> {
     use protobuf::MessageField;
-    use scip::types::{self, Index, Metadata, Occurrence, ToolInfo};
+    use scip::types::{self, Index, Metadata, Occurrence, SymbolInformation, ToolInfo};
 
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
     let by_bare = index_by_bare(&symbols);
 
-    // path -> (language, occurrences)
-    let mut docs: BTreeMap<String, (String, Vec<Occurrence>)> = BTreeMap::new();
+    // path -> (language, occurrences, symbols)
+    let mut docs: BTreeMap<String, (String, Vec<Occurrence>, Vec<SymbolInformation>)> =
+        BTreeMap::new();
+
+    // Definition start columns per (path, 0-based line, bare name) — used to skip
+    // when assigning ref columns so same-line multi-refs get distinct ranges.
+    let mut def_cols: HashMap<(String, usize, String), HashSet<usize>> = HashMap::new();
 
     for s in &symbols {
-        let line = s.start_line.saturating_sub(1) as i32;
+        let line0 = s.start_line.saturating_sub(1);
+        def_cols
+            .entry((s.path.clone(), line0, s.name.clone()))
+            .or_default()
+            .insert(s.start_col);
+
         let mut occ = Occurrence::new();
         occ.range = vec![
-            line,
+            line0 as i32,
             s.start_col as i32,
             s.end_col.max(s.start_col + 1) as i32,
         ];
         occ.symbol = scip_symbol_name(s);
         occ.symbol_roles = 1; // Definition
-        docs.entry(s.path.clone())
-            .or_insert_with(|| (s.language.clone(), Vec::new()))
-            .1
-            .push(occ);
+
+        // SymbolInformation lives on the Document that contains the definition.
+        let mut info = SymbolInformation::new();
+        info.symbol = scip_symbol_name(s);
+        if let Some(d) = &s.description {
+            info.documentation.push(d.clone());
+        }
+
+        let entry = docs
+            .entry(s.path.clone())
+            .or_insert_with(|| (s.language.clone(), Vec::new(), Vec::new()));
+        entry.1.push(occ);
+        entry.2.push(info);
     }
+
+    // Cursor per (path, line, name) so each ref gets a distinct occurrence.
+    let mut ref_cursor: HashMap<(String, usize, String), usize> = HashMap::new();
 
     for r in &refs {
         let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
         };
-        let line = r.line.saturating_sub(1) as i32;
-        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
+        let line0 = r.line.saturating_sub(1);
+        let key = (r.path.clone(), line0, r.name.clone());
+        let nth = ref_cursor.entry(key.clone()).or_insert(0);
+        let empty = HashSet::new();
+        let skip = def_cols.get(&key).unwrap_or(&empty);
+        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name, *nth, skip);
+        *nth += 1;
+
         let mut occ = Occurrence::new();
-        occ.range = vec![line, c0 as i32, c1 as i32];
+        occ.range = vec![line0 as i32, c0 as i32, c1 as i32];
         occ.symbol = scip_symbol_name(def);
         occ.symbol_roles = 0;
         docs.entry(r.path.clone())
-            .or_insert_with(|| ("plaintext".into(), Vec::new()))
+            .or_insert_with(|| ("plaintext".into(), Vec::new(), Vec::new()))
             .1
             .push(occ);
     }
@@ -225,21 +290,14 @@ pub fn build_scip_index(store: &Store, root: &Path) -> Result<scip::types::Index
     meta.project_root = file_uri(root, "");
     index.metadata = MessageField::some(meta);
 
-    // SymbolInformation for every definition (required by scip lint).
-    for s in &symbols {
-        let mut info = types::SymbolInformation::new();
-        info.symbol = scip_symbol_name(s);
-        if let Some(d) = &s.description {
-            info.documentation.push(d.clone());
-        }
-        index.external_symbols.push(info);
-    }
-
-    for (path, (lang, occurrences)) in docs {
+    // Definition symbols go on their Document; external_symbols is only for
+    // true external symbols (we don't emit any).
+    for (path, (lang, occurrences, symbols_info)) in docs {
         let mut doc = types::Document::new();
         doc.language = scip_language_id(&lang).to_string();
         doc.relative_path = path;
         doc.occurrences = occurrences;
+        doc.symbols = symbols_info;
         index.documents.push(doc);
     }
     Ok(index)
@@ -340,8 +398,16 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let mut doc_by_path: BTreeMap<String, u64> = BTreeMap::new();
     // Key by SCIP symbol (includes path + qualified name) — not bare name.
     let mut result_set_by_symbol: BTreeMap<String, u64> = BTreeMap::new();
+    // Definition start columns for same-line ref disambiguation.
+    let mut def_cols: HashMap<(String, usize, String), HashSet<usize>> = HashMap::new();
 
     for s in &symbols {
+        let line0 = s.start_line.saturating_sub(1);
+        def_cols
+            .entry((s.path.clone(), line0, s.name.clone()))
+            .or_default()
+            .insert(s.start_col);
+
         let doc_id = ensure_doc(
             &mut lines,
             &mut next_id,
@@ -399,6 +465,9 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
         }))?);
     }
 
+    // Cursor per (path, line, name) so each ref gets a distinct occurrence.
+    let mut ref_cursor: HashMap<(String, usize, String), usize> = HashMap::new();
+
     for r in &refs {
         let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
@@ -417,7 +486,12 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
         )?;
         let rid = alloc_id(&mut next_id);
         let line = r.line.saturating_sub(1);
-        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
+        let key = (r.path.clone(), r.line.saturating_sub(1), r.name.clone());
+        let nth = ref_cursor.entry(key.clone()).or_insert(0);
+        let empty = HashSet::new();
+        let skip = def_cols.get(&key).unwrap_or(&empty);
+        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name, *nth, skip);
+        *nth += 1;
         lines.push(serde_json::to_string(&json!({
             "id": rid,
             "type": "vertex",

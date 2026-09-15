@@ -211,6 +211,122 @@ fn e2e_mcp_initialize_and_tools_call() {
     assert!(text.contains("find_symbol") || text.contains("createUser"));
 }
 
+/// MCP query tools on an empty index must return isError=true with 'index' in the message.
+#[test]
+fn e2e_mcp_empty_index_returns_error() {
+    use std::io::Write;
+    let root = temp_root("mcp-empty");
+    // No write_fixture — root has no indexed files.
+
+    let mut child = Command::new(bin())
+        .arg("--root")
+        .arg(&root)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msgs = concat!(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"callers","arguments":{"name":"nobody"}}}"#,
+            "\n",
+        );
+        stdin.write_all(msgs.as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+    drop(child.stdin.take());
+
+    let out = child.wait_with_output().expect("mcp output");
+    let text = stdout(&out);
+    // Parse the tools/call response (id=2) and assert isError=true with 'index' in message.
+    let mut found_error = false;
+    for line in text.lines() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if v["id"] == 2 {
+                assert_eq!(
+                    v["result"]["isError"], true,
+                    "callers on empty index must return isError=true, got: {line}"
+                );
+                let msg = v["result"]["content"][0]["text"].as_str().unwrap_or("");
+                assert!(
+                    msg.to_lowercase().contains("index"),
+                    "error message must mention 'index', got: {msg}"
+                );
+                found_error = true;
+            }
+        }
+    }
+    assert!(found_error, "expected id=2 response in MCP output:\n{text}");
+}
+
+/// Same-line multi-ref fixture: scip lint must exit 0 (distinct ranges for duplicate refs).
+#[test]
+fn e2e_scip_lint_same_line_multi_ref() {
+    let scip = which_scip();
+    let Some(scip) = scip else {
+        eprintln!("skip: scip CLI not on PATH");
+        return;
+    };
+    let root = temp_root("sameline");
+    std::fs::write(
+        root.join("src/mod.js"),
+        "function a(){}; export function b(){ return a(1)+a(2); }\n",
+    )
+    .unwrap();
+    assert!(run(&root, &["index", "--force"]).status.success());
+    let out_path = root.join("index.scip");
+    assert!(run(
+        &root,
+        &["export", "scip", "--out", out_path.to_str().unwrap()]
+    )
+    .status
+    .success());
+
+    let lint = Command::new(&scip)
+        .arg("lint")
+        .arg(&out_path)
+        .stdin(Stdio::null())
+        .output()
+        .expect("run scip lint");
+    assert!(
+        lint.status.success(),
+        "scip lint failed on same-line fixture: {}",
+        String::from_utf8_lossy(&lint.stderr)
+    );
+}
+
+/// Protobuf binary export must start with a valid protobuf field tag (not JSON `{`).
+#[test]
+fn e2e_export_scip_protobuf_format() {
+    let root = temp_root("protofmt");
+    write_fixture(&root);
+    assert!(run(&root, &["index", "--force"]).status.success());
+    let out_path = root.join("index.scip");
+    assert!(run(
+        &root,
+        &["export", "scip", "--out", out_path.to_str().unwrap()]
+    )
+    .status
+    .success());
+
+    let bytes = std::fs::read(&out_path).unwrap();
+    assert!(!bytes.is_empty());
+    // Protobuf wire format: first byte is a field tag. For scip.Index, field 1
+    // (metadata) is tag 0x0a (field 1, wire type 2 = length-delimited).
+    assert_ne!(bytes[0], b'{', "scip binary must not be JSON");
+    // Parse with the official scip crate to verify it's valid protobuf.
+    use protobuf::Message;
+    let index =
+        scip::types::Index::parse_from_bytes(&bytes).expect("must parse as scip.Index protobuf");
+    assert!(index.metadata.is_some(), "parsed Index must have metadata");
+    assert!(!index.documents.is_empty());
+}
+
 /// If official `scip` CLI is on PATH, require lint exit 0 on our binary export.
 #[test]
 fn e2e_scip_cli_lint_when_available() {

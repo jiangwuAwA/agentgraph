@@ -29,7 +29,7 @@ Not another embedding RAG. When an agent needs to know *who calls this*, *what b
 - **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
 - **`watch`**: poll mtime fingerprint and reindex
 - **Type-aware calls (pragmatic)**: `qualifier` from param annotations, receivers, `New*` constructors, and return-type `define` edges; `callers` matches `Type.method` / `Type::method`. Not a full type checker.
-- **`export scip`**: SCIP JSON matching official `scip.Index` protobuf mapping (`scip-<lang> <manager> agentgraph 0.0.0 <descriptor>`, `relativePath`, `symbolRoles`). Validated against crate `scip` 0.10. LSIF remains a simplified JSONL dump.
+- **`export scip`**: SCIP **protobuf binary** readable by the official `scip` CLI (`scip-<lang> <manager> agentgraph 0.0.0 <descriptor>`, `relativePath`, `symbolRoles`). Also `export scip-json` for JSON mapping. Validated against crate `scip` 0.10. LSIF remains a simplified JSONL dump.
 - **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1` (SHA256 fail-closed)
 - **CI gate**: `cargo fmt --check` + `clippy -D warnings` are required on all platforms
 - **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
@@ -83,10 +83,10 @@ Index: `<root>/.agentgraph/index.db` (gitignore it).
 
 ### Export
 
-`export scip` writes SCIP JSON matching the official `scip.Index` protobuf JSON mapping (interop-tested with crate `scip` 0.10):
+`export scip` writes **protobuf binary** (what the official `scip` CLI reads). `export scip-json` writes the protobuf JSON mapping (for tests/debugging). Interop-tested with crate `scip` 0.10:
 
-- symbols: `scip-typescript npm agentgraph 0.0.0 Store#save()`
-- descriptors: `Type.`, `Type#method()`, `func()`, `ns/`
+- symbols: `scip-typescript npm agentgraph 0.0.0 Store#save().`
+- descriptors: `Type#`, `Type#method().`, `fn.`, `ns/`
 - metadata: `toolInfo`, `file:///` project roots (no `schemaVersion` — not in current scip.proto)
 
 See `tests/scip_interop.rs`. `export lsif` is a simplified JSONL dump.

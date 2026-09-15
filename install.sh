@@ -98,6 +98,14 @@ else
 fi
 
 tar -xzf "$tmp/agentgraph.tar.gz" -C "$tmp"
-install -m 755 "$tmp/agentgraph" "$BIN_DIR/agentgraph"
+# Release tarball may contain `agentgraph` or a platform-suffixed name like
+# `agentgraph-linux-x86_64`. Find whichever agentgraph* binary was packed.
+bin_src="$(find "$tmp" -maxdepth 1 -type f -name 'agentgraph*' ! -name '*.tar.gz' ! -name '*.sha256' | head -n1)"
+if [ -z "$bin_src" ]; then
+  echo "error: no agentgraph binary found in release archive" >&2
+  ls -la "$tmp" >&2
+  exit 1
+fi
+install -m 755 "$bin_src" "$BIN_DIR/agentgraph"
 echo "Installed $BIN_DIR/agentgraph"
 "$BIN_DIR/agentgraph" --version

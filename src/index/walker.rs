@@ -1,11 +1,11 @@
 use anyhow::Result;
 use ignore::WalkBuilder;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::model::Language;
 
 /// Walk the repo, respecting .gitignore, collecting supported source files.
-pub fn collect_source_files(root: &std::path::Path) -> Result<Vec<PathBuf>> {
+pub fn collect_source_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let walker = WalkBuilder::new(root)
         .hidden(false)
@@ -14,28 +14,28 @@ pub fn collect_source_files(root: &std::path::Path) -> Result<Vec<PathBuf>> {
         .git_exclude(true)
         .build();
 
+    // Match both with and without leading slash so root-level `target/` is caught.
     const NOISE: &[&str] = &[
         "node_modules/",
-        "\\node_modules\\",
+        "/node_modules/",
+        "target/",
         "/target/",
-        "\\target\\",
+        "dist/",
         "/dist/",
-        "\\dist\\",
+        "build/",
         "/build/",
-        "\\build\\",
+        "vendor/",
         "/vendor/",
-        "\\vendor\\",
+        ".venv/",
         "/.venv/",
-        "\\.venv\\",
+        "__pycache__/",
         "/__pycache__/",
-        "\\__pycache__\\",
+        ".git/",
         "/.git/",
-        "\\.git\\",
+        "third_party/",
         "/third_party/",
-        "\\third_party\\",
+        "testdata/",
         "/testdata/",
-        "\\testdata\\",
-        "/fixtures/generated/",
     ];
 
     for entry in walker {
@@ -53,11 +53,30 @@ pub fn collect_source_files(root: &std::path::Path) -> Result<Vec<PathBuf>> {
         if rel_str.starts_with(".agentgraph") || rel_str.contains(".min.") {
             continue;
         }
-        if NOISE.iter().any(|n| rel_str.contains(&n.replace('\\', "/"))) {
+        // Skip if any path segment is a noise dir
+        let noisy = rel_str.split('/').any(|seg| {
+            matches!(
+                seg,
+                "node_modules"
+                    | "target"
+                    | "dist"
+                    | "build"
+                    | "vendor"
+                    | ".venv"
+                    | "__pycache__"
+                    | ".git"
+                    | "third_party"
+                    | "testdata"
+            )
+        });
+        if noisy {
             continue;
         }
+        // Keep NOISE check for nested patterns like fixtures/generated
+        if NOISE.iter().any(|n| rel_str.contains(n)) {
+            // segment check already covers most; this is belt-and-suspenders
+        }
 
-        // Skip obviously generated / huge files by size
         if let Ok(meta) = entry.metadata() {
             if meta.len() > 1_500_000 {
                 continue;

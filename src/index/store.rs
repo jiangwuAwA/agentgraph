@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::extract::ExtractedFile;
 use crate::model::{
-    EdgeKind, EnrichReport, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord,
+    EdgeKind, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord,
 };
 
 pub struct Store {
@@ -18,6 +19,10 @@ impl Store {
             r#"
             PRAGMA journal_mode = WAL;
             PRAGMA foreign_keys = ON;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA busy_timeout = 5000;
+            PRAGMA cache_size = -64000;
+            PRAGMA temp_store = MEMORY;
 
             CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY,
@@ -57,12 +62,13 @@ impl Store {
             CREATE INDEX IF NOT EXISTS idx_refs_path ON refs(path);
             "#,
         )?;
-        // Migrate older DBs first (columns may not exist yet).
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN description TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN module TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
         conn.execute_batch(
-            "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);",
+            "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
+             CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
+             CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);",
         )?;
         Ok(Self { conn })
     }
@@ -77,16 +83,17 @@ impl Store {
         Ok(row)
     }
 
-    pub fn known_files(&self) -> Result<std::collections::HashSet<String>> {
-        let mut stmt = self.conn.prepare("SELECT path FROM files")?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        let mut set = std::collections::HashSet::new();
-        for row in rows {
-            set.insert(row?);
-        }
-        Ok(set)
+    pub fn begin_batch(&mut self) -> Result<()> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        Ok(())
     }
 
+    pub fn commit_batch(&mut self) -> Result<()> {
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
+    }
+
+    /// Replace file rows. Does NOT open its own transaction (caller uses begin_batch/commit_batch).
     pub fn replace_file(
         &mut self,
         path: &str,
@@ -94,22 +101,38 @@ impl Store {
         language: &str,
         extracted: &ExtractedFile,
     ) -> Result<()> {
-        let tx = self.conn.transaction()?;
-        // Preserve description across reindex for same qualified_name
-        // (simple approach: descriptions are re-fetched via enrich; keep them if name+path match)
-        tx.execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
-        tx.execute("DELETE FROM refs WHERE path = ?1", params![path])?;
-        tx.execute(
+        // Preserve LLM descriptions for symbols that still exist with same qualified_name.
+        let mut old_desc: HashMap<String, String> = HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT qualified_name, description FROM symbols
+                 WHERE path = ?1 AND description IS NOT NULL AND description != ''",
+            )?;
+            let rows = stmt.query_map(params![path], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (qn, d) = row?;
+                old_desc.insert(qn, d);
+            }
+        }
+
+        self.conn
+            .execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM refs WHERE path = ?1", params![path])?;
+        self.conn.execute(
             "INSERT INTO files(path, hash, language) VALUES(?1, ?2, ?3)
              ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, language = excluded.language",
             params![path, hash, language],
         )?;
         {
-            let mut stmt = tx.prepare(
+            let mut stmt = self.conn.prepare(
                 "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
             for s in &extracted.symbols {
+                let desc = old_desc.get(&s.qualified_name).cloned();
                 stmt.execute(params![
                     path,
                     s.name,
@@ -118,11 +141,12 @@ impl Store {
                     s.start_line as i64,
                     s.end_line as i64,
                     s.parent,
+                    desc,
                 ])?;
             }
         }
         {
-            let mut stmt = tx.prepare(
+            let mut stmt = self.conn.prepare(
                 "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved)
                  VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )?;
@@ -138,14 +162,12 @@ impl Store {
                 ])?;
             }
         }
-        tx.commit()?;
         Ok(())
     }
 
     pub fn prune_missing(&mut self, keep_paths: &[String]) -> Result<()> {
-        let tx = self.conn.transaction()?;
         let existing: Vec<String> = {
-            let mut stmt = tx.prepare("SELECT path FROM files")?;
+            let mut stmt = self.conn.prepare("SELECT path FROM files")?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
@@ -153,10 +175,10 @@ impl Store {
             keep_paths.iter().map(|s| s.as_str()).collect();
         for path in existing {
             if !keep.contains(path.as_str()) {
-                tx.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+                self.conn
+                    .execute("DELETE FROM files WHERE path = ?1", params![path])?;
             }
         }
-        tx.commit()?;
         Ok(())
     }
 
@@ -192,20 +214,27 @@ impl Store {
             languages,
             root: root.to_string(),
             described: described as usize,
+            skipped_files: 0,
+            failed_files: 0,
         })
+    }
+
+    fn escape_like(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
     }
 
     pub fn find_symbol(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, qualified_name, kind, path, start_line, end_line, parent, description
-             FROM symbols
-             WHERE name = ?1 OR qualified_name = ?1 OR name LIKE ?2
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language
+             FROM symbols s
+             JOIN files f ON f.path = s.path
+             WHERE s.name = ?1 OR s.qualified_name = ?1 OR s.name LIKE ?2 ESCAPE '\\'
              ORDER BY
-               CASE WHEN name = ?1 THEN 0 WHEN qualified_name = ?1 THEN 1 ELSE 2 END,
-               path, start_line
+               CASE WHEN s.name = ?1 THEN 0 WHEN s.qualified_name = ?1 THEN 1 ELSE 2 END,
+               s.path, s.start_line
              LIMIT ?3",
         )?;
-        let pattern = format!("%{name}%");
+        let pattern = format!("%{}%", Self::escape_like(name));
         let rows = stmt.query_map(params![name, pattern, limit as i64], |r| {
             Ok(SymbolRecord {
                 id: r.get(0)?,
@@ -213,28 +242,14 @@ impl Store {
                 qualified_name: r.get(2)?,
                 kind: SymbolKind::parse(&r.get::<_, String>(3)?),
                 path: r.get(4)?,
-                language: String::new(),
+                language: r.get(9)?,
                 start_line: r.get::<_, i64>(5)? as usize,
                 end_line: r.get::<_, i64>(6)? as usize,
                 parent: r.get(7)?,
                 description: r.get(8)?,
             })
         })?;
-        let mut out = Vec::new();
-        for row in rows {
-            let mut s = row?;
-            let lang: Option<String> = self
-                .conn
-                .query_row(
-                    "SELECT language FROM files WHERE path = ?1",
-                    params![s.path],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            s.language = lang.unwrap_or_default();
-            out.push(s);
-        }
-        Ok(out)
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn callers(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
@@ -259,7 +274,6 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// References that resolve to a given file (import edges + call sites in that file).
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT name, kind, path, line, enclosing, module, resolved
@@ -282,26 +296,30 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// True BFS impact. `limit` caps total output; per-layer fetch uses a larger slice.
     pub fn impact(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
-        let mut frontier: Vec<(String, usize)> = vec![(name.to_string(), 0)];
+        let fetch_cap = limit.saturating_mul(4).max(200);
+        let mut frontier: std::collections::VecDeque<(String, usize)> =
+            std::collections::VecDeque::new();
+        frontier.push_back((name.to_string(), 0));
         visited_names.insert(name.to_string());
 
-        while let Some((current, d)) = frontier.pop() {
-            if d >= depth {
+        while let Some((current, d)) = frontier.pop_front() {
+            if d >= depth || out.len() >= limit {
                 continue;
             }
-            let refs = self.callers(&current, limit)?;
+            let refs = self.callers(&current, fetch_cap)?;
             for r in refs {
+                if out.len() >= limit {
+                    break;
+                }
                 let key = (r.name.clone(), r.line as i64, r.path.clone());
                 if !visited_ref.insert(key) {
                     continue;
-                }
-                if out.len() >= limit {
-                    return Ok(out);
                 }
                 out.push(ImpactNode {
                     name: r.name.clone(),
@@ -312,28 +330,24 @@ impl Store {
                     enclosing: r.enclosing.clone(),
                     resolved: r.resolved.clone(),
                 });
+                // Only expand via last segment of enclosing (refs store bare names).
                 if let Some(enc) = r.enclosing.clone() {
-                    let candidates = [enc.clone(), last_segment(&enc)];
-                    for c in candidates {
-                        if !c.is_empty() && visited_names.insert(c.clone()) {
-                            frontier.push((c, d + 1));
-                        }
+                    let leaf = last_segment(&enc);
+                    if !leaf.is_empty() && visited_names.insert(leaf.clone()) {
+                        frontier.push_back((leaf, d + 1));
                     }
                 }
-                // Also expand via resolved import: if someone imports the defining file,
-                // symbols defined there are impacted — already covered by name refs.
             }
         }
         Ok(out)
     }
 
     pub fn related_files(&self, name: &str, limit: usize) -> Result<Vec<(String, usize, String)>> {
-        let mut scores: std::collections::HashMap<String, (usize, String)> =
-            std::collections::HashMap::new();
+        let mut scores: HashMap<String, (usize, String)> = HashMap::new();
 
-        let mut stmt = self
-            .conn
-            .prepare("SELECT path, kind, description FROM symbols WHERE name = ?1 OR qualified_name = ?1")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT path, kind, description FROM symbols WHERE name = ?1 OR qualified_name = ?1",
+        )?;
         let defs = stmt.query_map(params![name], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -354,14 +368,13 @@ impl Store {
             };
         }
 
-        // importers of defining files (module-level edges)
         for dp in &def_paths {
             let imps = self.importers_of_file(dp, limit * 10)?;
             for r in imps {
                 let e = scores.entry(r.path.clone()).or_insert((0, String::new()));
                 e.0 += 3;
                 if e.1.is_empty() {
-                    e.1 = format!("imports:{}", dp);
+                    e.1 = format!("imports:{dp}");
                 }
             }
         }
@@ -384,10 +397,10 @@ impl Store {
         Ok(list)
     }
 
-    // ── LLM enrichment ────────────────────────────────────────────────────────
-
-    pub fn symbols_needing_description(&self, limit: usize) -> Result<Vec<(i64, String, String, String, String)>> {
-        // id, name, kind, path, snippet context we'll fill later
+    pub fn symbols_needing_description(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(i64, String, String, String, String)>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, kind, path, start_line, end_line
              FROM symbols
@@ -414,32 +427,14 @@ impl Store {
     }
 
     pub fn set_description(&mut self, id: i64, description: &str) -> Result<()> {
-        self.conn
-            .execute("UPDATE symbols SET description = ?1 WHERE id = ?2", params![description, id])?;
-        Ok(())
-    }
-
-    pub fn count_described(&self) -> Result<usize> {
-        let n: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols WHERE description IS NOT NULL AND description != ''",
-            [],
-            |r| r.get(0),
+        self.conn.execute(
+            "UPDATE symbols SET description = ?1 WHERE id = ?2",
+            params![description, id],
         )?;
-        Ok(n as usize)
+        Ok(())
     }
 }
 
 fn last_segment(s: &str) -> String {
-    s.rsplit(['.', ':', ':']).next().unwrap_or(s).to_string()
-}
-
-// re-export for enrich
-pub fn make_enrich_report(attempted: usize, described: usize, skipped: usize, failed: usize, model: String) -> EnrichReport {
-    EnrichReport {
-        attempted,
-        described,
-        skipped,
-        failed,
-        model,
-    }
+    s.rsplit(['.', ':']).next().unwrap_or(s).to_string()
 }

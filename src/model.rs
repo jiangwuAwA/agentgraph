@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Language {
     TypeScript,
+    Tsx,
+    JavaScript,
+    Jsx,
     Python,
     Go,
     Rust,
@@ -12,12 +15,14 @@ pub enum Language {
 impl Language {
     pub fn from_path(path: &str) -> Option<Self> {
         let lower = path.to_ascii_lowercase();
-        if lower.ends_with(".ts")
-            || lower.ends_with(".tsx")
-            || lower.ends_with(".mts")
-            || lower.ends_with(".cts")
-        {
+        if lower.ends_with(".tsx") {
+            Some(Language::Tsx)
+        } else if lower.ends_with(".ts") || lower.ends_with(".mts") || lower.ends_with(".cts") {
             Some(Language::TypeScript)
+        } else if lower.ends_with(".jsx") {
+            Some(Language::Jsx)
+        } else if lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs") {
+            Some(Language::JavaScript)
         } else if lower.ends_with(".py") || lower.ends_with(".pyi") {
             Some(Language::Python)
         } else if lower.ends_with(".go") {
@@ -32,6 +37,9 @@ impl Language {
     pub fn as_str(&self) -> &'static str {
         match self {
             Language::TypeScript => "typescript",
+            Language::Tsx => "tsx",
+            Language::JavaScript => "javascript",
+            Language::Jsx => "jsx",
             Language::Python => "python",
             Language::Go => "go",
             Language::Rust => "rust",
@@ -149,6 +157,10 @@ pub struct IndexStats {
     pub root: String,
     #[serde(default)]
     pub described: usize,
+    #[serde(default)]
+    pub skipped_files: usize,
+    #[serde(default)]
+    pub failed_files: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

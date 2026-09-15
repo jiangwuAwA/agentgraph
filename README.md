@@ -16,36 +16,21 @@ Not another embedding RAG. When an agent needs to know *who calls this*, *what b
 
 ## Features
 
-- **Languages**: TypeScript / TSX, Python, **Go**, **Rust**
-- **Index**: symbols (functions, classes, methods, structs, traits, interfaces, types), call sites, imports
-- **Import resolution**: relative TS/JS paths, Python packages, best-effort Go/Rust module paths → `module` + `resolved` file edges
-- **Incremental**: content-hash skip — only changed files re-parsed
+- **Languages**: TypeScript, **TSX**, JavaScript/**JSX**, Python, Go, Rust
+- **Index**: symbols, call sites, imports (module-resolved when possible)
+- **Import resolution**: TS/JS relative paths, Python packages, local Rust `crate::`/`super::`/`self::`, conservative Go package paths
+- **Incremental**: content-hash skip; LLM descriptions **survive reindex**
 - **Queries**:
-  - `find_symbol` — definitions by exact / fuzzy name
-  - `callers` — call/import sites (with module/resolved when known)
-  - `impact` — multi-hop blast radius (BFS on call graph)
-  - `related_files` — definition + importers + references (scope retrieval)
-  - `importers` — who imports this file (module-level)
-- **Optional LLM enrich** (`enrich`): one-line responsibility labels on symbols
+  - `find_symbol` — definitions (exact / escaped fuzzy)
+  - `callers` — call/import sites with `module` + `resolved`
+  - `impact` — **true BFS** blast radius
+  - `related_files` — definition + importers + references
+  - `importers` — who imports this file
+- **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
+- **`watch`**: poll mtime fingerprint and reindex
+- **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
+- **Windows-safe**: strips `\\?\` UNC prefix from canonical roots
 - **Interfaces**: CLI + MCP (stdio)
-
-## Real-repo validation
-
-Indexed `codex-rs` (OpenAI Codex Rust workspace):
-
-| Metric | Value |
-|---|---|
-| Files | 4,860 |
-| Symbols | 66,830 |
-| References | 691,646 |
-| Languages | rust, typescript, python |
-| Index time | ~234 s (full, release build) |
-
-Sample hits on that index:
-
-- `find connect_websocket` → qualified names like `CodexClient::connect_websocket`, `ModelClient::connect_websocket`
-- `impact connect_websocket` → real call sites with enclosing test/function names
-- `related parse_host_url` → definition file + `app-server/src/lib.rs` via **resolved import edge**
 
 ## Install
 
@@ -55,15 +40,13 @@ cargo install --path .
 cargo build --release
 ```
 
-Requires a C toolchain (tree-sitter grammars) and Rust stable.
-
 ## CLI
 
 ```bash
 cd /path/to/your/repo
-agentgraph index                 # incremental
-agentgraph index --force         # full rebuild
-agentgraph stats
+agentgraph index
+agentgraph index --force
+agentgraph watch --interval 5
 
 agentgraph find validateEmail
 agentgraph callers hashPassword
@@ -71,48 +54,22 @@ agentgraph impact validateEmail --depth 3
 agentgraph related createUser
 agentgraph importers src/auth.ts
 
-# Optional LLM labels (OpenAI-compatible API)
 export OPENAI_API_KEY=sk-...
-export OPENAI_BASE_URL=https://api.openai.com/v1   # optional
-export AGENTGRAPH_MODEL=gpt-4o-mini                # optional
+# optional: OPENAI_BASE_URL, AGENTGRAPH_MODEL, AGENTGRAPH_ENRICH_CONCURRENCY
 agentgraph enrich --limit 50
 ```
 
-Index lives at `<root>/.agentgraph/index.db` (add to `.gitignore`).
+Index: `<root>/.agentgraph/index.db` (gitignore it).
 
-## MCP server
+## MCP
 
 ```bash
 agentgraph --root /path/to/repo mcp
 ```
 
-Example client config:
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`.
 
-```json
-{
-  "mcpServers": {
-    "agentgraph": {
-      "command": "agentgraph",
-      "args": ["--root", "C:/path/to/your/repo", "mcp"]
-    }
-  }
-}
-```
-
-### Tools
-
-| Tool | Purpose |
-|---|---|
-| `index` | Build/refresh index |
-| `find_symbol` | Locate definitions |
-| `callers` | Who depends on this symbol |
-| `impact` | Transitive blast radius |
-| `related_files` | Scope which files to read |
-| `importers` | Who imports this file |
-| `enrich` | LLM responsibility labels |
-| `stats` | Index size / languages |
-
-## Demo (fixture, 4 languages)
+## Demo
 
 ```bash
 agentgraph --root fixtures/sample-app index --force
@@ -124,30 +81,30 @@ agentgraph --root fixtures/sample-app importers src/auth.ts
 
 ```
 source files
-    │  ignore (gitignore-aware walk)
+    │  ignore (gitignore + segment noise filter)
     ▼
-tree-sitter parse (TS / Python / Go / Rust)
-    │
+tree-sitter (TS / TSX / JS / JSX / Python / Go / Rust)
+    │  rayon parallel parse
     ▼
-symbols + references (+ import resolve)
-    │
+symbols + refs (+ import resolve)
+    │  single SQLite batch transaction
     ▼
-SQLite (.agentgraph/index.db)
+.agentgraph/index.db
     │
-    ├─ CLI (clap, JSON stdout)
-    ├─ MCP stdio (JSON-RPC 2.0)
-    └─ enrich (OpenAI-compatible, optional)
+    ├─ CLI
+    ├─ MCP stdio
+    └─ enrich (concurrent, descriptions preserved)
 ```
 
-Call resolution is **name-based** (not full type inference) — honest MVP trade-off that already scales to ~5k-file monorepos. Multi-hop impact uses enclosing-symbol promotion as a practical approximation.
+Call resolution is **name-based** (not full type inference) — a pragmatic MVP trade-off. Impact uses true BFS and expands via enclosing symbol leaf names.
 
-## Roadmap
+## Tests
 
-- [ ] Type-aware / receiver-aware call resolution
-- [ ] Java / C# / Kotlin grammars
-- [ ] Watch mode / daemon
-- [ ] SCIP / LSIF export
-- [ ] Batch LLM enrich with concurrency + cache
+```bash
+cargo test
+```
+
+Covers line index, TS import resolve, BFS impact, and description preservation across reindex.
 
 ## License
 

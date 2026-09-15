@@ -68,6 +68,11 @@ pub enum Commands {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+    /// Poll and reindex when source files change
+    Watch {
+        #[arg(long, default_value_t = 5)]
+        interval: u64,
+    },
     /// Run as an MCP server over stdio
     Mcp,
 }
@@ -132,8 +137,11 @@ pub fn run(cli: Cli) -> Result<()> {
             let report = llm::enrich(&indexer.root, &mut store, &cfg, limit)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
+        Commands::Watch { interval } => {
+            indexer.watch(interval)?;
+        }
         Commands::Mcp => {
-            crate::mcp::server::run_stdio(root)?;
+            crate::mcp::server::run_stdio(indexer.root)?;
         }
     }
     Ok(())

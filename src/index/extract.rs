@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::collections::HashSet;
 use tree_sitter::Node;
 
+use super::parser::LineIndex;
 use super::resolve;
 use crate::model::{EdgeKind, Language, SymbolKind};
 
@@ -34,6 +35,7 @@ pub struct ExtractedFile {
 pub struct ExtractContext<'a> {
     pub path: &'a str,
     pub known_files: &'a HashSet<String>,
+    pub lines: LineIndex,
 }
 
 pub fn extract_file(
@@ -49,10 +51,14 @@ pub fn extract_file(
     let ctx = ExtractContext {
         path,
         known_files,
+        lines: LineIndex::new(source),
     };
 
     match lang {
-        Language::TypeScript => walk_ts(root, source, None, &mut symbols, &mut references, &ctx),
+        Language::TypeScript
+        | Language::Tsx
+        | Language::JavaScript
+        | Language::Jsx => walk_ts(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Python => walk_py(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Go => walk_go(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Rust => walk_rust(root, source, None, &mut symbols, &mut references, &ctx),
@@ -178,8 +184,8 @@ fn walk_ts(
             }
             _ => name.clone(),
         };
-        let start_line = super::parser::line_of(node.start_byte(), source);
-        let end_line = super::parser::line_of(node.end_byte(), source);
+        let start_line = ctx.lines.line_of(node.start_byte());
+        let end_line = ctx.lines.line_of(node.end_byte());
         symbols.push(ExtractedSymbol {
             name: name.clone(),
             qualified_name: qname.clone(),
@@ -198,14 +204,14 @@ fn walk_ts(
                     push_call(
                         references,
                         n,
-                        super::parser::line_of(node.start_byte(), source),
+                        ctx.lines.line_of(node.start_byte()),
                         local_parent.clone(),
                     );
                 }
             }
         }
         "import_statement" => {
-            let line = super::parser::line_of(node.start_byte(), source);
+            let line = ctx.lines.line_of(node.start_byte());
             let specifier = ts_import_specifier(node, source);
             let resolved = specifier.as_ref().and_then(|s| {
                 resolve::resolve_typescript_import(ctx.path, s, ctx.known_files)
@@ -381,8 +387,8 @@ fn walk_py(
             Some(p) => format!("{p}.{name}"),
             None => name.clone(),
         };
-        let start_line = super::parser::line_of(node.start_byte(), source);
-        let end_line = super::parser::line_of(node.end_byte(), source);
+        let start_line = ctx.lines.line_of(node.start_byte());
+        let end_line = ctx.lines.line_of(node.end_byte());
         symbols.push(ExtractedSymbol {
             name: name.clone(),
             qualified_name: qname.clone(),
@@ -401,18 +407,18 @@ fn walk_py(
                     push_call(
                         references,
                         n,
-                        super::parser::line_of(node.start_byte(), source),
+                        ctx.lines.line_of(node.start_byte()),
                         local_parent.clone(),
                     );
                 }
             }
         }
         "import_statement" => {
-            let line = super::parser::line_of(node.start_byte(), source);
+            let line = ctx.lines.line_of(node.start_byte());
             collect_py_import_statement(node, source, 0, ctx, local_parent.clone(), references, line);
         }
         "import_from_statement" => {
-            let line = super::parser::line_of(node.start_byte(), source);
+            let line = ctx.lines.line_of(node.start_byte());
             let level = py_import_level(node, source);
             let module = py_import_module(node, source);
             let resolved = module.as_ref().and_then(|m| {
@@ -536,7 +542,7 @@ fn collect_py_from_imports(node: Node, source: &str, sink: &mut impl FnMut(Strin
         for ch in node.children(&mut c) {
             match ch.kind() {
                 "identifier" => {
-                    // skip module path identifiers — only collect last-level names in wildcards handled above
+                    // skip module path identifiers �?only collect last-level names in wildcards handled above
                 }
                 "aliased_import" => {
                     if let Some(n) = first_identifier_name(ch, source) {
@@ -624,19 +630,25 @@ fn walk_go(
     };
 
     if let Some((name, skind)) = symbol_info {
-        let qname = match &parent {
+        // Go methods: qualify by receiver type so `Start` doesn't collide across packages.
+        let parent_for_qname = if skind == SymbolKind::Method {
+            go_receiver_type(node, source).or_else(|| parent.clone())
+        } else {
+            parent.clone()
+        };
+        let qname = match &parent_for_qname {
             Some(p) if skind == SymbolKind::Method => format!("{p}.{name}"),
             _ => name.clone(),
         };
-        let start_line = super::parser::line_of(node.start_byte(), source);
-        let end_line = super::parser::line_of(node.end_byte(), source);
+        let start_line = ctx.lines.line_of(node.start_byte());
+        let end_line = ctx.lines.line_of(node.end_byte());
         symbols.push(ExtractedSymbol {
             name: name.clone(),
             qualified_name: qname.clone(),
             kind: skind,
             start_line,
             end_line,
-            parent: parent.clone(),
+            parent: parent_for_qname.clone(),
         });
         local_parent = Some(qname);
     }
@@ -648,14 +660,14 @@ fn walk_go(
                     push_call(
                         references,
                         n,
-                        super::parser::line_of(node.start_byte(), source),
+                        ctx.lines.line_of(node.start_byte()),
                         local_parent.clone(),
                     );
                 }
             }
         }
         "import_declaration" => {
-            let line = super::parser::line_of(node.start_byte(), source);
+            let line = ctx.lines.line_of(node.start_byte());
             go_collect_imports(node, source, ctx, local_parent.clone(), references, line);
         }
         _ => {}
@@ -664,6 +676,26 @@ fn walk_go(
     for child in node.children(&mut cursor) {
         walk_go(child, source, local_parent.clone(), symbols, references, ctx);
     }
+}
+
+/// Extract Go method receiver type name, e.g. `func (s *Server) Start()` → `Server`.
+fn go_receiver_type(node: Node, source: &str) -> Option<String> {
+    let params = child_by_field(&node, "receiver")?;
+    let mut cursor = params.walk();
+    for child in params.children(&mut cursor) {
+        if child.kind() != "parameter_declaration" {
+            continue;
+        }
+        let ty = child_by_field(&child, "type")?;
+        let text = node_text(ty, source);
+        // *Server / Server / pkg.Server
+        let cleaned = text.trim().trim_start_matches('*').trim();
+        let base = cleaned.rsplit('.').next().unwrap_or(cleaned);
+        if !base.is_empty() {
+            return Some(base.to_string());
+        }
+    }
+    None
 }
 
 fn go_type_decl_name(node: Node, source: &str) -> Option<(String, SymbolKind)> {
@@ -799,8 +831,8 @@ fn walk_rust(
             Some(p) => format!("{p}::{name}"),
             None => name.clone(),
         };
-        let start_line = super::parser::line_of(node.start_byte(), source);
-        let end_line = super::parser::line_of(node.end_byte(), source);
+        let start_line = ctx.lines.line_of(node.start_byte());
+        let end_line = ctx.lines.line_of(node.end_byte());
         symbols.push(ExtractedSymbol {
             name: name.clone(),
             qualified_name: qname.clone(),
@@ -814,7 +846,7 @@ fn walk_rust(
 
     // method inside impl
     if kind == "impl_item" {
-        // don't change parent for symbols inside — methods will nest under previous parent
+        // don't change parent for symbols inside �?methods will nest under previous parent
         // better: use impl type name as parent
         if let Some(ty) = rust_impl_type_name(node, source) {
             local_parent = Some(ty);
@@ -828,14 +860,14 @@ fn walk_rust(
                     push_call(
                         references,
                         n,
-                        super::parser::line_of(node.start_byte(), source),
+                        ctx.lines.line_of(node.start_byte()),
                         local_parent.clone(),
                     );
                 }
             }
         }
         "use_declaration" => {
-            let line = super::parser::line_of(node.start_byte(), source);
+            let line = ctx.lines.line_of(node.start_byte());
             rust_collect_use(node, source, ctx, local_parent.clone(), references, line);
         }
         _ => {}

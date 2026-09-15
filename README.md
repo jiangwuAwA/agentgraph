@@ -53,8 +53,9 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 - default: **Exact + Heuristic** (L1 DI/factory/event candidates)
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic`: also DynamicCandidate (reflection / computed keys — noisier)
+- `--sound` (L2, experimental): only sound-eligible edges + S-violation report; **claims containment only when `subset_ok`**
 
-Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md).
+Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md), [docs/eval-l2.md](docs/eval-l2.md).
 
 ### Index quality
 

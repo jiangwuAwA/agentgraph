@@ -250,10 +250,12 @@ ref {
 
 ### 4.5 L2 交付物
 
-- `docs/sound-subset.md`  
-- `impact --sound` / `callers --sound`  
-- 差分测试 harness（CI 可选 job，大仓 nightly）  
-- 评测报告 `docs/eval-l2.md`  
+- `docs/sound-subset.md` ✅（S v1 冻结 + 实现状态）
+- `impact --sound` / `callers --sound` ✅ 实验性（违例则关闭 sound 承诺）
+- 差分测试 harness ✅ Node export tracer + `tests/l2_sound.rs`（属性测试未做）
+- 评测报告 `docs/eval-l2.md` ✅
+
+**M4 实测（fixture 级）：** `s-js-auth` 运行时边 ⊆ `--sound` 边 100%；`s-js-evil`（eval）正确 `subset_ok=false`。非全生态 sound 声明。
 
 ### 4.6 L2 工期量级
 
@@ -368,7 +370,8 @@ ref {
 2. ~~**M1 / L0.1**：TDD 实现 fsnotify watch。~~ **完成**  
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
-5. L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。
+5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**；后续：属性测试、多文件 ESM 差分、Go/Py S 冻结  
+6. L3：TLA+ 增量模型（不挡发版）。
 
 ---
 

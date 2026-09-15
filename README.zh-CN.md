@@ -53,8 +53,9 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 - 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
 - `--exact-only`：仅 L0 语法确定边
 - `--include-dynamic`：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
+- `--sound`（L2，实验性）：只走 sound-eligible 边并报告 S 违例；**仅当 `subset_ok` 时给出包含性承诺**
 
-所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)。
+所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。
 
 ### 索引质量
 

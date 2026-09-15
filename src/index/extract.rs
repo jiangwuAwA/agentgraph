@@ -311,6 +311,16 @@ fn walk_ts(
         "function_declaration" | "generator_function_declaration" => {
             first_identifier_name(node, source).map(|n| (n, SymbolKind::Function))
         }
+        // Named function expression: `app.main = function main() { ... }`
+        // Must become a symbol so impact BFS can expand via `enclosing`.
+        "function_expression" => node.child_by_field_name("name").and_then(|n| {
+            let t = node_text(n, source);
+            if t.is_empty() {
+                None
+            } else {
+                Some((t.to_string(), SymbolKind::Function))
+            }
+        }),
         "class_declaration" | "class" => {
             first_identifier_name(node, source).map(|n| (n, SymbolKind::Class))
         }

@@ -19,9 +19,9 @@ pub fn apply(
 ) {
     match lang {
         Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
-            walk_ts(root, source, ctx, references);
+            walk_ts(root, source, ctx, references, None);
         }
-        Language::Python => walk_py(root, source, ctx, references),
+        Language::Python => walk_py(root, source, ctx, references, None),
         Language::Go => walk_go(root, source, ctx, references),
         Language::Rust => walk_rust(root, source, ctx, references),
     }
@@ -91,26 +91,47 @@ fn last_segment(s: &str) -> &str {
 
 // ── TypeScript / JavaScript ─────────────────────────────────────────
 
-fn walk_ts(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut Vec<ExtractedRef>) {
+fn walk_ts(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
+) {
     let mut cursor = node.walk();
     let kind = node.kind();
+    let mut local_enclosing = enclosing;
+
+    // Track named scopes so L1 edges can expand impact BFS (review M1).
+    if matches!(
+        kind,
+        "function_declaration"
+            | "generator_function_declaration"
+            | "method_definition"
+            | "function_expression"
+            | "arrow_function"
+    ) {
+        if let Some(n) = node
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source).to_string())
+            .filter(|s| !s.is_empty())
+        {
+            local_enclosing = Some(n);
+        }
+    }
 
     match kind {
         "call_expression" | "new_expression" => {
-            ts_call_rules(node, source, ctx, references);
+            ts_call_rules(node, source, ctx, references, local_enclosing.clone());
         }
         "decorator" => {
-            ts_decorator_rule(node, source, ctx, references);
-        }
-        "pair" | "field_initializer" => {
-            // Go-style maps are handled in walk_go; TS object literal values
-            // that are identifiers under a `*Handler*` key are weak signal — skip.
+            ts_decorator_rule(node, source, ctx, references, local_enclosing.clone());
         }
         _ => {}
     }
 
     for child in node.children(&mut cursor) {
-        walk_ts(child, source, ctx, references);
+        walk_ts(child, source, ctx, references, local_enclosing.clone());
     }
 }
 
@@ -131,6 +152,7 @@ fn ts_call_rules(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
 ) {
     let mut fn_node = node
         .child_by_field_name("function")
@@ -159,7 +181,6 @@ fn ts_call_rules(
     let fn_text = node_text(fn_node, source);
     let method = last_segment(fn_text).to_string();
     let line = line_of(ctx, node);
-    let enclosing = None;
 
     // container.register(X) / c.register(X)
     if method == "register" {
@@ -382,6 +403,7 @@ fn ts_decorator_rule(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
 ) {
     // @Inject(UserService) / @Injectable(UserService) / @Component({...})
     let mut cursor = node.walk();
@@ -405,7 +427,7 @@ fn ts_decorator_rule(
                         name,
                         qualifier: None,
                         line: line_of(ctx, child),
-                        enclosing: None,
+                        enclosing: enclosing.clone(),
                         confidence: Confidence::Heuristic,
                         rule_id: "ts.di.decorator",
                         snippet: format!("@{method}({})", node_text(arg, source)),
@@ -418,25 +440,41 @@ fn ts_decorator_rule(
 
 // ── Python ──────────────────────────────────────────────────────────
 
-fn walk_py(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut Vec<ExtractedRef>) {
+fn walk_py(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
+) {
     let mut cursor = node.walk();
+    let mut local_enclosing = enclosing;
+
+    if matches!(node.kind(), "function_definition" | "decorated_definition") {
+        if let Some(n) = node
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source).to_string())
+            .filter(|s| !s.is_empty())
+        {
+            local_enclosing = Some(n);
+        }
+    }
 
     match node.kind() {
         "call" => {
-            py_call_rules(node, source, ctx, references);
+            py_call_rules(node, source, ctx, references, local_enclosing.clone());
         }
         "default_parameter" => {
-            // svc = Depends(get_user_service)
-            py_default_depends(node, source, ctx, references);
+            py_default_depends(node, source, ctx, references, local_enclosing.clone());
         }
         "decorator" => {
-            py_inject_decorator(node, source, ctx, references);
+            py_inject_decorator(node, source, ctx, references, local_enclosing.clone());
         }
         _ => {}
     }
 
     for child in node.children(&mut cursor) {
-        walk_py(child, source, ctx, references);
+        walk_py(child, source, ctx, references, local_enclosing.clone());
     }
 }
 
@@ -451,6 +489,7 @@ fn py_call_rules(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
 ) {
     let callee = py_call_callee_text(node, source);
     let last = last_segment(&callee).to_string();
@@ -466,7 +505,7 @@ fn py_call_rules(
                     name: s,
                     qualifier: None,
                     line,
-                    enclosing: None,
+                    enclosing: enclosing.clone(),
                     confidence: Confidence::DynamicCandidate,
                     rule_id: "py.dynamic.getattr",
                     snippet,
@@ -485,7 +524,7 @@ fn py_call_rules(
                     name: s,
                     qualifier: None,
                     line,
-                    enclosing: None,
+                    enclosing: enclosing.clone(),
                     confidence: Confidence::DynamicCandidate,
                     rule_id: "py.dynamic.import_module",
                     snippet,
@@ -510,7 +549,7 @@ fn py_call_rules(
                         name,
                         qualifier: None,
                         line,
-                        enclosing: None,
+                        enclosing: enclosing.clone(),
                         confidence: Confidence::Heuristic,
                         rule_id: "py.di.depends",
                         snippet: format!("Depends({t})"),
@@ -526,12 +565,13 @@ fn py_default_depends(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
 ) {
     // Walk into RHS call if it's Depends(...)
     let mut cursor = node.walk();
     for c in node.children(&mut cursor) {
         if c.kind() == "call" {
-            py_call_rules(c, source, ctx, references);
+            py_call_rules(c, source, ctx, references, enclosing.clone());
         }
     }
 }
@@ -541,6 +581,7 @@ fn py_inject_decorator(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
 ) {
     let mut cursor = node.walk();
     for c in node.children(&mut cursor) {
@@ -557,7 +598,7 @@ fn py_inject_decorator(
                                 name: t.to_string(),
                                 qualifier: None,
                                 line: line_of(ctx, c),
-                                enclosing: None,
+                                enclosing: enclosing.clone(),
                                 confidence: Confidence::Heuristic,
                                 rule_id: "py.di.inject",
                                 snippet: format!("@inject({t})"),
@@ -605,12 +646,47 @@ fn py_nth_arg_string(call: Node, source: &str, idx: usize) -> Option<String> {
 fn walk_go(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut Vec<ExtractedRef>) {
     let mut cursor = node.walk();
 
-    if node.kind() == "literal_value" || node.kind() == "keyed_element" {
-        go_map_entry(node, source, ctx, references);
+    // Only consider keyed elements inside a map composite literal whose type
+    // looks like a handler/func map — never struct literals or config maps.
+    if node.kind() == "composite_literal" {
+        go_composite_literal(node, source, ctx, references);
     }
 
     for child in node.children(&mut cursor) {
         walk_go(child, source, ctx, references);
+    }
+}
+
+fn go_composite_literal(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let mut cursor = node.walk();
+    let type_node = node.children(&mut cursor).find(|c| c.kind() == "map_type");
+    let Some(type_node) = type_node else {
+        return;
+    };
+    let type_text = node_text(type_node, source);
+    // Require a function-ish value type: map[string]HandlerFunc, func(...), http.HandlerFunc, etc.
+    let looks_like_handler = type_text.contains("Handler")
+        || type_text.contains("func(")
+        || type_text.contains("HandleFunc")
+        || type_text.contains("http.HandlerFunc");
+    if !looks_like_handler {
+        return;
+    }
+    let mut lc = node.walk();
+    for c in node.children(&mut lc) {
+        if c.kind() == "literal_value" {
+            let mut vc = c.walk();
+            for entry in c.children(&mut vc) {
+                if entry.kind() == "keyed_element" {
+                    go_map_entry(entry, source, ctx, references);
+                }
+            }
+        }
     }
 }
 
@@ -620,53 +696,37 @@ fn go_map_entry(
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
 ) {
-    // keyed_element: "path": HandlerFunc  OR  literal_value containing them
-    if node.kind() == "keyed_element" {
-        let mut cursor = node.walk();
-        let children: Vec<Node> = node.children(&mut cursor).collect();
-        // typically: key (literal_element string) , value (literal_element identifier)
-        let value = children
-            .iter()
-            .rev()
-            .find(|c| {
-                matches!(
-                    c.kind(),
-                    "identifier"
-                        | "literal_element"
-                        | "selector_expression"
-                        | "call_expression"
-                        | "func_literal"
-                )
-            })
-            .copied();
-        if let Some(val) = value {
-            if let Some(name) = go_handler_name(val, source) {
-                let snippet = format!("map entry → {name}");
-                push_l1(
-                    references,
-                    L1Edge {
-                        name,
-                        qualifier: None,
-                        line: line_of(ctx, val),
-                        enclosing: None,
-                        confidence: Confidence::Heuristic,
-                        rule_id: "go.di.handler_map",
-                        snippet,
-                    },
-                );
-            }
-        }
+    // keyed_element: "path": HandlerFunc
+    if node.kind() != "keyed_element" {
         return;
     }
-
-    // Also: literal_value that looks like map[string]Handler with identifier values
-    let text = node_text(node, source);
-    if text.contains("map[") {
-        let mut cursor = node.walk();
-        for c in node.children(&mut cursor) {
-            if c.kind() == "keyed_element" {
-                go_map_entry(c, source, ctx, references);
-            }
+    let mut cursor = node.walk();
+    let children: Vec<Node> = node.children(&mut cursor).collect();
+    let value = children
+        .iter()
+        .rev()
+        .find(|c| {
+            matches!(
+                c.kind(),
+                "identifier" | "literal_element" | "selector_expression" | "func_literal"
+            )
+        })
+        .copied();
+    if let Some(val) = value {
+        if let Some(name) = go_handler_name(val, source) {
+            let snippet = format!("map entry → {name}");
+            push_l1(
+                references,
+                L1Edge {
+                    name,
+                    qualifier: None,
+                    line: line_of(ctx, val),
+                    enclosing: None,
+                    confidence: Confidence::Heuristic,
+                    rule_id: "go.di.handler_map",
+                    snippet,
+                },
+            );
         }
     }
 }

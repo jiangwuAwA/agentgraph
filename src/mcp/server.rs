@@ -131,7 +131,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "impact",
-                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; exact_only / include_dynamic adjust the confidence window.",
+                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; exact_only / include_dynamic adjust the confidence window. sound=true uses the L2 sound-eligible edge set and reports S-violations.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -139,9 +139,18 @@ fn tools_list() -> Value {
                         "depth": {"type": "integer", "default": 2},
                         "limit": {"type": "integer", "default": 100},
                         "exact_only": {"type": "boolean", "default": false},
-                        "include_dynamic": {"type": "boolean", "default": false}
+                        "include_dynamic": {"type": "boolean", "default": false},
+                        "sound": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
+                }
+            },
+            {
+                "name": "subset",
+                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may claim over-approx containment within S.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
                 }
             },
             {
@@ -301,6 +310,20 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .ok_or_else(|| anyhow::anyhow!("name required"))?;
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+                let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
+                let indexer = Indexer::new(&root)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                if sound {
+                    let (hits, violations) = store.impact_sound(sym, depth, limit)?;
+                    let payload = serde_json::json!({
+                        "mode": "sound",
+                        "subset_ok": violations.is_empty(),
+                        "subset_violations": violations,
+                        "impact": hits,
+                    });
+                    return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
+                }
                 let exact_only = args
                     .get("exact_only")
                     .and_then(|v| v.as_bool())
@@ -309,12 +332,21 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("include_dynamic")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                let indexer = Indexer::new(&root)?;
-                let store = indexer.open_store()?;
-                store.ensure_indexed()?;
                 let filter = parse_confidence_flags(exact_only, include_dynamic);
                 let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
+            }
+            "subset" => {
+                let indexer = Indexer::new(&root)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let violations = store.subset_violations()?;
+                let payload = serde_json::json!({
+                    "in_subset": violations.is_empty(),
+                    "violation_count": violations.len(),
+                    "violations": violations,
+                });
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
             "related_files" => {
                 let sym = args

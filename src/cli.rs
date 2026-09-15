@@ -50,6 +50,9 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
+        /// L2: only sound-eligible edges + S-violation report
+        #[arg(long, default_value_t = false)]
+        sound: bool,
     },
     /// Blast radius: who transitively depends on this symbol
     Impact {
@@ -64,6 +67,9 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
+        /// L2: walk only sound-eligible edges; report S-violations; never claims sound outside S
+        #[arg(long, default_value_t = false)]
+        sound: bool,
     },
     /// Files most related to a symbol (for retrieval scoping)
     Related {
@@ -88,6 +94,8 @@ pub enum Commands {
         #[arg(long, default_value_t = 5)]
         interval: u64,
     },
+    /// Scan the index for language-subset S violations (L2)
+    Subset,
     /// Export index as SCIP protobuf binary (official scip CLI) or LSIF JSONL
     Export {
         #[arg(value_parser = ["scip", "scip-json", "lsif"])]
@@ -153,9 +161,40 @@ pub fn run(cli: Cli) -> Result<()> {
             limit,
             exact_only,
             include_dynamic,
+            sound,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            if sound {
+                let (hits, violations) = store.callers_sound(&name, limit)?;
+                let subset_ok = violations.is_empty();
+                let mapped: Vec<serde_json::Value> = hits
+                    .into_iter()
+                    .map(|r| {
+                        let mut v = serde_json::to_value(&r).unwrap_or_default();
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert(
+                                "at".into(),
+                                serde_json::json!(format!("{}:{}", r.path, r.line)),
+                            );
+                        }
+                        v
+                    })
+                    .collect();
+                let payload = serde_json::json!({
+                    "mode": "sound",
+                    "subset_ok": subset_ok,
+                    "promise": if subset_ok {
+                        "Within S: runtime call edges ⊆ this over-approx (may over-report)."
+                    } else {
+                        "S violated — soundness claim disabled; results are best-effort sound-eligible edges only."
+                    },
+                    "subset_violations": violations,
+                    "callers": mapped,
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
             let q = Query::new(&store);
             let filter = parse_confidence_flags(exact_only, include_dynamic);
             let hits = q.callers_filtered(&name, limit, filter)?;
@@ -180,9 +219,27 @@ pub fn run(cli: Cli) -> Result<()> {
             limit,
             exact_only,
             include_dynamic,
+            sound,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            if sound {
+                let (hits, violations) = store.impact_sound(&name, depth, limit)?;
+                let subset_ok = violations.is_empty();
+                let payload = serde_json::json!({
+                    "mode": "sound",
+                    "subset_ok": subset_ok,
+                    "promise": if subset_ok {
+                        "Within S: runtime call edges ⊆ this over-approx (may over-report)."
+                    } else {
+                        "S violated — soundness claim disabled; results are best-effort sound-eligible edges only."
+                    },
+                    "subset_violations": violations,
+                    "impact": hits,
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
             let q = Query::new(&store);
             let filter = parse_confidence_flags(exact_only, include_dynamic);
             let hits = q.impact_filtered(&name, depth, limit, filter)?;
@@ -258,6 +315,21 @@ pub fn run(cli: Cli) -> Result<()> {
                 other => bail!("unknown export format: {other}"),
             }
             println!("wrote {format} → {}", out.display());
+        }
+        Commands::Subset => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let violations = store.subset_violations()?;
+            let payload = serde_json::json!({
+                "in_subset": violations.is_empty(),
+                "violation_count": violations.len(),
+                "violations": violations,
+                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound",
+            });
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            if !violations.is_empty() {
+                std::process::exit(2);
+            }
         }
         Commands::Mcp => {
             crate::mcp::server::run_stdio(indexer.root)?;

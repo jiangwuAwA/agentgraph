@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::extract::ExtractedFile;
+use super::subset::{is_sound_eligible, SubsetReport, SubsetViolation};
 use crate::model::{
     Confidence, ConfidenceFilter, EdgeKind, Evidence, ImpactNode, IndexStats, ReferenceRecord,
     SymbolKind, SymbolRecord,
@@ -118,11 +119,21 @@ impl Store {
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS subset_violations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                line INTEGER NOT NULL,
+                snippet TEXT NOT NULL,
+                FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
             CREATE INDEX IF NOT EXISTS idx_symbols_qname ON symbols(qualified_name);
             CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
             CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
             CREATE INDEX IF NOT EXISTS idx_refs_path ON refs(path);
+            CREATE INDEX IF NOT EXISTS idx_subset_path ON subset_violations(path);
             "#,
         )?;
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN description TEXT", []);
@@ -242,13 +253,31 @@ impl Store {
         Ok(row)
     }
 
-    /// Replace file rows. Does NOT open its own transaction (caller uses begin_batch/commit_batch).
+    /// Replace file rows without S-violation payload (tests / legacy).
     pub fn replace_file(
         &mut self,
         path: &str,
         hash: &str,
         language: &str,
         extracted: &ExtractedFile,
+    ) -> Result<()> {
+        let empty = SubsetReport {
+            path: path.to_string(),
+            language: language.to_string(),
+            in_subset: true,
+            violations: Vec::new(),
+        };
+        self.replace_file_with_subset(path, hash, language, extracted, &empty)
+    }
+
+    /// Replace file rows. Does NOT open its own transaction (caller uses begin_batch/commit_batch).
+    pub fn replace_file_with_subset(
+        &mut self,
+        path: &str,
+        hash: &str,
+        language: &str,
+        extracted: &ExtractedFile,
+        subset: &SubsetReport,
     ) -> Result<()> {
         self.cache.borrow_mut().clear();
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
@@ -272,10 +301,23 @@ impl Store {
         self.conn
             .execute("DELETE FROM refs WHERE path = ?1", params![path])?;
         self.conn.execute(
+            "DELETE FROM subset_violations WHERE path = ?1",
+            params![path],
+        )?;
+        self.conn.execute(
             "INSERT INTO files(path, hash, language) VALUES(?1, ?2, ?3)
              ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, language = excluded.language",
             params![path, hash, language],
         )?;
+        {
+            let mut stmt = self.conn.prepare(
+                "INSERT INTO subset_violations(path, kind, line, snippet)
+                 VALUES(?1, ?2, ?3, ?4)",
+            )?;
+            for v in &subset.violations {
+                stmt.execute(params![path, v.kind, v.line as i64, v.snippet])?;
+            }
+        }
         {
             let mut stmt = self.conn.prepare(
                 "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col, return_type)
@@ -980,6 +1022,111 @@ impl Store {
             params![description, id],
         )?;
         Ok(())
+    }
+
+    /// All stored S-violations (from last index of each file).
+    pub fn subset_violations(&self) -> Result<Vec<SubsetViolation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, kind, line, snippet FROM subset_violations ORDER BY path, line",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(SubsetViolation {
+                path: r.get(0)?,
+                kind: r.get(1)?,
+                line: r.get::<_, i64>(2)? as usize,
+                snippet: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn subset_violation_count(&self) -> Result<usize> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM subset_violations", [], |r| r.get(0))?;
+        Ok(n as usize)
+    }
+
+    fn ref_is_sound(&self, r: &ReferenceRecord) -> bool {
+        let rule = r.evidence.as_ref().map(|e| e.rule_id.as_str());
+        is_sound_eligible(r.confidence, rule)
+    }
+
+    /// Callers restricted to the sound over-approximation edge set (L2).
+    /// Fetches a wide confidence window then drops unsound edges.
+    pub fn callers_sound(
+        &self,
+        name: &str,
+        limit: usize,
+    ) -> Result<(Vec<ReferenceRecord>, Vec<SubsetViolation>)> {
+        let fetch = limit.saturating_mul(4).max(200);
+        let all = self.callers_uncached(name, fetch, ConfidenceFilter::IncludeDynamic)?;
+        let hits: Vec<ReferenceRecord> = all
+            .into_iter()
+            .filter(|r| self.ref_is_sound(r))
+            .take(limit)
+            .collect();
+        let violations = self.subset_violations()?;
+        Ok((hits, violations))
+    }
+
+    /// Impact BFS over the sound edge set only (L2 `impact --sound`).
+    pub fn impact_sound(
+        &self,
+        name: &str,
+        depth: usize,
+        limit: usize,
+    ) -> Result<(Vec<ImpactNode>, Vec<SubsetViolation>)> {
+        let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
+            std::collections::HashSet::new();
+        let mut out: Vec<ImpactNode> = Vec::new();
+        let fetch_cap = limit.saturating_mul(4).max(200);
+        let mut frontier: std::collections::VecDeque<(String, usize)> =
+            std::collections::VecDeque::new();
+        frontier.push_back((name.to_string(), 0));
+        visited_names.insert(name.to_string());
+
+        while let Some((current, d)) = frontier.pop_front() {
+            if d >= depth || out.len() >= limit {
+                continue;
+            }
+            let refs =
+                self.callers_uncached(&current, fetch_cap, ConfidenceFilter::IncludeDynamic)?;
+            for r in refs {
+                if !self.ref_is_sound(&r) {
+                    continue;
+                }
+                if out.len() >= limit {
+                    break;
+                }
+                let key = (r.name.clone(), r.line as i64, r.path.clone());
+                if !visited_ref.insert(key) {
+                    continue;
+                }
+                out.push(ImpactNode {
+                    name: r.name.clone(),
+                    path: r.path.clone(),
+                    line: r.line,
+                    kind: r.kind,
+                    depth: d + 1,
+                    enclosing: r.enclosing.clone(),
+                    resolved: r.resolved.clone(),
+                    confidence: r.confidence,
+                });
+                if let Some(enc) = r.enclosing.clone() {
+                    let leaf = last_segment(&enc);
+                    if !leaf.is_empty() && visited_names.insert(leaf.clone()) {
+                        let ref_lang = self.file_language(&r.path)?;
+                        if self.expandable_enclosing(&leaf, ref_lang.as_deref())? {
+                            frontier.push_back((leaf, d + 1));
+                        }
+                    }
+                }
+            }
+        }
+        let violations = self.subset_violations()?;
+        Ok((out, violations))
     }
 }
 

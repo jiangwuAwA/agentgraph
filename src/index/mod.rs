@@ -5,6 +5,7 @@ pub mod parser;
 pub mod resolve;
 pub mod rules;
 pub mod store;
+pub mod subset;
 pub mod walker;
 
 use anyhow::Result;
@@ -30,6 +31,8 @@ struct ParsedFile {
     rel: String,
     hash: String,
     lang_str: &'static str,
+    lang: Language,
+    source_for_subset: String,
     extracted: extract::ExtractedFile,
 }
 
@@ -131,6 +134,8 @@ impl Indexer {
                         rel: fw.rel,
                         hash: fw.hash,
                         lang_str,
+                        lang: fw.lang,
+                        source_for_subset: fw.source,
                         extracted,
                     }),
                     Err(e) => Err(FailedFile {
@@ -150,7 +155,14 @@ impl Indexer {
                     // Per-file savepoint: a DB error for one file must not poison
                     // the outer transaction or leave partial rows for that path.
                     store.begin_savepoint("file_sp")?;
-                    match store.replace_file(&pf.rel, &pf.hash, pf.lang_str, &pf.extracted) {
+                    let subset = subset::scan_subset(&pf.source_for_subset, pf.lang, &pf.rel);
+                    match store.replace_file_with_subset(
+                        &pf.rel,
+                        &pf.hash,
+                        pf.lang_str,
+                        &pf.extracted,
+                        &subset,
+                    ) {
                         Ok(()) => {
                             store.release_savepoint("file_sp")?;
                             indexed += 1;

@@ -1,9 +1,10 @@
-# Sound subset (draft — L2 prep)
+# Sound subset (L2 v1 — experimental)
 
-> **Status:** draft for L2. Not implemented as `impact --sound` yet.
-> This document freezes the *intended* subset S so L1 rules and future
-> sound analysis share one vocabulary. Do **not** claim L2/sound until
-> PLAN.md §4 acceptance criteria are met.
+> **Status:** implemented as `impact --sound` / `callers --sound` / `agentgraph subset`
+> (experimental). Soundness claim applies **only** when the indexed corpus has
+> **zero** S violations (`subset_ok: true`). See [eval-l2.md](eval-l2.md).
+>
+> Do **not** market this as production-complete sound analysis.
 
 ## Promise (once implemented)
 
@@ -35,22 +36,22 @@ A program is in S_js when **all** of the following hold:
 3. Trait objects (`dyn Trait`) only with **local** `impl Trait for Type`
    blocks present in the indexed corpus.
 
-## Analysis ingredients (planned, not implemented)
+## Analysis ingredients (implemented v1)
 
-1. Type-constraint propagation (extend L0 `qualifier`).
-2. Class / interface / trait implementation closure.
-3. Explicit registry closure (key → implementation).
-4. Finite-domain enumeration of string-literal keys.
-5. Optional abstract interpretation over S only.
+1. Type-constraint propagation (L0 `qualifier`) — existing.
+2. Class / interface / trait implementation closure — partial (Rust `impl Trait` Heuristic).
+3. Explicit registry closure — DI rule allowlist (`src/index/subset.rs`).
+4. String-literal key finite domain — `ts.dynamic.computed` / `py.dynamic.getattr` / `py.dynamic.import_module` treated as `SoundFiniteDomain`.
+5. Abstract interpretation — **not** implemented.
 
-## Verification plan (L2)
+## Verification (implemented v1)
 
-| Method | Role |
-|---|---|
-| Differential vs runtime traces | Node/Jest, `go test -cover`, Python coverage hooks |
-| Property tests | random S programs: interpret vs graph |
-| Golden corpus | hand-labeled complete edge sets |
-| Invariant unit tests | every AST `call_expression` in S has an edge |
+| Method | Role | Status |
+|---|---|---|
+| Differential vs runtime traces | Node export-wrapper tracer | ✅ `scripts/diff_trace.cjs` + `tests/l2_sound.rs` |
+| Property tests | random S programs | ❌ planned |
+| Golden corpus | S_js auth fixture | ✅ `fixtures/eval-l2/s-js-auth` |
+| Invariant unit tests | call sites have Exact edges | ✅ `tests/l2_subset.rs` |
 
 ## Non-goals
 
@@ -58,4 +59,4 @@ A program is in S_js when **all** of the following hold:
 - Full pointer analysis.
 - Replacing CodeQL.
 
-See [PLAN.md](../PLAN.md) §4 for milestones.
+See [PLAN.md](../PLAN.md) §4 and [eval-l2.md](eval-l2.md).

@@ -219,6 +219,36 @@ func main() {}
 }
 
 #[test]
+fn go_config_map_and_struct_literal_are_not_heuristic() {
+    let src = r#"
+package main
+
+type S struct{ A string }
+
+func main() {
+	hostname := "h"
+	portName := "p"
+	config := map[string]string{"host": hostname, "port": portName}
+	_ = config
+	s := S{A: hostname}
+	_ = s
+}
+"#;
+    let out = extract(src, Language::Go, "cfg.go");
+    let bad: Vec<_> = out
+        .references
+        .iter()
+        .filter(|r| {
+            (r.name == "hostname" || r.name == "portName") && r.confidence == Confidence::Heuristic
+        })
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "config map / struct literal must not emit handler-map Heuristic; got {bad:?}"
+    );
+}
+
+#[test]
 fn rust_impl_trait_for_type_is_heuristic() {
     let src = r#"
 trait Greeter {

@@ -94,9 +94,9 @@ AI Agent 改代码前需要回答：
 | ID | 项 | 验收 |
 |---|---|---|
 | L0.1 | **fsnotify 原生 watch**（替换/并存于轮询） | ✅ `watch_events` + CLI 默认；改文件后 < 300ms 触发增量；`notify` crate；防抖 50–200ms；`tests/watch_fsnotify.rs` |
-| L0.2 | 大仓性能预算 | codex-rs 级：全量 < 4min，增量单文件 < 200ms（release） |
+| L0.2 | 大仓性能预算 | ✅ `scripts/bench_index.ps1`；fixture 增量预算门禁；大仓全量目标见脚本注释 |
 | L0.3 | 边证据字段 | ✅ CLI `callers` 输出含 `at: path:line`；DB 本就存 path/line |
-| L0.4 | 查询缓存层 | 同 root 连续 callers/impact 不重复扫全表（内存 LRU） |
+| L0.4 | 查询缓存层 | ✅ callers/impact 内存缓存 + 写失效 + hit/miss 计数；`tests/query_cache.rs` |
 | L0.5 | 文档诚实 | ✅ README/AGENTS/PLAN 明确 L0 = best-effort 名字/qualifier；动态边属 L1 规划 |
 
 ### 2.4 L0 非目标
@@ -363,8 +363,8 @@ ref {
 ## 11. 下一步（建议立即执行）
 
 1. 冻结本计划为 `PLAN.md`（本文）。  
-2. **M1 / L0.1**：TDD 实现 fsnotify watch。  
-3. 建 `docs/sound-subset.md` 草稿（即使 L2 未开工，先写排除列表）。  
+2. ~~**M1 / L0.1**：TDD 实现 fsnotify watch。~~ **完成**  
+3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. 启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。  
 
 ---

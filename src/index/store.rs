@@ -1,13 +1,50 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 
 use super::extract::ExtractedFile;
 use crate::model::{EdgeKind, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord};
 
+#[derive(Default)]
+struct QueryCache {
+    callers: HashMap<(String, usize), Vec<ReferenceRecord>>,
+    impact: HashMap<(String, usize, usize), Vec<ImpactNode>>,
+    hits: u64,
+    misses: u64,
+    max_entries: usize,
+}
+
+impl QueryCache {
+    fn new() -> Self {
+        Self {
+            max_entries: 256,
+            ..Default::default()
+        }
+    }
+
+    fn clear(&mut self) {
+        self.callers.clear();
+        self.impact.clear();
+    }
+
+    fn note_miss(&mut self) {
+        self.misses += 1;
+    }
+
+    fn note_hit(&mut self) {
+        self.hits += 1;
+    }
+
+    fn evict_if_needed(map_len: usize, max: usize) -> bool {
+        map_len >= max
+    }
+}
+
 pub struct Store {
     conn: Connection,
+    cache: RefCell<QueryCache>,
 }
 
 impl Store {
@@ -84,7 +121,10 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
              CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);",
         )?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            cache: RefCell::new(QueryCache::new()),
+        })
     }
 
     pub fn file_hash(&self, path: &str) -> Result<Option<String>> {
@@ -177,6 +217,7 @@ impl Store {
         language: &str,
         extracted: &ExtractedFile,
     ) -> Result<()> {
+        self.cache.borrow_mut().clear();
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
         let mut old_desc: HashMap<String, String> = HashMap::new();
         {
@@ -398,7 +439,35 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub fn cache_hits(&self) -> u64 {
+        self.cache.borrow().hits
+    }
+
+    pub fn cache_misses(&self) -> u64 {
+        self.cache.borrow().misses
+    }
+
     pub fn callers(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
+        {
+            let mut c = self.cache.borrow_mut();
+            if let Some(v) = c.callers.get(&(name.to_string(), limit)).cloned() {
+                c.note_hit();
+                return Ok(v);
+            }
+            c.note_miss();
+        }
+        let result = self.callers_uncached(name, limit)?;
+        {
+            let mut c = self.cache.borrow_mut();
+            if QueryCache::evict_if_needed(c.callers.len(), c.max_entries) {
+                c.callers.clear();
+            }
+            c.callers.insert((name.to_string(), limit), result.clone());
+        }
+        Ok(result)
+    }
+
+    fn callers_uncached(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
             (n.to_string(), format!("{q}.{n}"))
@@ -642,6 +711,27 @@ impl Store {
     /// file). This prevents cross-language last_segment(name) collisions from linking
     /// e.g. Python `validate_email` impact into an unrelated TypeScript `authenticate`.
     pub fn impact(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
+        {
+            let mut c = self.cache.borrow_mut();
+            if let Some(v) = c.impact.get(&(name.to_string(), depth, limit)).cloned() {
+                c.note_hit();
+                return Ok(v);
+            }
+            c.note_miss();
+        }
+        let result = self.impact_uncached(name, depth, limit)?;
+        {
+            let mut c = self.cache.borrow_mut();
+            if QueryCache::evict_if_needed(c.impact.len(), c.max_entries) {
+                c.impact.clear();
+            }
+            c.impact
+                .insert((name.to_string(), depth, limit), result.clone());
+        }
+        Ok(result)
+    }
+
+    fn impact_uncached(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
@@ -656,7 +746,7 @@ impl Store {
             if d >= depth || out.len() >= limit {
                 continue;
             }
-            let refs = self.callers(&current, fetch_cap)?;
+            let refs = self.callers_uncached(&current, fetch_cap)?;
             for r in refs {
                 if out.len() >= limit {
                     break;

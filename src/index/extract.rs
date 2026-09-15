@@ -840,6 +840,9 @@ fn walk_go(
     if is_fn_scope {
         collect_go_param_types(node, source, ctx);
     }
+    if kind == "short_var_declaration" {
+        collect_go_short_var(node, source, ctx);
+    }
 
     let symbol_info: Option<(String, SymbolKind)> = match kind {
         "function_declaration" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Function)),
@@ -948,10 +951,30 @@ fn go_call_target(
     match node.kind() {
         "identifier" => Some((node_text(node, source).to_string(), None)),
         "selector_expression" => {
-            let field = child_by_field(&node, "field")?;
+            let field = child_by_field(&node, "field")
+                .unwrap_or_else(|| {
+                    let mut last = node;
+                    let mut c = node.walk();
+                    for ch in node.children(&mut c) {
+                        if ch.kind() == "field_identifier" {
+                            last = ch;
+                        }
+                    }
+                    last
+                });
             let name = node_text(field, source).to_string();
-            let obj = child_by_field(&node, "operand")
+            // Object is the first identifier child (tree-sitter-go may not set "operand").
+            let mut obj: Option<Node> = child_by_field(&node, "operand")
                 .or_else(|| child_by_field(&node, "value"));
+            if obj.is_none() {
+                let mut c = node.walk();
+                for ch in node.children(&mut c) {
+                    if ch.kind() == "identifier" {
+                        obj = Some(ch);
+                        break;
+                    }
+                }
+            }
             let q = obj
                 .filter(|o| o.kind() == "identifier")
                 .map(|o| {
@@ -1024,6 +1047,72 @@ fn collect_go_param_types(node: Node, source: &str, ctx: &ExtractContext) {
             }
         }
     }
+}
+
+/// `s := NewServer()` → var_types[s] = Server (strip New/new prefix).
+/// AST: short_var_declaration → expression_list(names) := expression_list(call_expression(...))
+fn collect_go_short_var(node: Node, source: &str, ctx: &ExtractContext) {
+    fn find_ctor_type(n: Node, source: &str) -> Option<String> {
+        if n.kind() == "call_expression" {
+            let mut fn_name: Option<String> = child_by_field(&n, "function")
+                .map(|f| node_text(f, source).to_string());
+            if fn_name.is_none() {
+                let mut c = n.walk();
+                for ch in n.children(&mut c) {
+                    if ch.kind() == "identifier" {
+                        fn_name = Some(node_text(ch, source).to_string());
+                        break;
+                    }
+                }
+            }
+            let ctor = fn_name?;
+            let leaf = ctor.rsplit('.').next().unwrap_or(ctor.as_str());
+            let ty = leaf
+                .strip_prefix("New")
+                .or_else(|| leaf.strip_prefix("new"))?;
+            if ty.is_empty() {
+                return None;
+            }
+            return Some(ty.to_string());
+        }
+        let mut c = n.walk();
+        for ch in n.children(&mut c) {
+            if let Some(t) = find_ctor_type(ch, source) {
+                return Some(t);
+            }
+        }
+        None
+    }
+
+    fn collect_names(n: Node, source: &str, ctx: &ExtractContext, ty: &str) {
+        if n.kind() == "identifier" {
+            let name = node_text(n, source).trim().to_string();
+            if !name.is_empty() && name != "_" {
+                ctx.var_types.borrow_mut().insert(name, ty.to_string());
+            }
+        }
+        // only walk the first expression_list for names
+        let mut c = n.walk();
+        for ch in n.children(&mut c) {
+            if ch.kind() == "expression_list" {
+                let mut c2 = ch.walk();
+                for id in ch.children(&mut c2) {
+                    if id.kind() == "identifier" {
+                        let name = node_text(id, source).trim().to_string();
+                        if !name.is_empty() && name != "_" {
+                            ctx.var_types.borrow_mut().insert(name, ty.to_string());
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    let Some(ty) = find_ctor_type(node, source) else {
+        return;
+    };
+    collect_names(node, source, ctx, &ty);
 }
 
 fn go_collect_imports(

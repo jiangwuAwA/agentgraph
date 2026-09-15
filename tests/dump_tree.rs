@@ -1,25 +1,17 @@
 use agentgraph::index::parser::parse;
 use agentgraph::model::Language;
 
-fn dump(node: tree_sitter::Node, src: &str, depth: usize) {
-    let text = src.get(node.byte_range()).unwrap_or("");
-    let short: String = text.chars().take(40).collect();
-    println!(
-        "{}{} [{}] {:?}",
-        "  ".repeat(depth),
-        node.kind(),
-        node.child_count(),
-        short
-    );
-    let mut c = node.walk();
-    for ch in node.children(&mut c) {
-        dump(ch, src, depth + 1);
-    }
-}
-
+/// Smoke: TS import parses and has import_statement under program.
 #[test]
-fn dump_import_tree() {
+fn ts_import_tree_has_import_statement() {
     let src = "import { createUser } from \"./auth\";\n";
     let tree = parse(src, Language::TypeScript).unwrap();
-    dump(tree.root_node(), src, 0);
+    let root = tree.root_node();
+    assert_eq!(root.kind(), "program");
+    let mut c = root.walk();
+    let kinds: Vec<&str> = root.children(&mut c).map(|n| n.kind()).collect();
+    assert!(
+        kinds.contains(&"import_statement"),
+        "expected import_statement, got {kinds:?}"
+    );
 }

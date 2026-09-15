@@ -109,6 +109,22 @@ fn index_by_bare(symbols: &[SymbolRecord]) -> BTreeMap<String, Vec<usize>> {
     by_bare
 }
 
+/// Locate `name` on a 1-based line and return UTF-16 [start_col, end_col].
+fn name_cols_on_line(root: &Path, rel: &str, line: usize, name: &str) -> (usize, usize) {
+    let Ok(src) = std::fs::read_to_string(root.join(rel)) else {
+        return (0, name.chars().map(|c| c.len_utf16()).sum::<usize>().max(1));
+    };
+    let Some(text) = src.lines().nth(line.saturating_sub(1)) else {
+        return (0, 1);
+    };
+    let Some(byte_idx) = text.find(name) else {
+        return (0, name.chars().map(|c| c.len_utf16()).sum::<usize>().max(1));
+    };
+    let start: usize = text[..byte_idx].chars().map(|c| c.len_utf16()).sum();
+    let end = start + name.chars().map(|c| c.len_utf16()).sum::<usize>();
+    (start, end.max(start + 1))
+}
+
 /// Export SCIP JSON. Experimental — simplified schema, not a full protobuf mapping.
 pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
@@ -138,8 +154,9 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
         };
         let sym = scip_symbol_name(&def.language, &def.qualified_name, &def.path);
         let line = r.line.saturating_sub(1);
+        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
         let occ = json!({
-            "range": [line, 0, 8],
+            "range": [line, c0, c1],
             "symbol": sym,
             "symbol_roles": 0,
         });
@@ -321,12 +338,13 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
         let doc_id = ensure_doc(&mut lines, &mut next_id, &mut doc_by_path, root, &r.path, None)?;
         let rid = alloc_id(&mut next_id);
         let line = r.line.saturating_sub(1);
+        let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
         lines.push(serde_json::to_string(&json!({
             "id": rid,
             "type": "vertex",
             "label": "range",
-            "start": {"line": line, "character": 0},
-            "end": {"line": line, "character": 8},
+            "start": {"line": line, "character": c0},
+            "end": {"line": line, "character": c1},
         }))?);
         lines.push(serde_json::to_string(&json!({
             "id": alloc_id(&mut next_id),

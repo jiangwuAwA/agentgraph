@@ -76,7 +76,7 @@ pub enum Commands {
         #[arg(long, default_value_t = 5)]
         interval: u64,
     },
-    /// Export index as SCIP JSON or LSIF JSONL
+    /// Export index as SCIP JSON or LSIF JSONL (experimental — not schema-valid)
     Export {
         #[arg(value_parser = ["scip", "lsif"])]
         format: String,

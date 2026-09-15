@@ -214,10 +214,33 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
 
     let root = {
         let st = state.lock().unwrap();
+        let base = st.root.clone();
         if let Some(r) = args.get("root").and_then(|v| v.as_str()) {
-            PathBuf::from(r)
+            let candidate = PathBuf::from(r);
+            // Security: reject roots outside the server's initial root unless
+            // AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1 (prompt-injection / path escape).
+            let allow_any = std::env::var("AGENTGRAPH_MCP_ALLOW_ANY_ROOT")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if !allow_any {
+                let cand = crate::index::parser::normalize_root(&candidate);
+                let base_n = crate::index::parser::normalize_root(&base);
+                if cand != base_n && !cand.starts_with(&base_n) {
+                    return Err(tool_error(
+                        -32602,
+                        &format!(
+                            "root '{}' is outside server root '{}'; set AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1 to override",
+                            cand.display(),
+                            base_n.display()
+                        ),
+                    ));
+                }
+                cand
+            } else {
+                candidate
+            }
         } else {
-            st.root.clone()
+            base
         }
     };
 

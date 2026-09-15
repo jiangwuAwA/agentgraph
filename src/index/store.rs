@@ -432,14 +432,15 @@ impl Store {
         // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
         {
             let mut stmt = self.conn.prepare(
-                "SELECT id, name, qualifier FROM refs WHERE resolved_symbol_id IS NULL",
+                "SELECT id, name, qualifier, path FROM refs WHERE resolved_symbol_id IS NULL",
             )?;
-            let pending: Vec<(i64, String, Option<String>)> = {
+            let pending: Vec<(i64, String, Option<String>, String)> = {
                 let rows = stmt.query_map([], |r| {
                     Ok((
                         r.get::<_, i64>(0)?,
                         r.get::<_, String>(1)?,
                         r.get::<_, Option<String>>(2)?,
+                        r.get::<_, String>(3)?,
                     ))
                 })?;
                 rows.collect::<rusqlite::Result<Vec<_>>>()?
@@ -448,29 +449,35 @@ impl Store {
 
             let mut lookup_q = self.conn.prepare_cached(
                 "SELECT id FROM symbols
-                 WHERE qualified_name = ?1 OR qualified_name = ?2
-                 ORDER BY path LIMIT 1",
+                 WHERE (qualified_name = ?1 OR qualified_name = ?2)
+                 ORDER BY CASE WHEN path = ?3 THEN 0 ELSE 1 END, path
+                 LIMIT 1",
             )?;
             let mut lookup_n = self.conn.prepare_cached(
-                "SELECT id FROM symbols WHERE name = ?1 ORDER BY path LIMIT 1",
+                "SELECT id FROM symbols WHERE name = ?1
+                 ORDER BY CASE WHEN path = ?2 THEN 0 ELSE 1 END, path
+                 LIMIT 1",
             )?;
             let mut update = self
                 .conn
                 .prepare_cached("UPDATE refs SET resolved_symbol_id = ?1 WHERE id = ?2")?;
 
-            for (id, name, qual) in pending {
+            for (id, name, qual, rpath) in pending {
                 let mut sid: Option<i64> = None;
                 if let Some(q) = qual.as_deref() {
                     if !q.is_empty() {
                         sid = lookup_q
-                            .query_row(params![format!("{q}.{name}"), format!("{q}::{name}")], |r| {
-                                r.get(0)
-                            })
+                            .query_row(
+                                params![format!("{q}.{name}"), format!("{q}::{name}"), rpath],
+                                |r| r.get(0),
+                            )
                             .optional()?;
                     }
                 }
                 if sid.is_none() {
-                    sid = lookup_n.query_row(params![name], |r| r.get(0)).optional()?;
+                    sid = lookup_n
+                        .query_row(params![name, rpath], |r| r.get(0))
+                        .optional()?;
                 }
                 if let Some(sid) = sid {
                     update.execute(params![sid, id])?;

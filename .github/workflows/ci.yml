@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 on:
   push:
     branches: [master, main]
@@ -18,7 +18,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --all-targets
       - run: cargo test
-      - run: cargo clippy --all-targets -- -D warnings
+      # Lint steps are advisory only — the repo is not yet clippy/fmt-clean,
+      # so these must not be treated as a quality gate. continue-on-error is
+      # intentional; flip it off once the tree is clean.
+      - name: lint (non-blocking) — clippy
+        run: cargo clippy --all-targets -- -D warnings
         continue-on-error: true
-      - run: cargo fmt --check
+      - name: lint (non-blocking) — fmt
+        run: cargo fmt --check
         continue-on-error: true

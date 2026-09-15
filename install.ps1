@@ -1,8 +1,11 @@
 # Install agentgraph from GitHub Releases (Windows PowerShell).
 # Usage: iwr -useb https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.ps1 | iex
+# Or:    .\install.ps1 -Version v0.1.0 [-SkipChecksum] [-BinDir path]
 param(
     [string]$Version = "latest",
-    [string]$BinDir = "$env:USERPROFILE\.local\bin"
+    [string]$BinDir = "$env:USERPROFILE\.local\bin",
+    # Explicit opt-out only. Checksum failure always throws (fail closed).
+    [switch]$SkipChecksum
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,18 +27,26 @@ $zip = Join-Path $tmp $asset
 Write-Host "Downloading $url"
 Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
 
-# Optional checksum
-$sumUrl = "$url.sha256"
-try {
-    Invoke-WebRequest -Uri $sumUrl -OutFile "$zip.sha256" -UseBasicParsing
-    $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split(" ")[0].ToLower()
+# Checksum verification is mandatory unless -SkipChecksum is passed.
+if (-not $SkipChecksum) {
+    $sumUrl = "$url.sha256"
+    $sumFile = "$zip.sha256"
+    try {
+        Invoke-WebRequest -Uri $sumUrl -OutFile $sumFile -UseBasicParsing
+    } catch {
+        throw "checksum asset missing or download failed ($sumUrl): $($_.Exception.Message). Use -SkipChecksum to install without verification."
+    }
+    $expected = ((Get-Content $sumFile -Raw).Trim() -split '\s+')[0].ToLower()
+    if ([string]::IsNullOrEmpty($expected)) {
+        throw "checksum file is empty or malformed ($sumUrl). Use -SkipChecksum to install without verification."
+    }
     $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
     if ($expected -ne $actual) {
-        throw "SHA256 mismatch: expected $expected got $actual"
+        throw "SHA256 mismatch for ${asset}: expected $expected got $actual"
     }
     Write-Host "SHA256 verified"
-} catch {
-    Write-Warning "checksum not verified: $($_.Exception.Message)"
+} else {
+    Write-Warning "checksum verification skipped (-SkipChecksum)"
 }
 
 Expand-Archive -Path $zip -DestinationPath $tmp -Force

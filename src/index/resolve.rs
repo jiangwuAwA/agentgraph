@@ -183,38 +183,57 @@ pub fn resolve_rust_use(
         return None; // external crate — do not guess local files
     }
 
-    let cleaned = use_path
-        .trim_start_matches("crate::")
-        .trim_start_matches("super::")
-        .trim_start_matches("self::");
-    let segs: Vec<&str> = cleaned
+    // Strip the root prefix without collapsing repeated `super::` segments.
+    // `super::super::foo` must count TWO levels up, not strip both and lose the walk.
+    let mut rest = use_path;
+    let from_dir = file_dir(from_file);
+    let base_dirs: Vec<String> = if rest.starts_with("crate::") {
+        rest = &rest["crate::".len()..];
+        vec!["src".to_string(), String::new()]
+    } else if rest.starts_with("self::") {
+        rest = &rest["self::".len()..];
+        vec![normalize_repo_path(
+            &from_dir.to_string_lossy().replace('\\', "/"),
+        )]
+    } else {
+        // Count leading `super::` segments (N). Rust: one `super` = parent module
+        // of the current file. File `path/to/mod.rs` IS module `path/to` (parent dir
+        // is one up); file `path/to/file.rs` is module `path/to/file` (parent dir is
+        // the containing directory). Then each extra `super::` walks one more parent.
+        let mut n = 0usize;
+        while rest.starts_with("super::") {
+            rest = &rest["super::".len()..];
+            n += 1;
+        }
+        if n == 0 {
+            return None;
+        }
+        let is_mod = from_file.ends_with("mod.rs");
+        let mut d = if is_mod {
+            match from_dir.parent() {
+                Some(p) => p.to_path_buf(),
+                None => PathBuf::new(),
+            }
+        } else {
+            from_dir.clone()
+        };
+        // d is now the directory of the parent module (1 super).
+        for _ in 1..n {
+            match d.parent() {
+                Some(p) => d = p.to_path_buf(),
+                None => break,
+            }
+        }
+        vec![normalize_repo_path(&d.to_string_lossy().replace('\\', "/"))]
+    };
+
+    let segs: Vec<&str> = rest
         .split("::")
         .filter(|s| !s.is_empty() && *s != "*")
         .collect();
     if segs.is_empty() {
         return None;
     }
-
-    // For super::, walk up from the current file's directory.
-    let from_dir = file_dir(from_file);
-    let base_dirs: Vec<String> = if use_path.starts_with("super::") {
-        let mut dirs = vec![
-            normalize_repo_path(&from_dir.to_string_lossy().replace('\\', "/")),
-        ];
-        if let Some(parent) = from_dir.parent() {
-            dirs.push(normalize_repo_path(
-                &parent.to_string_lossy().replace('\\', "/"),
-            ));
-        }
-        dirs
-    } else if use_path.starts_with("self::") {
-        vec![normalize_repo_path(
-            &from_dir.to_string_lossy().replace('\\', "/"),
-        )]
-    } else {
-        // crate:: → try from src/ and from root
-        vec!["src".to_string(), String::new()]
-    };
 
     let path = segs.join("/");
     for base in &base_dirs {

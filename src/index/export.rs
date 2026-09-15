@@ -1,4 +1,9 @@
-//! SCIP / LSIF export (experimental, simplified schema).
+//! SCIP / LSIF export — **experimental**.
+//!
+//! Output is a simplified JSON/JSONL shape inspired by SCIP/LSIF, not a full
+//! schema mapping. Ranges use UTF-16 columns on the symbol *name* node
+//! (single-line). Not consumable by Sourcegraph or the official `scip` CLI yet.
+//!
 //! Ranges use UTF-16 columns on the symbol *name* node (single-line).
 
 use anyhow::Result;
@@ -7,10 +12,35 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::store::Store;
+use crate::model::{ReferenceRecord, SymbolRecord};
 
-/// SCIP global symbol (5 space-separated segments):
-/// `scip-agentgraph . {package} . {lang} . {path} . {descriptor}`
-/// descriptor uses `.` methods / `#` types style without making everything local.
+/// Build a `file://` URI from a project root and a (possibly empty) relative path.
+///
+/// Windows drive paths get three slashes: `C:/proj` + `src/a.rs` →
+/// `file:///C:/proj/src/a.rs`. POSIX absolute paths become `file:///abs/...`.
+pub fn file_uri(root: &Path, rel: &str) -> String {
+    let mut path = root.to_string_lossy().replace('\\', "/");
+    if !rel.is_empty() {
+        if !path.ends_with('/') {
+            path.push('/');
+        }
+        path.push_str(&rel.replace('\\', "/"));
+    }
+    let bytes = path.as_bytes();
+    // Windows drive letter → file:///C:/...
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return format!("file:///{path}");
+    }
+    // POSIX absolute → file:// + /abs = file:///abs
+    if path.starts_with('/') {
+        return format!("file://{path}");
+    }
+    format!("file:///{path}")
+}
+
+/// SCIP global symbol (5 space-separated segments, experimental form):
+/// `scip-agentgraph . agentgraph . {lang} . {path} . {descriptor}`
+/// descriptor uses `#` methods / types style without making everything local.
 fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
     let descriptor = if qualified.contains("::") {
         // rust Module::Type::fn → Module/Type#fn
@@ -32,11 +62,59 @@ fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
     )
 }
 
-/// Export SCIP JSON. Experimental — not a full protobuf mapping.
+/// Pick the definition symbol for a reference.
+///
+/// Bare-name match only when unambiguous; otherwise require `qualifier` to
+/// disambiguate (`A.save` vs `B.save`). Returns `None` when still ambiguous —
+/// safer to drop the link than to wire it to the wrong definition.
+fn pick_symbol<'a>(
+    r: &ReferenceRecord,
+    symbols: &'a [SymbolRecord],
+    by_bare: &BTreeMap<String, Vec<usize>>,
+) -> Option<&'a SymbolRecord> {
+    let idxs = by_bare.get(&r.name)?;
+    if idxs.is_empty() {
+        return None;
+    }
+    if idxs.len() == 1 {
+        return symbols.get(idxs[0]);
+    }
+    let q = r.qualifier.as_deref()?;
+    let want_dot = format!("{q}.{}", r.name);
+    let want_path = format!("{q}::{}", r.name);
+    let mut matched: Option<&SymbolRecord> = None;
+    for &i in idxs {
+        let s = symbols.get(i)?;
+        let qn = &s.qualified_name;
+        let ok = qn == &want_dot
+            || qn == &want_path
+            || qn.ends_with(&format!(".{want_dot}"))
+            || qn.ends_with(&format!("::{want_path}"))
+            || s.parent.as_deref() == Some(q);
+        if ok {
+            if matched.is_some() {
+                return None; // still ambiguous
+            }
+            matched = Some(s);
+        }
+    }
+    matched
+}
+
+fn index_by_bare(symbols: &[SymbolRecord]) -> BTreeMap<String, Vec<usize>> {
+    let mut by_bare: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, s) in symbols.iter().enumerate() {
+        by_bare.entry(s.name.clone()).or_default().push(i);
+    }
+    by_bare
+}
+
+/// Export SCIP JSON. Experimental — simplified schema, not a full protobuf mapping.
 pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
     let mut docs: BTreeMap<String, (String, Vec<Value>)> = BTreeMap::new();
+    let by_bare = index_by_bare(&symbols);
 
     for s in &symbols {
         // Single-line name range only (SCIP 3-tuple is same-line).
@@ -53,24 +131,22 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
             .push(occ);
     }
 
-    // Reference occurrences (role 0) — best-effort by name match.
-    let by_name: BTreeMap<String, String> = symbols
-        .iter()
-        .map(|s| (s.name.clone(), scip_symbol_name(&s.language, &s.qualified_name, &s.path)))
-        .collect();
+    // Reference occurrences (role 0) — best-effort; skip when ambiguous.
     for r in &refs {
-        if let Some(sym) = by_name.get(&r.name) {
-            let line = r.line.saturating_sub(1);
-            let occ = json!({
-                "range": [line, 0, 8],
-                "symbol": sym,
-                "symbol_roles": 0,
-            });
-            docs.entry(r.path.clone())
-                .or_insert_with(|| ("unknown".into(), Vec::new()))
-                .1
-                .push(occ);
-        }
+        let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
+            continue;
+        };
+        let sym = scip_symbol_name(&def.language, &def.qualified_name, &def.path);
+        let line = r.line.saturating_sub(1);
+        let occ = json!({
+            "range": [line, 0, 8],
+            "symbol": sym,
+            "symbol_roles": 0,
+        });
+        docs.entry(r.path.clone())
+            .or_insert_with(|| ("unknown".into(), Vec::new()))
+            .1
+            .push(occ);
     }
 
     let documents: Vec<Value> = docs
@@ -84,8 +160,10 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
         })
         .collect();
 
+    // schemaVersion "2.1.0" is the SCIP JSON convention; symbol strings below
+    // are experimental and NOT consumable by Sourcegraph / scip CLI yet.
     let scip = json!({
-        "schemaVersion": "0.4.0",
+        "schemaVersion": "2.1.0",
         "toolInfo": {
             "name": "agentgraph",
             "version": env!("CARGO_PKG_VERSION"),
@@ -101,65 +179,90 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Export LSIF JSONL (experimental). ranges → resultSet → item; refersTo → resultSet.
+fn alloc_id(next_id: &mut u64) -> u64 {
+    *next_id += 1;
+    *next_id - 1
+}
+
+fn ensure_doc(
+    lines: &mut Vec<String>,
+    next_id: &mut u64,
+    doc_by_path: &mut BTreeMap<String, u64>,
+    root: &Path,
+    path: &str,
+    language: Option<&str>,
+) -> Result<u64> {
+    if let Some(&id) = doc_by_path.get(path) {
+        return Ok(id);
+    }
+    let did = alloc_id(next_id);
+    let mut v = json!({
+        "id": did,
+        "type": "vertex",
+        "label": "document",
+        "uri": file_uri(root, path),
+    });
+    if let Some(lang) = language {
+        v["languageId"] = json!(lang);
+    }
+    lines.push(serde_json::to_string(&v)?);
+    doc_by_path.insert(path.to_string(), did);
+    Ok(did)
+}
+
+/// Export LSIF JSONL (experimental).
+/// ranges → resultSet → item; refersTo → resultSet.
+/// First line is always `metaData`. resultSets are keyed by qualified symbol
+/// (path + qualified name), so `A.save` and `B.save` do not share a resultSet.
 pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
     let mut lines: Vec<String> = Vec::new();
     let mut next_id = 1u64;
-    let mut next = || {
-        next_id += 1;
-        next_id - 1
-    };
+    let by_bare = index_by_bare(&symbols);
 
-    let project_id = next();
-    lines.push(serde_json::to_string(&json!({
-        "id": project_id,
-        "type": "vertex",
-        "label": "project",
-        "resource": format!("file://{}", root.to_string_lossy().replace('\\', "/")),
-    }))?);
-
-    let meta_id = next();
+    // metaData must be the first line (LSIF).
+    let meta_id = alloc_id(&mut next_id);
     lines.push(serde_json::to_string(&json!({
         "id": meta_id,
         "type": "vertex",
         "label": "metaData",
         "version": "0.5.0",
-        "projectRoot": format!("file://{}", root.to_string_lossy().replace('\\', "/")),
+        "projectRoot": file_uri(root, ""),
         "positionEncoding": "utf-16",
     }))?);
 
+    let project_id = alloc_id(&mut next_id);
     lines.push(serde_json::to_string(&json!({
-        "id": next(),
+        "id": project_id,
+        "type": "vertex",
+        "label": "project",
+        "resource": file_uri(root, ""),
+    }))?);
+
+    lines.push(serde_json::to_string(&json!({
+        "id": alloc_id(&mut next_id),
         "type": "edge",
         "label": "next",
         "outV": meta_id,
         "inV": project_id,
     }))?);
 
-    let mut result_set_by_name: BTreeMap<String, u64> = BTreeMap::new();
-    let mut last_doc: Option<(String, u64)> = None;
+    let mut doc_by_path: BTreeMap<String, u64> = BTreeMap::new();
+    // Key by SCIP symbol (includes path + qualified name) — not bare name.
+    let mut result_set_by_symbol: BTreeMap<String, u64> = BTreeMap::new();
 
     for s in &symbols {
-        if last_doc.as_ref().map(|(p, _)| p.as_str()) != Some(s.path.as_str()) {
-            let did = next();
-            let uri = format!(
-                "file://{}/{}",
-                root.to_string_lossy().replace('\\', "/"),
-                s.path
-            );
-            lines.push(serde_json::to_string(&json!({
-                "id": did,
-                "type": "vertex",
-                "label": "document",
-                "languageId": s.language,
-                "uri": uri,
-            }))?);
-            last_doc = Some((s.path.clone(), did));
-        }
-        let doc_id = last_doc.as_ref().map(|(_, id)| *id).unwrap();
-        let rid = next();
+        let doc_id = ensure_doc(
+            &mut lines,
+            &mut next_id,
+            &mut doc_by_path,
+            root,
+            &s.path,
+            Some(&s.language),
+        )?;
+
+        let rid = alloc_id(&mut next_id);
         let line = s.start_line.saturating_sub(1);
         lines.push(serde_json::to_string(&json!({
             "id": rid,
@@ -169,15 +272,16 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
             "end": {"line": line, "character": s.end_col.max(s.start_col + 1)},
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": next(),
+            "id": alloc_id(&mut next_id),
             "type": "edge",
             "label": "contains",
             "outV": doc_id,
             "inV": rid,
         }))?);
 
-        let rs_id = *result_set_by_name.entry(s.name.clone()).or_insert_with(|| {
-            let id = next();
+        let scip = scip_symbol_name(&s.language, &s.qualified_name, &s.path);
+        let rs_id = *result_set_by_symbol.entry(scip).or_insert_with(|| {
+            let id = alloc_id(&mut next_id);
             lines.push(
                 serde_json::to_string(&json!({
                     "id": id,
@@ -188,16 +292,16 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
             );
             id
         });
-        // LSIF: definition range --next--> resultSet (not contains rs→range)
+        // LSIF: definition range --next--> resultSet
         lines.push(serde_json::to_string(&json!({
-            "id": next(),
+            "id": alloc_id(&mut next_id),
             "type": "edge",
             "label": "next",
             "outV": rid,
             "inV": rs_id,
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": next(),
+            "id": alloc_id(&mut next_id),
             "type": "edge",
             "label": "item",
             "outV": rs_id,
@@ -207,26 +311,15 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
     }
 
     for r in &refs {
-        let Some(rs) = result_set_by_name.get(&r.name).copied() else {
+        let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
         };
-        if last_doc.as_ref().map(|(p, _)| p.as_str()) != Some(r.path.as_str()) {
-            let did = next();
-            let uri = format!(
-                "file://{}/{}",
-                root.to_string_lossy().replace('\\', "/"),
-                r.path
-            );
-            lines.push(serde_json::to_string(&json!({
-                "id": did,
-                "type": "vertex",
-                "label": "document",
-                "uri": uri,
-            }))?);
-            last_doc = Some((r.path.clone(), did));
-        }
-        let doc_id = last_doc.as_ref().map(|(_, id)| *id).unwrap();
-        let rid = next();
+        let scip = scip_symbol_name(&def.language, &def.qualified_name, &def.path);
+        let Some(rs) = result_set_by_symbol.get(&scip).copied() else {
+            continue;
+        };
+        let doc_id = ensure_doc(&mut lines, &mut next_id, &mut doc_by_path, root, &r.path, None)?;
+        let rid = alloc_id(&mut next_id);
         let line = r.line.saturating_sub(1);
         lines.push(serde_json::to_string(&json!({
             "id": rid,
@@ -236,14 +329,14 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
             "end": {"line": line, "character": 8},
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": next(),
+            "id": alloc_id(&mut next_id),
             "type": "edge",
             "label": "contains",
             "outV": doc_id,
             "inV": rid,
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": next(),
+            "id": alloc_id(&mut next_id),
             "type": "edge",
             "label": "refersTo",
             "outV": rid,

@@ -215,6 +215,21 @@ fn walk_ts(
     let kind = node.kind();
     let mut local_parent = parent.clone();
 
+    let is_fn_scope = matches!(
+        kind,
+        "function_declaration"
+            | "method_definition"
+            | "generator_function_declaration"
+            | "arrow_function"
+            | "function_expression"
+            | "generator_function"
+    );
+    let saved_var_types = if is_fn_scope {
+        Some(ctx.var_types.borrow().clone())
+    } else {
+        None
+    };
+
     match kind {
         "function_declaration" | "method_definition" | "generator_function_declaration" => {
             collect_ts_param_types(node, source, ctx);
@@ -304,6 +319,10 @@ fn walk_ts(
 
     for child in node.children(&mut cursor) {
         walk_ts(child, source, local_parent.clone(), symbols, references, ctx);
+    }
+
+    if let Some(s) = saved_var_types {
+        *ctx.var_types.borrow_mut() = s;
     }
 }
 
@@ -807,6 +826,21 @@ fn walk_go(
     let kind = node.kind();
     let mut local_parent = parent.clone();
 
+    // Scoped var_types: entering a function/method/literal snapshots the map so
+    // inner `s: User` cannot permanently overwrite outer `s: Store`.
+    let is_fn_scope = matches!(
+        kind,
+        "function_declaration" | "method_declaration" | "func_literal"
+    );
+    let saved_var_types = if is_fn_scope {
+        Some(ctx.var_types.borrow().clone())
+    } else {
+        None
+    };
+    if is_fn_scope {
+        collect_go_param_types(node, source, ctx);
+    }
+
     let symbol_info: Option<(String, SymbolKind)> = match kind {
         "function_declaration" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Function)),
         "method_declaration" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Method)),
@@ -838,7 +872,7 @@ fn walk_go(
     match kind {
         "call_expression" => {
             if let Some(fn_node) = child_by_field(&node, "function") {
-                if let Some((n, q)) = go_call_target(fn_node, source) {
+                if let Some((n, q)) = go_call_target(fn_node, source, Some(ctx)) {
                     push_call_q(
                         references,
                         n,
@@ -858,6 +892,10 @@ fn walk_go(
 
     for child in node.children(&mut cursor) {
         walk_go(child, source, local_parent.clone(), symbols, references, ctx);
+    }
+
+    if let Some(s) = saved_var_types {
+        *ctx.var_types.borrow_mut() = s;
     }
 }
 
@@ -902,7 +940,11 @@ fn go_type_decl_name(node: Node, source: &str) -> Option<(String, SymbolKind)> {
 }
 
 /// `pkg.Func` / `x.Method` �?(Func/Method, Some(pkg/x)).
-fn go_call_target(node: Node, source: &str) -> Option<(String, Option<String>)> {
+fn go_call_target(
+    node: Node,
+    source: &str,
+    ctx: Option<&ExtractContext>,
+) -> Option<(String, Option<String>)> {
     match node.kind() {
         "identifier" => Some((node_text(node, source).to_string(), None)),
         "selector_expression" => {
@@ -912,7 +954,16 @@ fn go_call_target(node: Node, source: &str) -> Option<(String, Option<String>)> 
                 .or_else(|| child_by_field(&node, "value"));
             let q = obj
                 .filter(|o| o.kind() == "identifier")
-                .map(|o| node_text(o, source).to_string());
+                .map(|o| {
+                    let t = node_text(o, source).to_string();
+                    if let Some(ctx) = ctx {
+                        if let Some(ty) = ctx.var_types.borrow().get(&t).cloned() {
+                            return Some(ty);
+                        }
+                    }
+                    Some(t)
+                })
+                .flatten();
             Some((name, q))
         }
         _ => {
@@ -928,6 +979,49 @@ fn go_call_target(node: Node, source: &str) -> Option<(String, Option<String>)> 
             }
             scan(node, source, &mut last);
             last.map(|n| (n, None))
+        }
+    }
+}
+
+/// Collect Go parameter/receiver types into var_types so `x.Method()` can use
+/// the type as qualifier. Handles `func f(s *Server)`, `func (s *Server) M()`.
+fn collect_go_param_types(node: Node, source: &str, ctx: &ExtractContext) {
+    for field in ["parameters", "receiver"] {
+        let Some(params) = child_by_field(&node, field) else {
+            continue;
+        };
+        let mut cursor = params.walk();
+        for p in params.children(&mut cursor) {
+            if p.kind() != "parameter_declaration" {
+                continue;
+            }
+            let Some(ty_n) = child_by_field(&p, "type") else {
+                continue;
+            };
+            let ty_text = node_text(ty_n, source);
+            // *Server / Server / pkg.Server → base type name
+            let cleaned = ty_text.trim().trim_start_matches('*').trim();
+            let base = cleaned.rsplit('.').next().unwrap_or(cleaned);
+            if base.is_empty() {
+                continue;
+            }
+            let ty = base.to_string();
+            if let Some(name_n) = child_by_field(&p, "name") {
+                let name = node_text(name_n, source).trim().to_string();
+                if !name.is_empty() && name != "_" {
+                    ctx.var_types.borrow_mut().insert(name, ty.clone());
+                }
+            }
+            // Multi-name form `a, b string` — collect bare identifiers.
+            let mut c2 = p.walk();
+            for part in p.children(&mut c2) {
+                if part.kind() == "identifier" {
+                    let name = node_text(part, source).trim().to_string();
+                    if !name.is_empty() && name != "_" {
+                        ctx.var_types.borrow_mut().insert(name, ty.clone());
+                    }
+                }
+            }
         }
     }
 }
@@ -991,7 +1085,17 @@ fn walk_rust(
     let kind = node.kind();
     let mut local_parent = parent.clone();
 
-    if kind == "function_item" || kind == "function_signature_item" {
+    let is_fn_scope = matches!(
+        kind,
+        "function_item" | "function_signature_item" | "closure_expression"
+    );
+    let saved_var_types = if is_fn_scope {
+        Some(ctx.var_types.borrow().clone())
+    } else {
+        None
+    };
+
+    if kind == "function_item" || kind == "function_signature_item" || kind == "closure_expression" {
         collect_rust_param_types(node, source, ctx);
     }
 
@@ -1063,6 +1167,10 @@ fn walk_rust(
     for child in node.children(&mut cursor) {
         walk_rust(child, source, local_parent.clone(), symbols, references, ctx);
     }
+
+    if let Some(s) = saved_var_types {
+        *ctx.var_types.borrow_mut() = s;
+    }
 }
 
 fn rust_impl_type_name(node: Node, source: &str) -> Option<String> {
@@ -1103,9 +1211,16 @@ fn rust_call_target(
             if let Some(val) = child_by_field(&node, "value") {
                 let vt = node_text(val, source);
                 if vt == "self" || vt == "Self" {
-                    let q = enclosing
-                        .map(|e| e.rsplit("::").next().unwrap_or(e).to_string())
-                        .filter(|s| !s.is_empty());
+                    // enclosing is typically `Type::method` — take Type (parent of last segment).
+                    let q = enclosing.and_then(|e| {
+                        let parent = e.rsplit_once("::").map(|(p, _)| p).unwrap_or(e);
+                        let base = parent.rsplit("::").next().unwrap_or(parent);
+                        if base.is_empty() {
+                            None
+                        } else {
+                            Some(base.to_string())
+                        }
+                    });
                     return Some((name, q));
                 }
                 if vt.chars().all(|c| c.is_alphanumeric() || c == '_') {

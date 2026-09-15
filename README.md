@@ -28,8 +28,8 @@ Not another embedding RAG. When an agent needs to know *who calls this*, *what b
   - `importers` — who imports this file
 - **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
 - **`watch`**: poll mtime fingerprint and reindex
-- **Type-aware calls (pragmatic)**: `qualifier` on call sites (`ModelClient::connect_websocket`, `s.save`); `callers` matches bare or `Type.method` / `Type::method`
-- **`export scip` / `export lsif`**: write SCIP JSON or LSIF JSONL
+- **Type-aware calls (pragmatic, not full type inference)**: `qualifier` on call sites (`ModelClient::connect_websocket`, `s.save`); `callers` matches bare or `Type.method` / `Type::method`. Best-effort name/qualifier heuristics — Go/type work may still evolve; this is not a type checker.
+- **`export scip` / `export lsif` (experimental)**: simplified SCIP JSON / LSIF JSONL dump for inspection and tooling experiments. **Not schema-valid SCIP/LSIF and not consumable by Sourcegraph or the official `scip` CLI yet.**
 - **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1`
 - **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
 - **Windows-safe**: strips `\\?\` UNC prefix from canonical roots
@@ -74,11 +74,20 @@ agentgraph importers src/auth.ts
 export OPENAI_API_KEY=sk-...
 # optional: OPENAI_BASE_URL, AGENTGRAPH_MODEL, AGENTGRAPH_ENRICH_CONCURRENCY
 agentgraph enrich --limit 50
+# experimental — simplified dump, not consumable by Sourcegraph / scip CLI yet
 agentgraph export scip --out index.scip
 agentgraph export lsif --out index.lsif
 ```
 
 Index: `<root>/.agentgraph/index.db` (gitignore it).
+
+### Export (experimental)
+
+`export scip` / `export lsif` write a **simplified** graph dump (SCIP JSON / LSIF JSONL). Treat it as an internal interchange format:
+
+- not full SCIP/LSIF schema; symbol strings are experimental (`scip-agentgraph . ...`)
+- **not** validated against the official SCIP schema and **not** consumable by Sourcegraph or `scip` CLI yet
+- LSIF `resultSets` are keyed by qualified symbol (so `A.save` ≠ `B.save`); Windows file URIs use `file:///C:/...`
 
 ## MCP
 
@@ -115,7 +124,7 @@ symbols + refs (+ import resolve)
     └─ enrich (concurrent, descriptions preserved)
 ```
 
-Call resolution is **name-based** (not full type inference) — a pragmatic MVP trade-off. Impact uses true BFS and expands via enclosing symbol leaf names.
+Call resolution is **name-based** with optional `qualifier` hints — pragmatic, **not full type inference**. Impact uses true BFS and expands via enclosing symbol leaf names.
 
 ## Tests
 
@@ -123,7 +132,7 @@ Call resolution is **name-based** (not full type inference) — a pragmatic MVP 
 cargo test
 ```
 
-Covers line index, TS import resolve, BFS impact, and description preservation across reindex.
+Covers line index, TS import resolve, BFS impact, description preservation across reindex, and export shape (LSIF metaData first, `file:///` Windows URIs, distinct resultSets per qualified name).
 
 ## License
 

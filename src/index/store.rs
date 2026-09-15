@@ -101,6 +101,66 @@ impl Store {
         Ok(())
     }
 
+    /// Nested savepoint so a single file failure does not poison the outer batch.
+    pub fn begin_savepoint(&mut self, name: &str) -> Result<()> {
+        self.conn
+            .execute_batch(&format!("SAVEPOINT {}", quote_ident(name)))?;
+        Ok(())
+    }
+
+    pub fn release_savepoint(&mut self, name: &str) -> Result<()> {
+        self.conn
+            .execute_batch(&format!("RELEASE {}", quote_ident(name)))?;
+        Ok(())
+    }
+
+    pub fn rollback_savepoint(&mut self, name: &str) -> Result<()> {
+        self.conn
+            .execute_batch(&format!("ROLLBACK TO {}", quote_ident(name)))?;
+        self.conn
+            .execute_batch(&format!("RELEASE {}", quote_ident(name)))?;
+        Ok(())
+    }
+
+    /// True when the index has at least one file (i.e. has been built).
+    pub fn has_index(&self) -> Result<bool> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+        Ok(n > 0)
+    }
+
+    /// Error if the index is empty — callers/impact/related/importers/export must not silently return [].
+    pub fn ensure_indexed(&self) -> Result<()> {
+        if !self.has_index()? {
+            anyhow::bail!("index is empty — run `agentgraph index` first");
+        }
+        Ok(())
+    }
+
+    /// True when a symbol with this bare name exists (used to gate impact BFS expansion).
+    pub fn symbol_name_exists(&self, name: &str) -> Result<bool> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE name = ?1 LIMIT 1",
+            params![name],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Language of the file at `path`, if known.
+    pub fn file_language(&self, path: &str) -> Result<Option<String>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT language FROM files WHERE path = ?1",
+                params![path],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(row)
+    }
+
     /// Replace file rows. Does NOT open its own transaction (caller uses begin_batch/commit_batch).
     pub fn replace_file(
         &mut self,
@@ -234,6 +294,68 @@ impl Store {
         s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
     }
 
+    /// Exact match on symbol name or qualified_name (no LIKE).
+    pub fn find_symbol_exact(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+             FROM symbols s
+             JOIN files f ON f.path = s.path
+             WHERE s.name = ?1 OR s.qualified_name = ?1
+             ORDER BY
+               CASE WHEN s.name = ?1 THEN 0 ELSE 1 END,
+               s.path, s.start_line
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![name, limit as i64], |r| {
+            Ok(SymbolRecord {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                qualified_name: r.get(2)?,
+                kind: SymbolKind::parse(&r.get::<_, String>(3)?),
+                path: r.get(4)?,
+                language: r.get(9)?,
+                start_line: r.get::<_, i64>(5)? as usize,
+                end_line: r.get::<_, i64>(6)? as usize,
+                parent: r.get(7)?,
+                description: r.get(8)?,
+                start_col: r.get::<_, i64>(10)? as usize,
+                end_col: r.get::<_, i64>(11)? as usize,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Substring (LIKE) fuzzy match on symbol name only.
+    pub fn find_symbol_fuzzy(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+             FROM symbols s
+             JOIN files f ON f.path = s.path
+             WHERE s.name LIKE ?1 ESCAPE '\\'
+             ORDER BY s.path, s.start_line
+             LIMIT ?2",
+        )?;
+        let pattern = format!("%{}%", Self::escape_like(name));
+        let rows = stmt.query_map(params![pattern, limit as i64], |r| {
+            Ok(SymbolRecord {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                qualified_name: r.get(2)?,
+                kind: SymbolKind::parse(&r.get::<_, String>(3)?),
+                path: r.get(4)?,
+                language: r.get(9)?,
+                start_line: r.get::<_, i64>(5)? as usize,
+                end_line: r.get::<_, i64>(6)? as usize,
+                parent: r.get(7)?,
+                description: r.get(8)?,
+                start_col: r.get::<_, i64>(10)? as usize,
+                end_col: r.get::<_, i64>(11)? as usize,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Combined exact + fuzzy (legacy behavior; prefer exact/fuzzy split in new code).
     pub fn find_symbol(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
@@ -299,8 +421,14 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Link refs → symbols.id after a full index (name + optional qualifier).
+    /// Link refs → symbols.id after a full or incremental index (name + optional qualifier).
+    ///
+    /// Always starts by clearing all `resolved_symbol_id` values, then fully relinks.
+    /// This avoids dangling ids after DELETE+INSERT of a file whose symbols were targets.
     pub fn resolve_symbol_ids(&mut self) -> Result<usize> {
+        // Drop every previous link so incremental reindex cannot leave dangling sids.
+        self.conn.execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
+
         // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
         {
             let mut stmt = self.conn.prepare(
@@ -414,6 +542,11 @@ impl Store {
     }
 
     /// True BFS impact. `limit` caps total output; per-layer fetch uses a larger slice.
+    ///
+    /// Frontier expansion via `enclosing` only happens when a symbol with that leaf name
+    /// actually exists in the index (and preferably in the same language as the citing
+    /// file). This prevents cross-language last_segment(name) collisions from linking
+    /// e.g. Python `validate_email` impact into an unrelated TypeScript `authenticate`.
     pub fn impact(&self, name: &str, depth: usize, limit: usize) -> Result<Vec<ImpactNode>> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
@@ -447,16 +580,45 @@ impl Store {
                     enclosing: r.enclosing.clone(),
                     resolved: r.resolved.clone(),
                 });
-                // Only expand via last segment of enclosing (refs store bare names).
+                // Only expand via last segment of enclosing when that leaf is a real
+                // symbol, ideally in the same language as the referring file.
                 if let Some(enc) = r.enclosing.clone() {
                     let leaf = last_segment(&enc);
                     if !leaf.is_empty() && visited_names.insert(leaf.clone()) {
-                        frontier.push_back((leaf, d + 1));
+                        let ref_lang = self.file_language(&r.path)?;
+                        if self.expandable_enclosing(&leaf, ref_lang.as_deref())? {
+                            frontier.push_back((leaf, d + 1));
+                        }
                     }
                 }
             }
         }
         Ok(out)
+    }
+
+    /// Gate for impact BFS: expand enclosing only if a symbol named `leaf` exists,
+    /// preferring a match in the same language as the referring file.
+    fn expandable_enclosing(&self, leaf: &str, ref_lang: Option<&str>) -> Result<bool> {
+        if let Some(lang) = ref_lang {
+            let n_same: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM symbols s
+                 JOIN files f ON f.path = s.path
+                 WHERE s.name = ?1 AND f.language = ?2
+                 LIMIT 1",
+                params![leaf, lang],
+                |r| r.get(0),
+            )?;
+            if n_same > 0 {
+                return Ok(true);
+            }
+            // Cross-language: only expand if a same-language hit is impossible
+            // (no same-lang symbol). Skip bare-name collisions across languages
+            // when a same-lang candidate set exists for the *current* frontier name.
+            // Practical MVP: do NOT expand across languages — require same language.
+            return Ok(false);
+        }
+        // Unknown file language: fall back to "leaf must exist as any symbol".
+        self.symbol_name_exists(leaf)
     }
 
     pub fn related_files(&self, name: &str, limit: usize) -> Result<Vec<(String, usize, String)>> {
@@ -554,6 +716,21 @@ impl Store {
 
 fn last_segment(s: &str) -> String {
     s.rsplit(['.', ':']).next().unwrap_or(s).to_string()
+}
+
+/// Minimal identifier quoting for SAVEPOINT names (alphanumeric + underscore only).
+fn quote_ident(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    if cleaned.is_empty() {
+        "sp".to_string()
+    } else if cleaned.chars().next().unwrap().is_ascii_digit() {
+        format!("sp_{cleaned}")
+    } else {
+        cleaned
+    }
 }
 
 fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {

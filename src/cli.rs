@@ -30,11 +30,14 @@ pub enum Commands {
     },
     /// Show index statistics
     Stats,
-    /// Find symbol definitions by exact or fuzzy name
+    /// Find symbol definitions by exact name (falls back to fuzzy on no match)
     Find {
         name: String,
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// Force fuzzy (substring) search; default is exact-first with automatic fuzzy fallback
+        #[arg(long, default_value_t = false)]
+        fuzzy: bool,
     },
     /// List call sites / references of a symbol
     Callers {
@@ -101,10 +104,27 @@ pub fn run(cli: Cli) -> Result<()> {
             let stats = indexer.stats()?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
-        Commands::Find { name, limit } => {
+        Commands::Find { name, limit, fuzzy } => {
             let store = indexer.open_store()?;
-            let q = Query::new(&store);
-            let hits = q.find_symbol(&name, limit)?;
+            store.ensure_indexed()?;
+            let hits = if fuzzy {
+                // Explicit --fuzzy: substring search only.
+                store.find_symbol_fuzzy(&name, limit)?
+            } else {
+                // Exact first; if empty, automatic fuzzy fallback with a stderr note.
+                let exact = store.find_symbol_exact(&name, limit)?;
+                if exact.is_empty() {
+                    let fuzzy_hits = store.find_symbol_fuzzy(&name, limit)?;
+                    if !fuzzy_hits.is_empty() {
+                        eprintln!(
+                            "note: no exact match for '{name}'; showing fuzzy results (pass --fuzzy to skip exact)"
+                        );
+                    }
+                    fuzzy_hits
+                } else {
+                    exact
+                }
+            };
             if hits.is_empty() {
                 bail!("no symbol matching '{name}' — run `agentgraph index` first?");
             }
@@ -112,18 +132,21 @@ pub fn run(cli: Cli) -> Result<()> {
         }
         Commands::Callers { name, limit } => {
             let store = indexer.open_store()?;
+            store.ensure_indexed()?;
             let q = Query::new(&store);
             let hits = q.callers(&name, limit)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
         Commands::Impact { name, depth, limit } => {
             let store = indexer.open_store()?;
+            store.ensure_indexed()?;
             let q = Query::new(&store);
             let hits = q.impact(&name, depth, limit)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
         Commands::Related { name, limit } => {
             let store = indexer.open_store()?;
+            store.ensure_indexed()?;
             let q = Query::new(&store);
             let hits = q.related_files(&name, limit)?;
             let mapped: Vec<serde_json::Value> = hits
@@ -136,6 +159,7 @@ pub fn run(cli: Cli) -> Result<()> {
         }
         Commands::Importers { path, limit } => {
             let store = indexer.open_store()?;
+            store.ensure_indexed()?;
             let hits = store.importers_of_file(&path.replace('\\', "/"), limit)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
@@ -150,6 +174,7 @@ pub fn run(cli: Cli) -> Result<()> {
         }
         Commands::Export { format, out } => {
             let store = indexer.open_store()?;
+            store.ensure_indexed()?;
             match format.as_str() {
                 "scip" => crate::index::export::export_scip(&store, &indexer.root, &out)?,
                 "lsif" => crate::index::export::export_lsif(&store, &indexer.root, &out)?,

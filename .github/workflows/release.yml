@@ -30,6 +30,7 @@ jobs:
             cross: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            # install.ps1 expects agentgraph-windows-x86_64.zip
             asset: agentgraph-windows-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -74,6 +75,7 @@ jobs:
           Copy-Item $src "${{ matrix.asset }}.exe"
           Compress-Archive -Path "${{ matrix.asset }}.exe" -DestinationPath "${{ matrix.asset }}.zip" -Force
           $h = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}.zip").Hash.ToLower()
+          # Same "<hash>  <filename>" layout as sha256sum so installers can parse it.
           "$h  ${{ matrix.asset }}.zip" | Out-File -Encoding ascii "${{ matrix.asset }}.zip.sha256"
       - uses: actions/upload-artifact@v4
         with:
@@ -97,7 +99,19 @@ jobs:
       - name: Aggregate SHA256SUMS
         run: |
           cd dist
-          cat *.sha256 > SHA256SUMS || true
+          # Fail closed if no per-asset checksums were produced.
+          shopt -s nullglob
+          sums=(*.sha256)
+          if [ ${#sums[@]} -eq 0 ]; then
+            echo "error: no .sha256 files found in dist/" >&2
+            ls -la
+            exit 1
+          fi
+          cat "${sums[@]}" > SHA256SUMS
+          if [ ! -s SHA256SUMS ]; then
+            echo "error: SHA256SUMS is empty" >&2
+            exit 1
+          fi
           cat SHA256SUMS
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

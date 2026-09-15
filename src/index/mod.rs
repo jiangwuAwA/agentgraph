@@ -146,13 +146,19 @@ impl Indexer {
         for item in parsed {
             match item {
                 Ok(pf) => {
-                    if let Err(e) =
-                        store.replace_file(&pf.rel, &pf.hash, pf.lang_str, &pf.extracted)
-                    {
-                        eprintln!("db error {}: {e:#}", pf.rel);
-                        failed_parse += 1;
-                    } else {
-                        indexed += 1;
+                    // Per-file savepoint: a DB error for one file must not poison
+                    // the outer transaction or leave partial rows for that path.
+                    store.begin_savepoint("file_sp")?;
+                    match store.replace_file(&pf.rel, &pf.hash, pf.lang_str, &pf.extracted) {
+                        Ok(()) => {
+                            store.release_savepoint("file_sp")?;
+                            indexed += 1;
+                        }
+                        Err(e) => {
+                            store.rollback_savepoint("file_sp")?;
+                            eprintln!("db error {}: {e:#}", pf.rel);
+                            failed_parse += 1;
+                        }
                     }
                 }
                 Err(f) => {

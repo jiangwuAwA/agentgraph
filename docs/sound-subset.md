@@ -1,19 +1,24 @@
 # Sound subset (L2 v1 — experimental)
 
 > **Status:** implemented as `impact --sound` / `callers --sound` / `agentgraph subset`
-> (experimental). Soundness claim applies **only** when the indexed corpus has
-> **zero** S violations (`subset_ok: true`). See [eval-l2.md](eval-l2.md).
+> (experimental). When the indexed corpus has **zero** S violations (`subset_ok: true`),
+> CLI emits a **weakened eligibility promise**:
+> edges are sound-eligible *reference* candidates (Exact calls + allowlisted
+> DI/event **registrations** + finite-domain string keys).
 >
-> Do **not** market this as production-complete sound analysis.
+> **This is NOT a proven runtime call-graph over-approx.** Registration of a
+> handler (`emitter.on`, DI `bind`, Go route map) is not the same edge as
+> framework dispatch at runtime. Do **not** market as production-complete sound analysis.
 
-## Promise (once implemented)
+## Promise (weakened — as implemented)
 
-For programs that stay inside subset **S**, every runtime call edge that
-can occur is **contained** in the static over-approximation returned by
-`impact --sound` / `callers --sound` (over-approx OK; **no misses**).
+For programs inside **S** with `subset_ok: true`, the `--sound` walk returns
+the **sound-eligible reference graph**: Exact syntactic calls, allowlisted
+DI/event *registration* references, and finite-domain string-key candidates.
 
-Outside S: no guarantee. DynamicCandidate edges are reported as
-**warnings**, not trusted as sound.
+**Not claimed:** completeness of runtime *dispatch* (framework `emit` /
+FastAPI dependency call / HTTP mux invocation are not modeled as call edges).
+Over-reporting is allowed. Outside S: no guarantee.
 
 ## S_js (TypeScript / JavaScript v1)
 
@@ -35,6 +40,30 @@ A program is in S_js when **all** of the following hold:
    (or macros must be expanded before index).
 3. Trait objects (`dyn Trait`) only with **local** `impl Trait for Type`
    blocks present in the indexed corpus.
+
+## S_py (Python v1 — frozen)
+
+A program is in S_py when **all** of the following hold:
+
+1. No `eval` / `exec` / `__import__` with computed names.
+2. No `setattr` on callables / functions (monkey-patching call targets).
+3. DI only via recognized patterns (`Depends`, `@inject`) with static argument names.
+4. Dynamic import only via `importlib.import_module("literal.path")` (finite domain).
+
+Scanner: lexical (`scan_py` in `src/index/subset.rs`). Conservative — a false
+violation (over-flag) is preferred over a missed escape.
+
+## S_go (Go v1 — frozen)
+
+A program is in S_go when **all** of the following hold:
+
+1. No `unsafe.*` (Pointer / Sizeof / Add) and no `unsafe` blocks.
+2. No `reflect.*` (Value.Call / MethodByName invents edges).
+3. No `plugin.Open` / `syscall.NewCallback`.
+4. Route/DI tables only as composite `map[string]…Handler…` literals
+   recognized by `go.di.handler_map`.
+
+Scanner: lexical (`scan_go`). Same conservative bias as S_py.
 
 ## Analysis ingredients (implemented v1)
 

@@ -26,13 +26,42 @@ fn run_ag(root: &Path, args: &[&str]) -> (bool, String, String) {
     )
 }
 
+fn copy_fixture_to_temp(rel: &str, tag: &str) -> PathBuf {
+    let src = fixture(rel);
+    let dst = std::env::temp_dir().join(format!("agentgraph-l2-sound-{tag}"));
+    let _ = std::fs::remove_dir_all(&dst);
+    copy_dir(&src, &dst);
+    dst
+}
+
+fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for e in std::fs::read_dir(src).unwrap() {
+        let e = e.unwrap();
+        let t = dst.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&e.path(), &t);
+        } else {
+            let _ = std::fs::copy(e.path(), &t);
+        }
+    }
+}
+
 fn index_clean() -> PathBuf {
-    let root = fixture("fixtures/eval-l2/s-js-auth");
-    // Fresh index each time
-    let _ = std::fs::remove_dir_all(root.join(".agentgraph"));
+    // Isolate per-test so parallel tests cannot race on one .agentgraph/ (C-fix race).
+    let root = copy_fixture_to_temp("fixtures/eval-l2/s-js-auth", &unique_tag());
     let (ok, _, err) = run_ag(&root, &["index"]);
     assert!(ok, "index failed: {err}");
     root
+}
+
+fn unique_tag() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("{}-{n}", std::process::id())
 }
 
 #[test]
@@ -49,8 +78,7 @@ fn subset_clean_program_in_s() {
 
 #[test]
 fn subset_eval_program_leaves_s() {
-    let root = fixture("fixtures/eval-l2/s-js-evil");
-    let _ = std::fs::remove_dir_all(root.join(".agentgraph"));
+    let root = copy_fixture_to_temp("fixtures/eval-l2/s-js-evil", &unique_tag());
     let (ok, _, err) = run_ag(&root, &["index"]);
     assert!(ok, "index failed: {err}");
     let (ok, stdout, _err) = run_ag(&root, &["subset"]);
@@ -86,8 +114,7 @@ fn impact_sound_on_clean_program() {
 
 #[test]
 fn impact_sound_disables_claim_when_eval() {
-    let root = fixture("fixtures/eval-l2/s-js-evil");
-    let _ = std::fs::remove_dir_all(root.join(".agentgraph"));
+    let root = copy_fixture_to_temp("fixtures/eval-l2/s-js-evil", &unique_tag());
     let (ok, _, _) = run_ag(&root, &["index"]);
     assert!(ok);
     let (ok, stdout, err) = run_ag(&root, &["impact", "dangerous", "--sound"]);
@@ -140,68 +167,27 @@ fn differential_runtime_edges_subset_of_sound_impact() {
     assert_eq!(sound["subset_ok"], true);
     let impact = sound["impact"].as_array().expect("impact array");
 
-    // Runtime edge (from → to) means `to` was called by `from`.
-    // impact(main) collects callers of main and of enclosing functions.
-    // For containment: every callee `to` invoked at runtime from a wrapped fn
-    // must appear as a ref name in the sound graph reachable from main's callers,
-    // OR as a direct call edge name in the index.
-    // Practical check: every runtime callee name is present as some sound impact
-    // node name OR as callers of that name under sound walk from main's subgraph.
-    let mut static_names: std::collections::HashSet<String> = impact
-        .iter()
-        .filter_map(|n| n["name"].as_str().map(|s| s.to_string()))
-        .collect();
-    // Also collect callers of each runtime callee under sound mode.
+    // C4: do NOT pre-insert `to` into the static set — that made the old
+    // assertion vacuously true. Containment = callers(enclosing=from) OR
+    // impact(to) names/enclosings contain `from`.
     for e in edges {
         let to = e["to"].as_str().unwrap();
-        static_names.insert(to.to_string());
+        let from = e["from"].as_str().unwrap();
         let (ok2, stdout2, err2) = run_ag(&root, &["callers", to, "--sound"]);
         assert!(ok2, "callers --sound {to}: {err2}");
         let cv: Value = serde_json::from_str(&stdout2).unwrap();
         let callers = cv["callers"].as_array().cloned().unwrap_or_default();
-        let from = e["from"].as_str().unwrap();
-        let found = callers.iter().any(|c| {
+        let found_in_callers = callers.iter().any(|c| {
             c["enclosing"]
                 .as_str()
                 .map(|s| s.contains(from))
                 .unwrap_or(false)
-                || c["name"].as_str() == Some(from)
-                || c["enclosing"]
-                    .as_str()
-                    .map(|s| s.contains(to))
-                    .unwrap_or(false)
         });
-        // Containment: the runtime call from→to must be represented.
-        // We require the callee `to` to have at least one sound caller edge
-        // (over-approx may add more). If `from` appears as enclosing, strongest.
-        assert!(
-            found || !callers.is_empty() || static_names.contains(to),
-            "runtime edge {from}→{to} not contained in sound graph; callers={callers:?} impact_names={static_names:?}"
-        );
-        // Stronger: `to` must appear in some sound ref (impact of to's callers non-empty
-        // or impact of main includes to as name when from is main).
-        let (ok3, stdout3, _) = run_ag(&root, &["impact", to, "--sound", "--depth", "1"]);
-        assert!(ok3);
-        let iv: Value = serde_json::from_str(&stdout3).unwrap();
-        let _ = iv;
-    }
-
-    // Strong containment: every runtime `to` that is called (not entry) must
-    // appear as a name in impact(main) OR have callers that include a function
-    // on the runtime path. Check main's sound impact contains loginHandler path.
-    let names: Vec<String> = impact
-        .iter()
-        .filter_map(|n| n["name"].as_str().map(|s| s.to_string()))
-        .collect();
-    for e in edges {
-        let to = e["to"].as_str().unwrap();
-        let from = e["from"].as_str().unwrap();
-        // loginHandler calls authenticate — impact(authenticate) should include loginHandler
         let (ok4, stdout4, err4) = run_ag(&root, &["impact", to, "--sound", "--depth", "2"]);
         assert!(ok4, "{err4}");
         let iv: Value = serde_json::from_str(&stdout4).unwrap();
         let inodes = iv["impact"].as_array().cloned().unwrap_or_default();
-        let hit = inodes.iter().any(|n| {
+        let found_in_impact = inodes.iter().any(|n| {
             n["name"].as_str() == Some(from)
                 || n["enclosing"]
                     .as_str()
@@ -209,10 +195,27 @@ fn differential_runtime_edges_subset_of_sound_impact() {
                     .unwrap_or(false)
         });
         assert!(
-            hit,
-            "L2 containment fail: runtime {from}→{to} not in impact({to})--sound; nodes={inodes:?} names={names:?}"
+            found_in_callers || found_in_impact,
+            "L2 containment fail: runtime {from}→{to}; callers={callers:?} impact={inodes:?}"
         );
     }
+
+    let names: Vec<String> = impact
+        .iter()
+        .filter_map(|n| n["name"].as_str().map(|s| s.to_string()))
+        .collect();
+    // main is the entry — callers(main) may be empty. Check a mid-chain callee.
+    let (ok5, stdout5, err5) = run_ag(
+        &root,
+        &["impact", "authenticate", "--sound", "--depth", "3"],
+    );
+    assert!(ok5, "{err5}");
+    let mid: Value = serde_json::from_str(&stdout5).unwrap();
+    let mid_nodes = mid["impact"].as_array().cloned().unwrap_or_default();
+    assert!(
+        !mid_nodes.is_empty(),
+        "impact(authenticate)--sound must be non-empty; main_impact_names={names:?}"
+    );
 }
 
 fn which_node() -> Option<PathBuf> {

@@ -100,10 +100,9 @@ pub fn scan_subset(source: &str, lang: Language, path: &str) -> SubsetReport {
             scan_js(source, path, &mut violations)
         }
         Language::Rust => scan_rust(source, path, &mut violations),
-        // Python / Go: S not frozen in v1 — report in_subset only when no
-        // obvious reflection escape we already model; still scan eval-like.
+        // Python / Go S v1: conservative lexical/AST escapes leave S.
         Language::Python => scan_py(source, path, &mut violations),
-        Language::Go => {}
+        Language::Go => scan_go(source, path, &mut violations),
     }
     SubsetReport {
         path: path.to_string(),
@@ -195,6 +194,7 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
             if let Some(c) = callee {
                 let text = snippet_at(source, c);
                 let last = text.rsplit('.').next().unwrap_or(&text);
+                // eval / (0,eval) — last segment must be exactly eval
                 if last == "eval" {
                     push_v(
                         violations,
@@ -204,12 +204,13 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                         &snippet_at(source, node).replace('\n', " "),
                     );
                 }
-                if kind == "new_expression" && last == "Function" {
+                // Function('...') with or without new (C2)
+                if last == "Function" {
                     push_v(
                         violations,
                         path,
                         line,
-                        "new Function",
+                        "Function",
                         &snippet_at(source, node).replace('\n', " "),
                     );
                 }
@@ -223,7 +224,7 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                     );
                 }
                 // Reflect.* — left S.
-                if text.contains("Reflect") {
+                if text == "Reflect" || text.starts_with("Reflect.") {
                     push_v(
                         violations,
                         path,
@@ -232,27 +233,57 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                         &snippet_at(source, node).replace('\n', " "),
                     );
                 }
-                // Template computed call key: obj[`m${x}`]()
-                if let Some(fn_u) = Some(c) {
-                    let mut n = fn_u;
-                    while n.kind() == "parenthesized_expression" {
-                        let mut pc = n.walk();
-                        let Some(inner) =
-                            n.children(&mut pc).find(|x| !matches!(x.kind(), "(" | ")"))
-                        else {
-                            break;
+                // Computed call keys: only string literals stay in S (C2).
+                let mut n = c;
+                while n.kind() == "parenthesized_expression" {
+                    let mut pc = n.walk();
+                    let Some(inner) = n.children(&mut pc).find(|x| !matches!(x.kind(), "(" | ")"))
+                    else {
+                        break;
+                    };
+                    n = inner;
+                }
+                if n.kind() == "subscript_expression" {
+                    if let Some(key) = n.child_by_field_name("index") {
+                        let kt = snippet_at(source, key);
+                        // Only string / template nodes can be finite-domain keys.
+                        let key_kind = key.kind();
+                        let is_stringish = key_kind == "string" || key_kind == "template_string";
+                        let is_plain_string_lit = is_stringish && {
+                            let inner = kt.trim_matches(|ch| ch == '\'' || ch == '"' || ch == '`');
+                            !inner.is_empty()
+                                && !kt.contains("${")
+                                && inner.chars().all(|ch| {
+                                    ch.is_alphanumeric() || ch == '_' || ch == '.' || ch == '-'
+                                })
                         };
-                        n = inner;
-                    }
-                    if n.kind() == "subscript_expression" {
-                        if let Some(key) = n.child_by_field_name("index") {
-                            let kt = snippet_at(source, key);
-                            if kt.contains("${") {
-                                push_v(violations, path, line, "template_computed_key", &kt);
-                            }
+                        if !is_plain_string_lit {
+                            let kind_s = if kt.contains("${") {
+                                "template_computed_key"
+                            } else {
+                                "nonliteral_computed_key"
+                            };
+                            push_v(violations, path, line, kind_s, &kt);
                         }
                     }
                 }
+            }
+        }
+        "assignment_expression" | "augmented_assignment_expression" => {
+            // Monkey-patching: obj.fn = ..., Function.prototype.x = ..., global.eval = ...
+            let t = snippet_at(source, node);
+            if t.contains("prototype")
+                || t.starts_with("globalThis")
+                || t.starts_with("global.")
+                || t.starts_with("window.")
+            {
+                push_v(
+                    violations,
+                    path,
+                    line,
+                    "monkey_patch",
+                    &t.replace('\n', " "),
+                );
             }
         }
         _ => {}
@@ -265,6 +296,7 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
 
 fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
     // Lightweight lexical scan: eval( / exec( / __import__ with dynamic name.
+    // Also: monkey-patching callables via setattr(obj, ...) leaves S_py v1.
     for (idx, raw_line) in source.lines().enumerate() {
         let line_no = idx + 1;
         let t = raw_line.trim();
@@ -276,6 +308,31 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         }
         if t.contains("__import__(") {
             push_v(violations, path, line_no, "py___import__", t);
+        }
+        if t.contains("setattr(") {
+            push_v(violations, path, line_no, "py_setattr", t);
+        }
+    }
+}
+
+fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
+    for (idx, raw_line) in source.lines().enumerate() {
+        let line_no = idx + 1;
+        let t = raw_line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        // unsafe.Pointer / unsafe.Sizeof / unsafe.Add — leave S_go v1.
+        if t.contains("unsafe.") || t.starts_with("unsafe ") {
+            push_v(violations, path, line_no, "go_unsafe", t);
+        }
+        // reflect.Value.Call / MethodByName invents call edges.
+        if t.contains("reflect.") {
+            push_v(violations, path, line_no, "go_reflect", t);
+        }
+        // plugin.Open / syscall.NewCallback-style dynamic symbols.
+        if t.contains("plugin.Open") || t.contains("syscall.NewCallback") {
+            push_v(violations, path, line_no, "go_dynamic_symbol", t);
         }
     }
 }

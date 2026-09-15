@@ -74,8 +74,20 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 - Over-reporting is allowed (over-approx).
 - Do not market `--sound` as “zero missed dynamic calls” on arbitrary repos.
 
-## Next hardening (not in this drop)
+## Adversarial review follow-up (this drop)
 
-- Property tests: random S programs interpret vs graph.
-- Broader Node differential (multi-file ESM, DI container fixtures).
-- Go/Python S freeze + language-specific S scanners via full AST.
+| Finding | Fix |
+|---|---|
+| **C1** runtime-call soundness promise too strong | Promise rewritten to **sound-eligible reference graph**; registration≠dispatch called out |
+| **C2** S holes: `Function()` w/o `new`, `obj[k]()`, prototype patch | Scanner flags `Function`, `nonliteral_computed_key`, `monkey_patch` |
+| **C3** DI/event allowlist ≠ runtime call | Documented in promise + sound-subset; still walkable as reference candidates |
+| **C4** vacuous differential assert | Removed pre-insert of `to`; require callers/impact evidence |
+| **C5** SQL LIMIT before sound filter | `callers_uncached_opt(None)` — fetch all then filter then take limit |
+| Parallel test race on shared fixture | Per-test temp copies in `l2_sound.rs` |
+
+
+## Next hardening
+
+- Broader Node DI-container fixtures; property tests for S_py/S_go.
+- Model framework dispatch edges (emit / mux / Depends resolve) if we ever
+  want a *runtime call* claim again — currently out of scope by design.

@@ -576,6 +576,17 @@ impl Store {
         limit: usize,
         filter: ConfidenceFilter,
     ) -> Result<Vec<ReferenceRecord>> {
+        self.callers_uncached_opt(name, Some(limit), filter)
+    }
+
+    /// Same as `callers_uncached` but `limit: None` omits SQL LIMIT (used by
+    /// sound walk so post-filter cannot under-approx via early truncation — C5).
+    fn callers_uncached_opt(
+        &self,
+        name: &str,
+        limit: Option<usize>,
+        filter: ConfidenceFilter,
+    ) -> Result<Vec<ReferenceRecord>> {
         // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
             (n.to_string(), format!("{q}.{n}"))
@@ -592,27 +603,31 @@ impl Store {
         };
 
         let conf = confidence_where(filter);
+        let limit_sql = if limit.is_some() { " LIMIT ?2" } else { "" };
         let sql = if qual_dot.is_empty() {
             format!(
                 "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
                  FROM refs WHERE name = ?1 AND {conf}
-                 ORDER BY path, line LIMIT ?2"
+                 ORDER BY path, line{limit_sql}"
             )
         } else {
-            // Exclusive: when a type qualifier is present, do not mix bare-name hits.
             format!(
                 "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
                  FROM refs
                  WHERE ((qualifier || '.' || name) = ?1 OR (qualifier || '::' || name) = ?1)
                    AND {conf}
-                 ORDER BY path, line LIMIT ?2"
+                 ORDER BY path, line{limit_sql}"
             )
         };
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = if qual_dot.is_empty() {
-            stmt.query_map(params![bare, limit as i64], map_ref)?
+        let key = if qual_dot.is_empty() {
+            &bare
         } else {
-            stmt.query_map(params![qual_dot, limit as i64], map_ref)?
+            &qual_dot
+        };
+        let rows = match limit {
+            Some(l) => stmt.query_map(params![key, l as i64], map_ref)?,
+            None => stmt.query_map(params![key], map_ref)?,
         };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
@@ -1053,14 +1068,14 @@ impl Store {
     }
 
     /// Callers restricted to the sound over-approximation edge set (L2).
-    /// Fetches a wide confidence window then drops unsound edges.
+    /// Fetches **all** confidence-window rows then filters — never LIMIT-truncates
+    /// before the sound filter (C5 under-approx bug).
     pub fn callers_sound(
         &self,
         name: &str,
         limit: usize,
     ) -> Result<(Vec<ReferenceRecord>, Vec<SubsetViolation>)> {
-        let fetch = limit.saturating_mul(4).max(200);
-        let all = self.callers_uncached(name, fetch, ConfidenceFilter::IncludeDynamic)?;
+        let all = self.callers_uncached_opt(name, None, ConfidenceFilter::IncludeDynamic)?;
         let hits: Vec<ReferenceRecord> = all
             .into_iter()
             .filter(|r| self.ref_is_sound(r))
@@ -1081,7 +1096,6 @@ impl Store {
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
-        let fetch_cap = limit.saturating_mul(4).max(200);
         let mut frontier: std::collections::VecDeque<(String, usize)> =
             std::collections::VecDeque::new();
         frontier.push_back((name.to_string(), 0));
@@ -1091,8 +1105,9 @@ impl Store {
             if d >= depth || out.len() >= limit {
                 continue;
             }
+            // No SQL LIMIT before sound filter (C5).
             let refs =
-                self.callers_uncached(&current, fetch_cap, ConfidenceFilter::IncludeDynamic)?;
+                self.callers_uncached_opt(&current, None, ConfidenceFilter::IncludeDynamic)?;
             for r in refs {
                 if !self.ref_is_sound(&r) {
                     continue;

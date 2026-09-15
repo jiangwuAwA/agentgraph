@@ -147,7 +147,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "subset",
-                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may claim over-approx containment within S.",
+                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may emit its (weakened) eligibility promise; it is still not a runtime call-graph theorem.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
@@ -316,9 +316,15 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 store.ensure_indexed()?;
                 if sound {
                     let (hits, violations) = store.impact_sound(sym, depth, limit)?;
+                    let subset_ok = violations.is_empty();
                     let payload = serde_json::json!({
                         "mode": "sound",
-                        "subset_ok": violations.is_empty(),
+                        "subset_ok": subset_ok,
+                        "promise": if subset_ok {
+                            "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
+                        } else {
+                            "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
+                        },
                         "subset_violations": violations,
                         "impact": hits,
                     });

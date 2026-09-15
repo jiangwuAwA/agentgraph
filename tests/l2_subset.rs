@@ -80,6 +80,58 @@ export function run(obj, key) {
 }
 
 #[test]
+fn s_js_function_without_new_is_violation() {
+    let src = "export function f() { return Function('return 1')(); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/fn.js");
+    assert!(
+        !r.in_subset,
+        "Function() without new must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_nonliteral_computed_key_is_violation() {
+    let src = r#"
+export function run(reg, k) {
+  return reg[k]();
+}
+"#;
+    let r = scan_subset(src, Language::JavaScript, "src/k.js");
+    assert!(
+        !r.in_subset,
+        "obj[key]() non-literal must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_string_literal_computed_key_stays_in_s() {
+    let src = r#"
+export function run(reg) {
+  return reg['doWork']();
+}
+"#;
+    let r = scan_subset(src, Language::JavaScript, "src/ok.js");
+    assert!(
+        r.in_subset,
+        "obj['doWork']() string literal stays in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn s_js_monkey_patch_prototype_is_violation() {
+    let src = "Function.prototype.f = function () { return 1; };\n";
+    let r = scan_subset(src, Language::JavaScript, "src/mp.js");
+    assert!(
+        !r.in_subset,
+        "prototype patch must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
 fn sound_eligibility_allowlist() {
     use agentgraph::index::subset::is_sound_eligible;
     assert!(is_sound_eligible(Confidence::Exact, None));

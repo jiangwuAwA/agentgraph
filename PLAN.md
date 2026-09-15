@@ -250,9 +250,11 @@ ref {
 
 ### 4.5 L2 交付物
 
-- `docs/sound-subset.md` ✅（S v1 冻结 + 实现状态）
+- `docs/sound-subset.md` ✅（S_js / S_py / S_go / S_rs v1 冻结）
 - `impact --sound` / `callers --sound` ✅ 实验性（违例则关闭 sound 承诺）
-- 差分测试 harness ✅ Node export tracer + `tests/l2_sound.rs`（属性测试未做）
+- 差分测试 harness ✅ Node export tracer + 多文件 ESM `s-js-esm`（`tests/l2_esm_diff.rs`）
+- 属性测试 ✅ `tests/l2_property.rs`（确定性 S_js 生成器：Exact 边 + impact_sound 包含）
+- Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr）
 - 评测报告 `docs/eval-l2.md` ✅
 
 **M4 实测（fixture 级）：** `s-js-auth` 运行时边 ⊆ `--sound` 边 100%；`s-js-evil`（eval）正确 `subset_ok=false`。非全生态 sound 声明。
@@ -295,8 +297,10 @@ ref {
 
 ### 5.4 L3 交付物
 
-- `formal/` 目录：模型 + 证明脚本 + README  
-- CI：仅检查文件存在与文档，不强制定理编译（可选 nightly）  
+- `formal/` 目录：模型 + 证明脚本 + README ✅ `formal/IncrementalIndex.tla`（I2 增量+sid 重链）
+- CI：仅检查文件存在与文档，不强制定理编译（可选 nightly） ✅ `tests/l3_invariants.rs` 钉住 I1–I3 + formal 产物存在
+
+**说明：** TLA+ 模型可用 TLC 本地检查（`formal/README.md`）；主 CI **不**编译定理。I4 小语言 Lean 未开始。
 
 ### 5.5 L3 非目标
 
@@ -370,8 +374,8 @@ ref {
 2. ~~**M1 / L0.1**：TDD 实现 fsnotify watch。~~ **完成**  
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
-5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**；后续：属性测试、多文件 ESM 差分、Go/Py S 冻结  
-6. L3：TLA+ 增量模型（不挡发版）。
+5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM、S_py/S_go 冻结）  
+6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **formal/ 起步**（IncrementalIndex.tla + I1–I3 不变量测试）；I4 Lean 可选后续
 
 ---
 

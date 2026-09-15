@@ -53,7 +53,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 - 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
 - `--exact-only`：仅 L0 语法确定边
 - `--include-dynamic`：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
-- `--sound`（L2，实验性）：只走 sound-eligible 边并报告 S 违例；**仅当 `subset_ok` 时给出包含性承诺**
+- `--sound`（L2，实验性）：只走 sound-eligible **引用**边并报告 S 违例；`subset_ok` 门控的是**弱化**的资格承诺（不是运行时调用图定理；DI/事件注册 ≠ 派发）
 
 所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。
 
@@ -186,7 +186,7 @@ CI（ubuntu / windows / macos）：`fmt` + `clippy -D warnings` + `build` + `tes
 
 **开发默认 TDD** —— 见 [AGENTS.md](AGENTS.md)。先写失败测试，再实现，最后重构。
 
-**路线图（L0–L3）：** 分析能力计划见 [PLAN.md](PLAN.md)。动态/DI 边与 `--sound` 子集分析属于**规划中**，不得写成已完成。
+**路线图（L0–L3）：** 分析能力计划见 [PLAN.md](PLAN.md)。L1 DI/动态**候选边**已交付（非 sound）。L2 `--sound` 为**实验性**弱化资格承诺（见 [docs/sound-subset.md](docs/sound-subset.md)）；L3 形式化轨不挡发版。
 
 ## 许可证
 

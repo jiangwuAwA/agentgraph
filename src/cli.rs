@@ -166,6 +166,12 @@ pub fn run(cli: Cli) -> Result<()> {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             if sound {
+                if exact_only || include_dynamic {
+                    bail!(
+                        "--sound is mutually exclusive with --exact-only / --include-dynamic \
+                         (sound walk uses its own eligibility filter)"
+                    );
+                }
                 let (hits, violations) = store.callers_sound(&name, limit)?;
                 let subset_ok = violations.is_empty();
                 let mapped: Vec<serde_json::Value> = hits
@@ -181,13 +187,14 @@ pub fn run(cli: Cli) -> Result<()> {
                         v
                     })
                     .collect();
+                // C1: claim is reference-graph eligibility, NOT a runtime call-graph theorem.
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "Within S: runtime call edges ⊆ this over-approx (may over-report)."
+                        "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
                     } else {
-                        "S violated — soundness claim disabled; results are best-effort sound-eligible edges only."
+                        "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
                     },
                     "subset_violations": violations,
                     "callers": mapped,
@@ -224,15 +231,18 @@ pub fn run(cli: Cli) -> Result<()> {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             if sound {
+                if exact_only || include_dynamic {
+                    bail!("--sound is mutually exclusive with --exact-only / --include-dynamic");
+                }
                 let (hits, violations) = store.impact_sound(&name, depth, limit)?;
                 let subset_ok = violations.is_empty();
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "Within S: runtime call edges ⊆ this over-approx (may over-report)."
+                        "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
                     } else {
-                        "S violated — soundness claim disabled; results are best-effort sound-eligible edges only."
+                        "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
                     },
                     "subset_violations": violations,
                     "impact": hits,

@@ -53,7 +53,7 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 - default: **Exact + Heuristic** (L1 DI/factory/event candidates)
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic`: also DynamicCandidate (reflection / computed keys — noisier)
-- `--sound` (L2, experimental): only sound-eligible edges + S-violation report; **claims containment only when `subset_ok`**
+- `--sound` (L2, experimental): only sound-eligible **reference** edges + S-violation report; `subset_ok` gates a **weakened** eligibility promise (not a runtime call-graph theorem; DI/event registrations are not dispatch)
 
 Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md), [docs/eval-l2.md](docs/eval-l2.md).
 
@@ -186,7 +186,7 @@ CI (ubuntu / windows / macos): `fmt` + `clippy -D warnings` + `build` + `test` +
 
 **Development is TDD-first** — see [AGENTS.md](AGENTS.md). Write a failing test, implement, refactor.
 
-**Roadmap (L0–L3):** analysis capability plan — [PLAN.md](PLAN.md). Dynamic/DI edges and `--sound` subset analysis are **planned**, not claimed complete.
+**Roadmap (L0–L3):** analysis capability plan — [PLAN.md](PLAN.md). L1 DI/dynamic **candidate** edges are shipped (not sound). L2 `--sound` is **experimental** with a weakened eligibility promise (see [docs/sound-subset.md](docs/sound-subset.md)); L3 formal track is non-blocking research.
 
 ## License
 

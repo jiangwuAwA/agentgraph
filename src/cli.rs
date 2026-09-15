@@ -135,7 +135,20 @@ pub fn run(cli: Cli) -> Result<()> {
             store.ensure_indexed()?;
             let q = Query::new(&store);
             let hits = q.callers(&name, limit)?;
-            println!("{}", serde_json::to_string_pretty(&hits)?);
+            let mapped: Vec<serde_json::Value> = hits
+                .into_iter()
+                .map(|r| {
+                    let mut v = serde_json::to_value(&r).unwrap_or_default();
+                    if let Some(obj) = v.as_object_mut() {
+                        obj.insert(
+                            "at".into(),
+                            serde_json::json!(format!("{}:{}", r.path, r.line)),
+                        );
+                    }
+                    v
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&mapped)?);
         }
         Commands::Impact { name, depth, limit } => {
             let store = indexer.open_store()?;
@@ -170,7 +183,26 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Commands::Watch { interval } => {
-            indexer.watch(interval)?;
+            // Prefer fsnotify; fall back to polling if watcher setup fails.
+            let debounce = std::time::Duration::from_millis(interval.saturating_mul(50).max(50));
+            match indexer.watch_events(debounce) {
+                Ok((rx, _handle)) => {
+                    eprintln!(
+                        "fsnotify watching {} (debounce {debounce:?}; Ctrl+C to stop)",
+                        indexer.root.display()
+                    );
+                    for stats in rx {
+                        eprintln!(
+                            "reindexed: {} files / {} symbols / {} refs",
+                            stats.files, stats.symbols, stats.references
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("fsnotify unavailable ({e:#}); falling back to poll");
+                    indexer.watch(interval)?;
+                }
+            }
         }
         Commands::Export { format, out } => {
             let store = indexer.open_store()?;

@@ -93,11 +93,11 @@ AI Agent 改代码前需要回答：
 
 | ID | 项 | 验收 |
 |---|---|---|
-| L0.1 | **fsnotify 原生 watch**（替换/并存于轮询） | 改文件后 < 300ms 触发增量；`notify` crate；防抖 50–200ms |
+| L0.1 | **fsnotify 原生 watch**（替换/并存于轮询） | ✅ `watch_events` + CLI 默认；改文件后 < 300ms 触发增量；`notify` crate；防抖 50–200ms；`tests/watch_fsnotify.rs` |
 | L0.2 | 大仓性能预算 | codex-rs 级：全量 < 4min，增量单文件 < 200ms（release） |
-| L0.3 | 边证据字段 | 每条 ref 可回到 path:line；MCP/CLI 可输出 |
+| L0.3 | 边证据字段 | ✅ CLI `callers` 输出含 `at: path:line`；DB 本就存 path/line |
 | L0.4 | 查询缓存层 | 同 root 连续 callers/impact 不重复扫全表（内存 LRU） |
-| L0.5 | 文档诚实 | README 明确 L0 = best-effort 名字/qualifier |
+| L0.5 | 文档诚实 | ✅ README/AGENTS/PLAN 明确 L0 = best-effort 名字/qualifier；动态边属 L1 规划 |
 
 ### 2.4 L0 非目标
 

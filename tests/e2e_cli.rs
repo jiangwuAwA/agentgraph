@@ -90,6 +90,15 @@ fn e2e_index_find_callers_impact_importers() {
         "expected createUser as enclosing: {}",
         stdout(&callers)
     );
+    // L0.3 evidence: callers rows include at=path:line
+    assert!(
+        refs.as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["at"].as_str().map(|s| s.contains(':')).unwrap_or(false)),
+        "expected at=path:line evidence: {}",
+        stdout(&callers)
+    );
 
     let impact = run(&root, &["impact", "validateEmail", "--depth", "3"]);
     assert!(impact.status.success(), "{}", stderr(&impact));

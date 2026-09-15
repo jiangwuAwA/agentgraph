@@ -190,7 +190,7 @@ impl Indexer {
         store.stats(&self.root.to_string_lossy())
     }
 
-    /// Simple watch loop: reindex when any source file mtime changes (poll interval).
+    /// Polling fallback watch (no fsnotify). Prefer `watch_events`.
     pub fn watch(&self, interval_secs: u64) -> Result<()> {
         eprintln!(
             "watching {} every {interval_secs}s (Ctrl+C to stop)",
@@ -208,6 +208,75 @@ impl Indexer {
             }
             std::thread::sleep(std::time::Duration::from_secs(interval_secs.max(1)));
         }
+    }
+
+    /// fsnotify-backed watch. Receiver yields after each successful incremental reindex.
+    /// Debounce coalesces event bursts.
+    pub fn watch_events(
+        &self,
+        debounce: std::time::Duration,
+    ) -> Result<(
+        std::sync::mpsc::Receiver<IndexStats>,
+        std::thread::JoinHandle<()>,
+    )> {
+        use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+        use std::sync::mpsc;
+        use std::time::{Duration, Instant};
+
+        let root = self.root.clone();
+        let db_path = self.db_path.clone();
+        let (tx, rx) = mpsc::channel::<IndexStats>();
+        let (raw_tx, raw_rx) = mpsc::channel::<notify::Result<notify::Event>>();
+
+        let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res| {
+            let _ = raw_tx.send(res);
+        })?;
+        watcher.watch(&root, RecursiveMode::Recursive)?;
+
+        let debounce = if debounce.is_zero() {
+            Duration::from_millis(50)
+        } else {
+            debounce
+        };
+
+        let handle = std::thread::spawn(move || {
+            let _watcher = watcher;
+            let mut pending = false;
+            let mut last_event = Instant::now();
+
+            loop {
+                let tick = Duration::from_millis(debounce.as_millis().max(10) as u64);
+                match raw_rx.recv_timeout(tick) {
+                    Ok(Ok(ev)) => {
+                        if is_source_event(&ev, &root) {
+                            pending = true;
+                            last_event = Instant::now();
+                        }
+                    }
+                    Ok(Err(_)) => {}
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+
+                if pending && last_event.elapsed() >= debounce {
+                    pending = false;
+                    let indexer = Indexer {
+                        root: root.clone(),
+                        db_path: db_path.clone(),
+                    };
+                    match indexer.index(false) {
+                        Ok(stats) => {
+                            if tx.send(stats).is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => eprintln!("watch reindex error: {e:#}"),
+                    }
+                }
+            }
+        });
+
+        Ok((rx, handle))
     }
 
     fn fingerprint(&self) -> Result<u64> {
@@ -229,4 +298,26 @@ impl Indexer {
         }
         Ok(h)
     }
+}
+
+/// True if the fs event touches a supported source file under `root`.
+fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
+    use notify::EventKind;
+    if !matches!(
+        ev.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    ) {
+        return false;
+    }
+    ev.paths.iter().any(|p| {
+        if !p.starts_with(root) {
+            return false;
+        }
+        // Ignore our own index db and junk.
+        let s = p.to_string_lossy().replace('\\', "/");
+        if s.contains("/.agentgraph/") || s.contains("/.agentgraph") {
+            return false;
+        }
+        Language::from_path(&s).is_some()
+    })
 }

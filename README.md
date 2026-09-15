@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/jiangwuAwA/agentgraph/actions/workflows/ci.yml/badge.svg)](https://github.com/jiangwuAwA/agentgraph/actions/workflows/ci.yml)
 
+English | [简体中文](README.zh-CN.md)
+
 Agent-native code understanding: **symbol graph, call graph, impact analysis** — CLI + MCP server.
 
 Not another embedding RAG. When an agent needs *who calls this*, *what breaks if I change this*, or *which files matter*, it needs **structural facts**, not similar text chunks.

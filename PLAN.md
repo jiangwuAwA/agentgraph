@@ -297,10 +297,11 @@ ref {
 
 ### 5.4 L3 交付物
 
-- `formal/` 目录：模型 + 证明脚本 + README ✅ `formal/IncrementalIndex.tla`（I2 增量+sid 重链）
-- CI：仅检查文件存在与文档，不强制定理编译（可选 nightly） ✅ `tests/l3_invariants.rs` 钉住 I1–I3 + formal 产物存在
+- `formal/` 目录：模型 + 证明脚本 + README ✅ `IncrementalIndex.tla` **TLC 无错**（568 states / 63 distinct，见 `tlc-results.txt`）
+- CI：仅检查文件存在与文档，不强制定理编译（可选 nightly） ✅ `tests/l3_invariants.rs` + `tests/l4_mini_lang.rs`
+- **I4** ✅ 可执行形式化：`src/formal/mini_lang.rs` 小语言（直接调用 + 字面量表派发），有界穷举/性质测试证明 runtime ⊆ static closure。**非** Lean/Rocq 定理证明。
 
-**说明：** TLA+ 模型可用 TLC 本地检查（`formal/README.md`）；主 CI **不**编译定理。I4 小语言 Lean 未开始。
+**说明：** 主 CI 不跑 TLC/Lean；TLC 需本地 Java + `tla2tools.jar`（见 formal/README.md）。
 
 ### 5.5 L3 非目标
 
@@ -375,7 +376,7 @@ ref {
 3. ~~L0.2 / L0.4 / L0.3 / L0.5~~ **完成**（L0 硬化项）  
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
 5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM；S_py/S_go 为 v1 保守词法扫描）  
-6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **formal/ 起步**（IncrementalIndex.tla + I1–I3 不变量测试）；I4 Lean 可选后续
+6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **收尾完成**：TLC 无错 + I1–I3 不变量 + **I4** 可执行小语言 containment（非 Lean）
 
 ---
 

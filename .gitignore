@@ -6,3 +6,7 @@ fixtures/sample-app/.agentgraph/
 *.scip
 *.lsif
 
+
+# TLA+ tool jar (download via formal/README.md)
+formal/tools/tla2tools.jar
+formal/*_TTrace_*

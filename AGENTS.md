@@ -45,7 +45,7 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **L2 (experimental):** `impact --sound` / `callers --sound` / `agentgraph subset`; S-violation scan; Node differential (single + multi-file ESM); property tests (`tests/l2_property.rs`). S_js is a conservative AST scanner; S_py/S_go/S_rs are **v1 conservative lexical scanners** (not full freezes). Soundness claim **only** when `subset_ok` (see [docs/sound-subset.md](docs/sound-subset.md) and [docs/eval-l2.md](docs/eval-l2.md)). Not production-complete.
 
-**L3 (research, non-blocking):** `formal/IncrementalIndex.tla` + `tests/l3_invariants.rs` (I1–I3). TLC optional locally; CI does not require theorem compilation. I4 not started.
+**L3 (research, non-blocking):** `formal/IncrementalIndex.tla` TLC-checked (no errors); I1–I3 in `tests/l3_invariants.rs`; I4 mini-language containment in `src/formal/mini_lang.rs` + `tests/l4_mini_lang.rs`. TLC optional locally (Java + tla2tools.jar); main CI does not require theorem provers.
 
 ## Commits
 

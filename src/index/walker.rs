@@ -14,30 +14,6 @@ pub fn collect_source_files(root: &Path) -> Result<Vec<PathBuf>> {
         .git_exclude(true)
         .build();
 
-    // Match both with and without leading slash so root-level `target/` is caught.
-    const NOISE: &[&str] = &[
-        "node_modules/",
-        "/node_modules/",
-        "target/",
-        "/target/",
-        "dist/",
-        "/dist/",
-        "build/",
-        "/build/",
-        "vendor/",
-        "/vendor/",
-        ".venv/",
-        "/.venv/",
-        "__pycache__/",
-        "/__pycache__/",
-        ".git/",
-        "/.git/",
-        "third_party/",
-        "/third_party/",
-        "testdata/",
-        "/testdata/",
-    ];
-
     for entry in walker {
         let entry = match entry {
             Ok(e) => e,
@@ -71,10 +47,6 @@ pub fn collect_source_files(root: &Path) -> Result<Vec<PathBuf>> {
         });
         if noisy {
             continue;
-        }
-        // Keep NOISE check for nested patterns like fixtures/generated
-        if NOISE.iter().any(|n| rel_str.contains(n)) {
-            // segment check already covers most; this is belt-and-suspenders
         }
 
         if let Ok(meta) = entry.metadata() {

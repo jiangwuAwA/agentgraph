@@ -1,5 +1,6 @@
 use anyhow::Result;
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use tree_sitter::Node;
 
 use super::parser::LineIndex;
@@ -40,6 +41,8 @@ pub struct ExtractContext<'a> {
     pub path: &'a str,
     pub known_files: &'a HashSet<String>,
     pub lines: LineIndex,
+    /// File-scope variable/param -> type name (best-effort). (best-effort).
+    pub var_types: RefCell<HashMap<String, String>>,
 }
 
 pub fn extract_file(
@@ -56,6 +59,7 @@ pub fn extract_file(
         path,
         known_files,
         lines: LineIndex::new(source),
+        var_types: RefCell::new(HashMap::new()),
     };
 
     match lang {
@@ -153,6 +157,24 @@ fn push_import(
     });
 }
 
+fn first_identifier_node(node: Node) -> Option<Node> {
+    if let Some(n) = child_by_field(&node, "name") {
+        return Some(n);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier"
+            | "type_identifier"
+            | "property_identifier"
+            | "field_identifier"
+            | "shorthand_property_identifier" => return Some(child),
+            _ => {}
+        }
+    }
+    None
+}
+
 fn make_symbol(
     name: String,
     qualified_name: String,
@@ -160,7 +182,10 @@ fn make_symbol(
     node: Node,
     parent: Option<String>,
     ctx: &ExtractContext,
+    source: &str,
 ) -> ExtractedSymbol {
+    // Prefer the identifier node so SCIP range is the name, not the whole body.
+    let range_node = first_identifier_node(node).unwrap_or(node);
     ExtractedSymbol {
         name,
         qualified_name,
@@ -168,12 +193,15 @@ fn make_symbol(
         start_line: ctx.lines.line_of(node.start_byte()),
         end_line: ctx.lines.line_of(node.end_byte()),
         parent,
-        start_col: ctx.lines.col_of(node.start_byte()),
-        end_col: ctx.lines.col_of(node.end_byte()),
+        start_col: ctx.lines.col_utf16(source, range_node.start_byte()),
+        end_col: ctx
+            .lines
+            .col_utf16(source, range_node.end_byte())
+            .max(ctx.lines.col_utf16(source, range_node.start_byte()) + 1),
     }
 }
 
-// ─── TypeScript ───────────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ TypeScript 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 fn walk_ts(
     node: Node,
@@ -186,6 +214,16 @@ fn walk_ts(
     let mut cursor = node.walk();
     let kind = node.kind();
     let mut local_parent = parent.clone();
+
+    match kind {
+        "function_declaration" | "method_definition" | "generator_function_declaration" => {
+            collect_ts_param_types(node, source, ctx);
+        }
+        "lexical_declaration" | "variable_declaration" => {
+            collect_ts_var_types(node, source, ctx);
+        }
+        _ => {}
+    }
 
     let symbol_info: Option<(String, SymbolKind)> = match kind {
         "function_declaration" | "generator_function_declaration" => {
@@ -220,13 +258,12 @@ fn walk_ts(
             }
             _ => name.clone(),
         };
-        symbols.push(make_symbol(
-            name.clone(),
+        symbols.push(make_symbol(name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx,
+            ctx, source,
         ));
         local_parent = Some(qname);
     }
@@ -234,7 +271,7 @@ fn walk_ts(
     match kind {
         "call_expression" | "new_expression" => {
             if let Some(fn_node) = child_by_field(&node, "function") {
-                if let Some((n, q)) = call_target_q(fn_node, source) {
+                if let Some((n, q)) = call_target_q_with_ctx(fn_node, source, ctx) {
                     push_call_q(
                         references,
                         n,
@@ -334,11 +371,7 @@ fn extract_var_function(node: Node, source: &str) -> Option<(String, SymbolKind)
     None
 }
 
-fn call_target_name(node: Node, source: &str) -> Option<String> {
-    call_target_q(node, source).map(|(n, _)| n)
-}
-
-/// Type-aware TS/JS call target. `Foo.bar()` → (bar, Foo) when object is a simple identifier.
+/// Type-aware TS/JS call target. `Foo.bar()` �?(bar, Foo) when object is a simple identifier.
 fn call_target_q(node: Node, source: &str) -> Option<(String, Option<String>)> {
     match node.kind() {
         "identifier" | "property_identifier" => Some((node_text(node, source).to_string(), None)),
@@ -349,20 +382,14 @@ fn call_target_q(node: Node, source: &str) -> Option<(String, Option<String>)> {
             let q = match obj.kind() {
                 "identifier" => {
                     let t = node_text(obj, source).to_string();
-                    if t == "this" {
+                    if t == "this" || t == "self" {
                         None
                     } else {
                         Some(t)
                     }
                 }
-                "new_expression" => {
-                    // new Foo().bar → Foo
-                    if let Some(ctor) = child_by_field(&obj, "constructor") {
-                        Some(node_text(ctor, source).to_string())
-                    } else {
-                        None
-                    }
-                }
+                "new_expression" => child_by_field(&obj, "constructor")
+                    .map(|ctor| node_text(ctor, source).to_string()),
                 _ => None,
             };
             Some((name, q))
@@ -393,6 +420,106 @@ fn call_target_q(node: Node, source: &str) -> Option<(String, Option<String>)> {
     }
 }
 
+fn call_target_q_with_ctx(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext,
+) -> Option<(String, Option<String>)> {
+    if node.kind() == "member_expression" {
+        if let Some(prop) = child_by_field(&node, "property") {
+            let name = node_text(prop, source).to_string();
+            if let Some(obj) = child_by_field(&node, "object") {
+                if obj.kind() == "identifier" {
+                    let t = node_text(obj, source).to_string();
+                    if t == "this" || t == "self" {
+                        return Some((name, None));
+                    }
+                    if let Some(ty) = ctx.var_types.borrow().get(&t).cloned() {
+                        return Some((name, Some(ty)));
+                    }
+                    return Some((name, Some(t)));
+                }
+            }
+        }
+    }
+    call_target_q(node, source)
+}
+
+fn collect_ts_var_types(node: Node, source: &str, ctx: &ExtractContext) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() != "variable_declarator" {
+            continue;
+        }
+        let Some(name_n) = child_by_field(&child, "name") else {
+            continue;
+        };
+        let name = node_text(name_n, source).to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let mut c2 = name_n.walk();
+        for part in name_n.children(&mut c2) {
+            if part.kind() == "type_annotation" {
+                let mut c3 = part.walk();
+                for t in part.children(&mut c3) {
+                    let tt = node_text(t, source).trim().trim_start_matches('&');
+                    if !tt.is_empty() && t.kind() != ":" {
+                        ctx.var_types.borrow_mut().insert(name.clone(), tt.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some(value) = child_by_field(&child, "value") {
+            if value.kind() == "new_expression" {
+                if let Some(ctor) = child_by_field(&value, "constructor") {
+                    let t = node_text(ctor, source).to_string();
+                    ctx.var_types.borrow_mut().insert(name.clone(), t);
+                }
+            }
+        }
+    }
+}
+
+fn collect_ts_param_types(node: Node, source: &str, ctx: &ExtractContext) {
+    let Some(params) = child_by_field(&node, "parameters") else {
+        return;
+    };
+    let mut cursor = params.walk();
+    for p in params.children(&mut cursor) {
+        let kind = p.kind();
+        if kind != "required_parameter" && kind != "optional_parameter" {
+            continue;
+        }
+        let mut name = String::new();
+        let mut ty = String::new();
+        let mut c2 = p.walk();
+        for part in p.children(&mut c2) {
+            match part.kind() {
+                "identifier" => {
+                    if name.is_empty() {
+                        name = node_text(part, source).to_string();
+                    }
+                }
+                "type_annotation" => {
+                    let mut c3 = part.walk();
+                    for t in part.children(&mut c3) {
+                        let tt = node_text(t, source).trim().trim_start_matches('&');
+                        if !tt.is_empty() && t.kind() != ":" {
+                            ty = tt.to_string();
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !name.is_empty() && !ty.is_empty() {
+            ctx.var_types.borrow_mut().insert(name, ty);
+        }
+    }
+}
 fn collect_import_names(node: Node, source: &str, sink: &mut impl FnMut(String)) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -421,7 +548,7 @@ fn collect_import_names(node: Node, source: &str, sink: &mut impl FnMut(String))
     }
 }
 
-// ─── Python ───────────────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Python 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 fn walk_py(
     node: Node,
@@ -448,13 +575,12 @@ fn walk_py(
             Some(p) => format!("{p}.{name}"),
             None => name.clone(),
         };
-        symbols.push(make_symbol(
-            name.clone(),
+        symbols.push(make_symbol(name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx,
+            ctx, source,
         ));
         local_parent = Some(qname);
     }
@@ -667,7 +793,7 @@ fn py_call_name(node: Node, source: &str) -> Option<String> {
     }
 }
 
-// ─── Go ───────────────────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Go 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 fn walk_go(
     node: Node,
@@ -699,13 +825,12 @@ fn walk_go(
             Some(p) if skind == SymbolKind::Method => format!("{p}.{name}"),
             _ => name.clone(),
         };
-        symbols.push(make_symbol(
-            name.clone(),
+        symbols.push(make_symbol(name.clone(),
             qname.clone(),
             skind,
             node,
             parent_for_qname.clone(),
-            ctx,
+            ctx, source,
         ));
         local_parent = Some(qname);
     }
@@ -736,7 +861,7 @@ fn walk_go(
     }
 }
 
-/// Extract Go method receiver type name, e.g. `func (s *Server) Start()` → `Server`.
+/// Extract Go method receiver type name, e.g. `func (s *Server) Start()` �?`Server`.
 fn go_receiver_type(node: Node, source: &str) -> Option<String> {
     let params = child_by_field(&node, "receiver")?;
     let mut cursor = params.walk();
@@ -776,11 +901,7 @@ fn go_type_decl_name(node: Node, source: &str) -> Option<(String, SymbolKind)> {
     None
 }
 
-fn go_call_name(node: Node, source: &str) -> Option<String> {
-    go_call_target(node, source).map(|(n, _)| n)
-}
-
-/// `pkg.Func` / `x.Method` → (Func/Method, Some(pkg/x)).
+/// `pkg.Func` / `x.Method` �?(Func/Method, Some(pkg/x)).
 fn go_call_target(node: Node, source: &str) -> Option<(String, Option<String>)> {
     match node.kind() {
         "identifier" => Some((node_text(node, source).to_string(), None)),
@@ -856,7 +977,7 @@ fn go_collect_imports(
     }
 }
 
-// ─── Rust ─────────────────────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Rust 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 fn walk_rust(
     node: Node,
@@ -870,8 +991,19 @@ fn walk_rust(
     let kind = node.kind();
     let mut local_parent = parent.clone();
 
+    if kind == "function_item" || kind == "function_signature_item" {
+        collect_rust_param_types(node, source, ctx);
+    }
+
     let symbol_info: Option<(String, SymbolKind)> = match kind {
-        "function_item" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Function)),
+        "function_item" => first_identifier_name(node, source).map(|name| {
+            let k = if parent.is_some() {
+                SymbolKind::Method
+            } else {
+                SymbolKind::Function
+            };
+            (name, k)
+        }),
         "struct_item" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Struct)),
         "enum_item" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Enum)),
         "trait_item" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Trait)),
@@ -888,13 +1020,12 @@ fn walk_rust(
             Some(p) => format!("{p}::{name}"),
             None => name.clone(),
         };
-        symbols.push(make_symbol(
-            name.clone(),
+        symbols.push(make_symbol(name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx,
+            ctx, source,
         ));
         local_parent = Some(qname);
     }
@@ -909,7 +1040,9 @@ fn walk_rust(
     match kind {
         "call_expression" => {
             if let Some(fn_node) = child_by_field(&node, "function") {
-                if let Some((n, q)) = rust_call_target(fn_node, source, local_parent.as_deref()) {
+                if let Some((n, q)) =
+                    rust_call_target(fn_node, source, local_parent.as_deref(), Some(ctx))
+                {
                     push_call_q(
                         references,
                         n,
@@ -943,11 +1076,12 @@ fn rust_impl_type_name(node: Node, source: &str) -> Option<String> {
     }
 }
 
-/// Type-aware Rust call target: `Foo::bar` → (bar, Foo); `x.bar` → (bar, inferred type or impl parent).
+/// Type-aware Rust call target: `Foo::bar` �?(bar, Foo); `x.bar` �?(bar, inferred type or impl parent).
 fn rust_call_target(
     node: Node,
     source: &str,
     enclosing: Option<&str>,
+    ctx: Option<&ExtractContext>,
 ) -> Option<(String, Option<String>)> {
     match node.kind() {
         "identifier" => Some((node_text(node, source).to_string(), None)),
@@ -966,7 +1100,6 @@ fn rust_call_target(
         "field_expression" => {
             let f = child_by_field(&node, "field")?;
             let name = node_text(f, source).to_string();
-            // value.receiver — if `self`, use enclosing impl type
             if let Some(val) = child_by_field(&node, "value") {
                 let vt = node_text(val, source);
                 if vt == "self" || vt == "Self" {
@@ -975,9 +1108,13 @@ fn rust_call_target(
                         .filter(|s| !s.is_empty());
                     return Some((name, q));
                 }
-                // simple identifier — no local type env in this MVP pass
                 if vt.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                    return Some((name, None));
+                    if let Some(ctx) = ctx {
+                        if let Some(ty) = ctx.var_types.borrow().get(vt).cloned() {
+                            return Some((name, Some(ty)));
+                        }
+                    }
+                    return Some((name, Some(vt.to_string())));
                 }
             }
             Some((name, None))
@@ -999,8 +1136,45 @@ fn rust_call_target(
     }
 }
 
-fn rust_call_name(node: Node, source: &str) -> Option<String> {
-    rust_call_target(node, source, None).map(|(n, _)| n)
+/// `fn f(c: Client)` �?var_types[c]=Client
+fn collect_rust_param_types(node: Node, source: &str, ctx: &ExtractContext) {
+    let Some(params) = child_by_field(&node, "parameters") else {
+        return;
+    };
+    let mut cursor = params.walk();
+    for p in params.children(&mut cursor) {
+        if p.kind() != "parameter" {
+            continue;
+        }
+        let mut name = String::new();
+        let mut ty = String::new();
+        let mut c2 = p.walk();
+        for part in p.children(&mut c2) {
+            match part.kind() {
+                "identifier" => {
+                    if name.is_empty() {
+                        name = node_text(part, source).to_string();
+                    }
+                }
+                "type_identifier" | "primitive_type" => {
+                    ty = node_text(part, source).to_string();
+                }
+                "reference_type" => {
+                    if let Some(inner) = child_by_field(&part, "type") {
+                        let t = node_text(inner, source);
+                        let t = t.split('<').next().unwrap_or(t).trim();
+                        if !t.is_empty() {
+                            ty = t.to_string();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !name.is_empty() && !ty.is_empty() && name != "self" {
+            ctx.var_types.borrow_mut().insert(name, ty);
+        }
+    }
 }
 
 fn rust_collect_use(

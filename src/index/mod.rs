@@ -165,6 +165,8 @@ impl Indexer {
         let keep: Vec<String> = known.into_iter().collect();
         store.prune_missing(&keep)?;
         store.commit_batch()?;
+        let linked = store.resolve_symbol_ids()?;
+        eprintln!("resolved_symbol_id on {linked} ref(s)");
 
         let mut stats = store.stats(&self.root.to_string_lossy())?;
         stats.skipped_files = skipped;

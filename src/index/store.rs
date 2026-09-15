@@ -55,6 +55,7 @@ impl Store {
                 module TEXT,
                 resolved TEXT,
                 qualifier TEXT,
+                resolved_symbol_id INTEGER,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -69,6 +70,7 @@ impl Store {
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN module TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qualifier TEXT", []);
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved_symbol_id INTEGER", []);
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0", []);
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN end_col INTEGER NOT NULL DEFAULT 0", []);
         conn.execute_batch(
@@ -264,29 +266,96 @@ impl Store {
     }
 
     pub fn callers(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
-        // Type-aware: match bare name OR qualifier.name / Type::method style queries.
-        let mut stmt = self.conn.prepare(
+        // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
+        let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
+            (n.to_string(), format!("{q}.{n}"))
+        } else if let Some((q, n)) = name.rsplit_once('.') {
+            if q.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':') {
+                (n.to_string(), name.to_string())
+            } else {
+                (name.to_string(), String::new())
+            }
+        } else {
+            (name.to_string(), String::new())
+        };
+
+        let sql = if qual_dot.is_empty() {
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
+             FROM refs WHERE name = ?1 ORDER BY path, line LIMIT ?2"
+        } else {
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
              FROM refs
-             WHERE name = ?1
-                OR (qualifier IS NOT NULL AND (qualifier || '.' || name) = ?1)
-                OR (qualifier IS NOT NULL AND (qualifier || '::' || name) = ?1)
-             ORDER BY path, line
-             LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![name, limit as i64], |r| {
-            Ok(ReferenceRecord {
-                name: r.get(0)?,
-                kind: EdgeKind::parse(&r.get::<_, String>(1)?),
-                path: r.get(2)?,
-                line: r.get::<_, i64>(3)? as usize,
-                enclosing: r.get(4)?,
-                module: r.get(5)?,
-                resolved: r.get(6)?,
-                qualifier: r.get(7)?,
-            })
-        })?;
+             WHERE (qualifier || '.' || name) = ?1
+                OR (qualifier || '::' || name) = ?1
+                OR name = ?1
+                OR name = ?3
+             ORDER BY path, line LIMIT ?2"
+        };
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = if qual_dot.is_empty() {
+            stmt.query_map(params![bare, limit as i64], map_ref)?
+        } else {
+            stmt.query_map(params![qual_dot, limit as i64, bare], map_ref)?
+        };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Link refs → symbols.id after a full index (name + optional qualifier).
+    pub fn resolve_symbol_ids(&mut self) -> Result<usize> {
+        // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, name, qualifier FROM refs WHERE resolved_symbol_id IS NULL",
+            )?;
+            let pending: Vec<(i64, String, Option<String>)> = {
+                let rows = stmt.query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            drop(stmt);
+
+            let mut lookup_q = self.conn.prepare_cached(
+                "SELECT id FROM symbols
+                 WHERE qualified_name = ?1 OR qualified_name = ?2
+                 ORDER BY path LIMIT 1",
+            )?;
+            let mut lookup_n = self.conn.prepare_cached(
+                "SELECT id FROM symbols WHERE name = ?1 ORDER BY path LIMIT 1",
+            )?;
+            let mut update = self
+                .conn
+                .prepare_cached("UPDATE refs SET resolved_symbol_id = ?1 WHERE id = ?2")?;
+
+            for (id, name, qual) in pending {
+                let mut sid: Option<i64> = None;
+                if let Some(q) = qual.as_deref() {
+                    if !q.is_empty() {
+                        sid = lookup_q
+                            .query_row(params![format!("{q}.{name}"), format!("{q}::{name}")], |r| {
+                                r.get(0)
+                            })
+                            .optional()?;
+                    }
+                }
+                if sid.is_none() {
+                    sid = lookup_n.query_row(params![name], |r| r.get(0)).optional()?;
+                }
+                if let Some(sid) = sid {
+                    update.execute(params![sid, id])?;
+                }
+            }
+        }
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM refs WHERE resolved_symbol_id IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(n as usize)
     }
 
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
@@ -497,4 +566,17 @@ impl Store {
 
 fn last_segment(s: &str) -> String {
     s.rsplit(['.', ':']).next().unwrap_or(s).to_string()
+}
+
+fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
+    Ok(ReferenceRecord {
+        name: r.get(0)?,
+        kind: EdgeKind::parse(&r.get::<_, String>(1)?),
+        path: r.get(2)?,
+        line: r.get::<_, i64>(3)? as usize,
+        enclosing: r.get(4)?,
+        module: r.get(5)?,
+        resolved: r.get(6)?,
+        qualifier: r.get(7)?,
+    })
 }

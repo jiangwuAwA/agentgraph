@@ -23,7 +23,7 @@ fn use_it(c: &ModelClient) {
 }
 
 #[test]
-fn ts_member_call_has_qualifier() {
+fn ts_param_type_becomes_qualifier() {
     let src = r#"
 class Store {
   save() {}
@@ -38,5 +38,26 @@ function run(s: Store) {
         .iter()
         .find(|r| r.name == "save" && matches!(r.kind, EdgeKind::Call))
         .expect("call ref");
-    assert_eq!(hit.qualifier.as_deref(), Some("s"));
+    // qualifier should be the *type* Store, not the variable name s
+    assert_eq!(hit.qualifier.as_deref(), Some("Store"));
+}
+
+#[test]
+fn rust_param_type_becomes_qualifier() {
+    let src = r#"
+struct Client;
+impl Client {
+    fn ping(&self) {}
+}
+fn go(c: &Client) {
+    c.ping();
+}
+"#;
+    let out = extract_file(src, Language::Rust, "src/lib.rs", &HashSet::new()).unwrap();
+    let hit = out
+        .references
+        .iter()
+        .find(|r| r.name == "ping" && matches!(r.kind, EdgeKind::Call))
+        .expect("call ref");
+    assert_eq!(hit.qualifier.as_deref(), Some("Client"));
 }

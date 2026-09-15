@@ -1,4 +1,5 @@
-//! SCIP / LSIF export from the agentgraph SQLite index.
+//! SCIP / LSIF export (experimental, simplified schema).
+//! Ranges use UTF-16 columns on the symbol *name* node (single-line).
 
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -6,44 +7,62 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::store::Store;
-use crate::model::SymbolKind;
 
+/// SCIP-like global symbol: `scip-agentgraph . {lang} . {path} . {qualified}`
+/// No trailing `#` (that marks local-only symbols and breaks cross-file links).
 fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
     format!(
-        "agentgraph . {} . {} . {}#",
-        lang,
-        path.replace('.', "_"),
+        "scip-agentgraph . {} . {} . {}",
+        lang.replace('.', "_"),
+        path.replace('\\', "/"),
         qualified.replace('.', "_")
     )
 }
 
-/// Export SCIP JSON (schema 0.4.0-ish, simplified).
+/// Export SCIP JSON. Experimental — not a full protobuf mapping.
 pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
-    let mut docs: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let refs = store.all_refs_for_export()?;
+    let mut docs: BTreeMap<String, (String, Vec<Value>)> = BTreeMap::new();
 
     for s in &symbols {
+        // Single-line name range only (SCIP 3-tuple is same-line).
+        let line = s.start_line.saturating_sub(1);
         let occ = json!({
-            "range": [
-                s.start_line.saturating_sub(1),
-                s.start_col,
-                s.end_col.max(s.start_col + 1)
-            ],
+            "range": [line, s.start_col, s.end_col.max(s.start_col + 1)],
             "symbol": scip_symbol_name(&s.language, &s.qualified_name, &s.path),
             "symbol_roles": 1,
             "documentation": s.description.clone().map(|d| vec![d]).unwrap_or_default(),
         });
-        docs.entry(s.path.clone()).or_default().push(occ);
+        docs.entry(s.path.clone())
+            .or_insert_with(|| (s.language.clone(), Vec::new()))
+            .1
+            .push(occ);
+    }
+
+    // Reference occurrences (role 0) — best-effort by name match.
+    let by_name: BTreeMap<String, String> = symbols
+        .iter()
+        .map(|s| (s.name.clone(), scip_symbol_name(&s.language, &s.qualified_name, &s.path)))
+        .collect();
+    for r in &refs {
+        if let Some(sym) = by_name.get(&r.name) {
+            let line = r.line.saturating_sub(1);
+            let occ = json!({
+                "range": [line, 0, 8],
+                "symbol": sym,
+                "symbol_roles": 0,
+            });
+            docs.entry(r.path.clone())
+                .or_insert_with(|| ("unknown".into(), Vec::new()))
+                .1
+                .push(occ);
+        }
     }
 
     let documents: Vec<Value> = docs
         .into_iter()
-        .map(|(path, occurrences)| {
-            let lang = symbols
-                .iter()
-                .find(|s| s.path == path)
-                .map(|s| s.language.clone())
-                .unwrap_or_default();
+        .map(|(path, (lang, occurrences))| {
             json!({
                 "language": lang,
                 "relative_path": path,
@@ -65,23 +84,32 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(out, serde_json::to_vec_pretty(&scip)?)?;
+    std::fs::write(out, serde_json::to_vec(&scip)?)?;
     Ok(())
 }
 
-/// Export LSIF (JSON lines) — simplified vertices for document/range/definition/reference.
+/// Export LSIF JSONL (experimental). ranges → resultSet → item; refersTo → resultSet.
 pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
     let mut lines: Vec<String> = Vec::new();
     let mut next_id = 1u64;
-    let mut id = || {
+    let mut next = || {
         next_id += 1;
         next_id - 1
     };
 
+    let project_id = next();
     lines.push(serde_json::to_string(&json!({
-        "id": id(),
+        "id": project_id,
+        "type": "vertex",
+        "label": "project",
+        "resource": format!("file://{}", root.to_string_lossy().replace('\\', "/")),
+    }))?);
+
+    let meta_id = next();
+    lines.push(serde_json::to_string(&json!({
+        "id": meta_id,
         "type": "vertex",
         "label": "metaData",
         "version": "0.5.0",
@@ -89,111 +117,124 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
         "positionEncoding": "utf-16",
     }))?);
 
-    let mut range_ids: BTreeMap<(String, usize, usize, usize), u64> = BTreeMap::new();
-    let mut doc_ids: BTreeMap<String, u64> = BTreeMap::new();
+    lines.push(serde_json::to_string(&json!({
+        "id": next(),
+        "type": "edge",
+        "label": "next",
+        "outV": meta_id,
+        "inV": project_id,
+    }))?);
+
+    let mut result_set_by_name: BTreeMap<String, u64> = BTreeMap::new();
+    let mut last_doc: Option<(String, u64)> = None;
 
     for s in &symbols {
-        let key = (s.path.clone(), s.start_line, s.start_col, s.end_col);
-        if range_ids.contains_key(&key) {
-            continue;
-        }
-        let doc_id = *doc_ids.entry(s.path.clone()).or_insert_with(|| {
-            let did = id();
+        if last_doc.as_ref().map(|(p, _)| p.as_str()) != Some(s.path.as_str()) {
+            let did = next();
             let uri = format!(
                 "file://{}/{}",
                 root.to_string_lossy().replace('\\', "/"),
                 s.path
             );
-            lines.push(
-                serde_json::to_string(&json!({
-                    "id": did,
-                    "type": "vertex",
-                    "label": "document",
-                    "languageId": s.language,
-                    "uri": uri,
-                }))
-                .unwrap(),
-            );
-            did
-        });
-        let rid = id();
-        range_ids.insert(key, rid);
+            lines.push(serde_json::to_string(&json!({
+                "id": did,
+                "type": "vertex",
+                "label": "document",
+                "languageId": s.language,
+                "uri": uri,
+            }))?);
+            last_doc = Some((s.path.clone(), did));
+        }
+        let doc_id = last_doc.as_ref().map(|(_, id)| *id).unwrap();
+        let rid = next();
+        let line = s.start_line.saturating_sub(1);
         lines.push(serde_json::to_string(&json!({
             "id": rid,
             "type": "vertex",
             "label": "range",
-            "start": {"line": s.start_line.saturating_sub(1), "character": s.start_col},
-            "end": {"line": s.end_line.saturating_sub(1), "character": s.end_col.max(s.start_col + 1)},
+            "start": {"line": line, "character": s.start_col},
+            "end": {"line": line, "character": s.end_col.max(s.start_col + 1)},
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": id(),
+            "id": next(),
             "type": "edge",
             "label": "contains",
             "outV": doc_id,
-            "inVs": [rid],
+            "inV": rid,
         }))?);
 
-        let def_id = id();
+        let rs_id = *result_set_by_name.entry(s.name.clone()).or_insert_with(|| {
+            let id = next();
+            lines.push(
+                serde_json::to_string(&json!({
+                    "id": id,
+                    "type": "vertex",
+                    "label": "resultSet",
+                }))
+                .unwrap(),
+            );
+            id
+        });
         lines.push(serde_json::to_string(&json!({
-            "id": def_id,
-            "type": "vertex",
-            "label": "resultSet",
-        }))?);
-        lines.push(serde_json::to_string(&json!({
-            "id": id(),
+            "id": next(),
             "type": "edge",
             "label": "contains",
-            "outV": rid,
-            "inV": def_id,
+            "outV": rs_id,
+            "inV": rid,
         }))?);
         lines.push(serde_json::to_string(&json!({
-            "id": id(),
+            "id": next(),
             "type": "edge",
             "label": "item",
-            "outV": def_id,
-            "inVs": [rid],
+            "outV": rs_id,
+            "inV": rid,
             "document": doc_id,
         }))?);
-
-        let _ = s.kind; // keep kind available for future richer vertices
-        let _ = SymbolKind::Function;
     }
 
-    // Reference edges: map name → first range of matching definition
-    let mut def_by_name: BTreeMap<String, u64> = BTreeMap::new();
-    // rebuild map name → range id of a definition
-    for s in &symbols {
-        let key = (s.path.clone(), s.start_line, s.start_col, s.end_col);
-        if let Some(rid) = range_ids.get(&key) {
-            def_by_name.entry(s.name.clone()).or_insert(*rid);
-        }
-    }
     for r in &refs {
-        if let Some(def_rid) = def_by_name.get(&r.name) {
-            let key = (r.path.clone(), r.line, 0usize, 0usize);
-            // create a coarse range for the call site line if missing
-            let call_rid = *range_ids.entry(key).or_insert_with(|| {
-                let rid = id();
-                lines.push(
-                    serde_json::to_string(&json!({
-                        "id": rid,
-                        "type": "vertex",
-                        "label": "range",
-                        "start": {"line": r.line.saturating_sub(1), "character": 0},
-                        "end": {"line": r.line.saturating_sub(1), "character": 80},
-                    }))
-                    .unwrap(),
-                );
-                rid
-            });
+        let Some(rs) = result_set_by_name.get(&r.name).copied() else {
+            continue;
+        };
+        if last_doc.as_ref().map(|(p, _)| p.as_str()) != Some(r.path.as_str()) {
+            let did = next();
+            let uri = format!(
+                "file://{}/{}",
+                root.to_string_lossy().replace('\\', "/"),
+                r.path
+            );
             lines.push(serde_json::to_string(&json!({
-                "id": id(),
-                "type": "edge",
-                "label": "refersTo",
-                "outV": call_rid,
-                "inV": def_rid,
+                "id": did,
+                "type": "vertex",
+                "label": "document",
+                "uri": uri,
             }))?);
+            last_doc = Some((r.path.clone(), did));
         }
+        let doc_id = last_doc.as_ref().map(|(_, id)| *id).unwrap();
+        let rid = next();
+        let line = r.line.saturating_sub(1);
+        lines.push(serde_json::to_string(&json!({
+            "id": rid,
+            "type": "vertex",
+            "label": "range",
+            "start": {"line": line, "character": 0},
+            "end": {"line": line, "character": 8},
+        }))?);
+        lines.push(serde_json::to_string(&json!({
+            "id": next(),
+            "type": "edge",
+            "label": "contains",
+            "outV": doc_id,
+            "inV": rid,
+        }))?);
+        lines.push(serde_json::to_string(&json!({
+            "id": next(),
+            "type": "edge",
+            "label": "refersTo",
+            "outV": rid,
+            "inV": rs,
+        }))?);
     }
 
     if let Some(parent) = out.parent() {

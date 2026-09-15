@@ -3,10 +3,9 @@ use tree_sitter::{Language as TsLanguage, Parser};
 
 use crate::model::Language;
 
-/// Precomputed newline offsets for O(log n) byte→line lookup.
+/// Precomputed line starts for O(log n) byte→line / UTF-16 column lookup.
 #[derive(Debug, Clone)]
 pub struct LineIndex {
-    /// Byte offset where each 1-based line starts.
     line_starts: Vec<usize>,
     source_len: usize,
 }
@@ -25,18 +24,20 @@ impl LineIndex {
         }
     }
 
-    /// 1-based line number for a byte offset.
     pub fn line_of(&self, byte_offset: usize) -> usize {
         let off = byte_offset.min(self.source_len);
         self.line_starts.partition_point(|&s| s <= off)
     }
 
-    /// 0-based column (byte offset within the line).
-    pub fn col_of(&self, byte_offset: usize) -> usize {
+    /// 0-based UTF-16 code-unit column (SCIP/LSIF position encoding).
+    pub fn col_utf16(&self, source: &str, byte_offset: usize) -> usize {
         let off = byte_offset.min(self.source_len);
         let line = self.line_of(off);
         let start = self.line_starts[line.saturating_sub(1)];
-        off.saturating_sub(start)
+        source[start..off.min(source.len())]
+            .chars()
+            .map(|c| c.len_utf16())
+            .sum()
     }
 }
 

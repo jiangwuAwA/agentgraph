@@ -28,9 +28,10 @@ Not another embedding RAG. When an agent needs to know *who calls this*, *what b
   - `importers` — who imports this file
 - **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
 - **`watch`**: poll mtime fingerprint and reindex
-- **Type-aware calls (pragmatic, not full type inference)**: `qualifier` on call sites (`ModelClient::connect_websocket`, `s.save`); `callers` matches bare or `Type.method` / `Type::method`. Best-effort name/qualifier heuristics — Go/type work may still evolve; this is not a type checker.
-- **`export scip` / `export lsif` (experimental)**: simplified SCIP JSON / LSIF JSONL dump for inspection and tooling experiments. **Not schema-valid SCIP/LSIF and not consumable by Sourcegraph or the official `scip` CLI yet.**
-- **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1`
+- **Type-aware calls (pragmatic)**: `qualifier` from param annotations, receivers, `New*` constructors, and return-type `define` edges; `callers` matches `Type.method` / `Type::method`. Not a full type checker.
+- **`export scip`**: SCIP protocol v3 JSON (`scip-<lang> <manager> agentgraph 0.0.0 <descriptor>`) with official field names (`metadata.versionProtocol`, `relativePath`, `symbolRoles`). LSIF remains a simplified JSONL dump.
+- **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1` (SHA256 fail-closed)
+- **CI gate**: `cargo fmt --check` + `clippy -D warnings` are required on all platforms
 - **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
 - **Windows-safe**: strips `\\?\` UNC prefix from canonical roots
 - **Interfaces**: CLI + MCP (stdio)
@@ -74,20 +75,21 @@ agentgraph importers src/auth.ts
 export OPENAI_API_KEY=sk-...
 # optional: OPENAI_BASE_URL, AGENTGRAPH_MODEL, AGENTGRAPH_ENRICH_CONCURRENCY
 agentgraph enrich --limit 50
-# experimental — simplified dump, not consumable by Sourcegraph / scip CLI yet
 agentgraph export scip --out index.scip
 agentgraph export lsif --out index.lsif
 ```
 
 Index: `<root>/.agentgraph/index.db` (gitignore it).
 
-### Export (experimental)
+### Export
 
-`export scip` / `export lsif` write a **simplified** graph dump (SCIP JSON / LSIF JSONL). Treat it as an internal interchange format:
+`export scip` writes SCIP **protocol v3** JSON following the official `scip.Index` protobuf JSON mapping:
 
-- not full SCIP/LSIF schema; symbol strings are experimental (`scip-agentgraph . ...`)
-- **not** validated against the official SCIP schema and **not** consumable by Sourcegraph or `scip` CLI yet
-- LSIF `resultSets` are keyed by qualified symbol (so `A.save` ≠ `B.save`); Windows file URIs use `file:///C:/...`
+- symbols: `scip-typescript npm agentgraph 0.0.0 Store#save()`
+- descriptors: `Type.`, `Type#method()`, `func()`, `ns/`
+- metadata: `versionProtocol: 3`, `file:///` project roots
+
+`export lsif` is still a simplified JSONL dump (metaData first line, `file:///` URIs, resultSets keyed by qualified symbol). Validate SCIP with `scip print` / Sourcegraph when integrating.
 
 ## MCP
 

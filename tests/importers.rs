@@ -34,6 +34,8 @@ export function loginHandler() { createUser("a","b"); }
 
     let hits = store.importers_of_file("src/auth.ts", 20).unwrap();
     assert!(!hits.is_empty(), "expected importers of auth.ts");
-    assert!(hits.iter().any(|h| h.path == "src/api.ts" && h.name == "createUser"));
+    assert!(hits
+        .iter()
+        .any(|h| h.path == "src/api.ts" && h.name == "createUser"));
     assert!(hits.iter().all(|h| h.kind.as_str() == "import"));
 }

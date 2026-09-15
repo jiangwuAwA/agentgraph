@@ -24,5 +24,10 @@ func main() {
         .iter()
         .find(|r| r.name == "Start" && matches!(r.kind, EdgeKind::Call))
         .expect("Start call");
-    assert_eq!(hit.qualifier.as_deref(), Some("Server"), "qualifier={:?}", hit.qualifier);
+    assert_eq!(
+        hit.qualifier.as_deref(),
+        Some("Server"),
+        "qualifier={:?}",
+        hit.qualifier
+    );
 }

@@ -22,7 +22,9 @@ export function loginHandler(email: string, password: string) {
         .collect();
     assert!(!imports.is_empty(), "no import refs extracted");
     assert!(
-        imports.iter().any(|r| r.resolved.as_deref() == Some("src/auth.ts")),
+        imports
+            .iter()
+            .any(|r| r.resolved.as_deref() == Some("src/auth.ts")),
         "imports not resolved: {:?}",
         imports
     );

@@ -41,7 +41,10 @@ pub fn run() { helper(); }
     store.commit_batch().unwrap();
 
     let linked1 = store.resolve_symbol_ids().unwrap();
-    assert!(linked1 > 0, "expected at least one linked ref, got {linked1}");
+    assert!(
+        linked1 > 0,
+        "expected at least one linked ref, got {linked1}"
+    );
 
     let callers_before = store.callers("helper", 50).unwrap();
     assert!(callers_before.iter().any(|r| r.path == "src/b.rs"));
@@ -98,7 +101,9 @@ fn c() {}
 "#;
     let parsed = extract_file(src, Language::Rust, "src/mod.rs", &known).unwrap();
     store.begin_batch().unwrap();
-    store.replace_file("src/mod.rs", "h1", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/mod.rs", "h1", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
 
     let n1 = store.resolve_symbol_ids().unwrap();
@@ -107,7 +112,9 @@ fn c() {}
 
     // Reindex same content: resolve again, count stable.
     store.begin_batch().unwrap();
-    store.replace_file("src/mod.rs", "h2", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/mod.rs", "h2", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
     let n3 = store.resolve_symbol_ids().unwrap();
     assert_eq!(n1, n3, "same content reindex must preserve link count");
@@ -127,9 +134,7 @@ fn ok_fn() {}
     store.begin_batch().unwrap();
     // Successful file via savepoint
     store.begin_savepoint("file_sp").unwrap();
-    store
-        .replace_file("src/ok.rs", "hok", "rust", &ok)
-        .unwrap();
+    store.replace_file("src/ok.rs", "hok", "rust", &ok).unwrap();
     store.release_savepoint("file_sp").unwrap();
 
     // A second file: open savepoint, write, then roll it back (simulates Err path)
@@ -151,5 +156,8 @@ fn bad_fn() {}
     let ok_syms = store.find_symbol_exact("ok_fn", 5).unwrap();
     assert_eq!(ok_syms.len(), 1);
     let bad_syms = store.find_symbol_exact("bad_fn", 5).unwrap();
-    assert!(bad_syms.is_empty(), "rollback should drop bad_fn: {bad_syms:?}");
+    assert!(
+        bad_syms.is_empty(),
+        "rollback should drop bad_fn: {bad_syms:?}"
+    );
 }

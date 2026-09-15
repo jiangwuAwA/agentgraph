@@ -1,10 +1,9 @@
-//! SCIP / LSIF export — **experimental**.
+//! SCIP / LSIF export.
 //!
-//! Output is a simplified JSON/JSONL shape inspired by SCIP/LSIF, not a full
-//! schema mapping. Ranges use UTF-16 columns on the symbol *name* node
-//! (single-line). Not consumable by Sourcegraph or the official `scip` CLI yet.
-//!
-//! Ranges use UTF-16 columns on the symbol *name* node (single-line).
+//! SCIP follows the official `scip.Index` protobuf JSON mapping (protocol v3):
+//! symbols are `scip-<lang> <manager> <package> <version> <descriptor>` with
+//! standard descriptors (`Type.`, `Type#method()`, `func()`, `ns/`).
+//! LSIF remains a simplified JSONL dump.
 
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -12,12 +11,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::store::Store;
-use crate::model::{ReferenceRecord, SymbolRecord};
+use crate::model::{ReferenceRecord, SymbolKind, SymbolRecord};
 
 /// Build a `file://` URI from a project root and a (possibly empty) relative path.
-///
-/// Windows drive paths get three slashes: `C:/proj` + `src/a.rs` →
-/// `file:///C:/proj/src/a.rs`. POSIX absolute paths become `file:///abs/...`.
 pub fn file_uri(root: &Path, rel: &str) -> String {
     let mut path = root.to_string_lossy().replace('\\', "/");
     if !rel.is_empty() {
@@ -27,39 +23,90 @@ pub fn file_uri(root: &Path, rel: &str) -> String {
         path.push_str(&rel.replace('\\', "/"));
     }
     let bytes = path.as_bytes();
-    // Windows drive letter → file:///C:/...
     if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         return format!("file:///{path}");
     }
-    // POSIX absolute → file:// + /abs = file:///abs
     if path.starts_with('/') {
         return format!("file://{path}");
     }
     format!("file:///{path}")
 }
 
-/// SCIP global symbol (5 space-separated segments, experimental form):
-/// `scip-agentgraph . agentgraph . {lang} . {path} . {descriptor}`
-/// descriptor uses `#` methods / types style without making everything local.
-fn scip_symbol_name(lang: &str, qualified: &str, path: &str) -> String {
-    let descriptor = if qualified.contains("::") {
-        // rust Module::Type::fn → Module/Type#fn
-        let parts: Vec<&str> = qualified.split("::").collect();
-        let (last, head) = parts.split_last().unwrap();
-        format!("{}#{}", head.join("/"), last)
-    } else if qualified.contains('.') {
-        let parts: Vec<&str> = qualified.split('.').collect();
-        let (last, head) = parts.split_last().unwrap();
-        format!("{}#{}", head.join("/"), last)
+/// SCIP protocol version (`scip.Index.metadata.version_protocol`).
+pub const SCIP_PROTOCOL_VERSION: i32 = 3;
+
+fn package_manager(lang: &str) -> &'static str {
+    match lang {
+        "typescript" | "tsx" | "javascript" | "jsx" => "npm",
+        "python" => "pypi",
+        "go" => "go",
+        "rust" => "cargo",
+        _ => "generic",
+    }
+}
+
+fn scip_language_id(lang: &str) -> &'static str {
+    match lang {
+        "typescript" | "tsx" => "typescript",
+        "javascript" | "jsx" => "javascript",
+        "python" => "python",
+        "go" => "go",
+        "rust" => "rust",
+        _ => "plaintext",
+    }
+}
+
+/// Build a SCIP descriptor from kind + qualified name.
+///
+/// Examples:
+/// - class `Store` → `Store.`
+/// - method `Store.save` → `Store#save()`
+/// - function `loginHandler` → `loginHandler()`
+/// - rust `ModelClient::connect` → `ModelClient#connect()`
+fn scip_descriptor(kind: SymbolKind, qualified: &str) -> String {
+    let sep = if qualified.contains("::") { "::" } else { "." };
+    let parts: Vec<&str> = qualified.split(sep).collect();
+    let (last, head) = parts.split_last().unwrap_or((&"", &[]));
+    let ns = head
+        .iter()
+        .map(|s| format!("{s}/"))
+        .collect::<Vec<_>>()
+        .join("");
+
+    match kind {
+        SymbolKind::Class
+        | SymbolKind::Struct
+        | SymbolKind::Interface
+        | SymbolKind::Enum
+        | SymbolKind::Trait
+        | SymbolKind::TypeAlias => format!("{ns}{last}."),
+        SymbolKind::Method => format!("{ns}{last}#()"),
+        SymbolKind::Function => format!("{ns}{last}()"),
+        SymbolKind::Module => format!("{ns}{last}/"),
+        SymbolKind::Variable => format!("{ns}{last}"),
+    }
+}
+
+/// `Store.save` / `Store::save` → `Store#save()`
+fn scip_method_descriptor(qualified: &str) -> String {
+    let sep = if qualified.contains("::") { "::" } else { "." };
+    if let Some((ty, method)) = qualified.rsplit_once(sep) {
+        let ty_path = ty.split(sep).collect::<Vec<_>>().join("/");
+        return format!("{ty_path}#{method}()");
+    }
+    format!("{qualified}#()")
+}
+
+fn scip_symbol_name(s: &SymbolRecord) -> String {
+    let lang = scip_language_id(&s.language);
+    let mgr = package_manager(&s.language);
+    let descriptor = if s.kind == SymbolKind::Method {
+        scip_method_descriptor(&s.qualified_name)
     } else {
-        qualified.to_string()
+        scip_descriptor(s.kind, &s.qualified_name)
     };
-    format!(
-        "scip-agentgraph . agentgraph . {} . {} . {}",
-        lang.replace('.', "_"),
-        path.replace('\\', "/"),
-        descriptor
-    )
+    // scheme <space> mgr <space> package <space> version <space> descriptor
+    format!("scip-{lang} {mgr} agentgraph 0.0.0 {descriptor}")
 }
 
 /// Pick the definition symbol for a reference.
@@ -125,7 +172,7 @@ fn name_cols_on_line(root: &Path, rel: &str, line: usize, name: &str) -> (usize,
     (start, end.max(start + 1))
 }
 
-/// Export SCIP JSON. Experimental — simplified schema, not a full protobuf mapping.
+/// Export SCIP JSON following official `scip.Index` protobuf JSON mapping.
 pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
     let refs = store.all_refs_for_export()?;
@@ -133,35 +180,36 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
     let by_bare = index_by_bare(&symbols);
 
     for s in &symbols {
-        // Single-line name range only (SCIP 3-tuple is same-line).
         let line = s.start_line.saturating_sub(1);
-        let occ = json!({
+        let symbol = scip_symbol_name(s);
+        let mut occ = json!({
             "range": [line, s.start_col, s.end_col.max(s.start_col + 1)],
-            "symbol": scip_symbol_name(&s.language, &s.qualified_name, &s.path),
-            "symbol_roles": 1,
-            "documentation": s.description.clone().map(|d| vec![d]).unwrap_or_default(),
+            "symbol": symbol,
+            "symbolRoles": 1,
         });
+        if let Some(d) = &s.description {
+            occ["documentation"] = json!([d]);
+        }
         docs.entry(s.path.clone())
             .or_insert_with(|| (s.language.clone(), Vec::new()))
             .1
             .push(occ);
     }
 
-    // Reference occurrences (role 0) — best-effort; skip when ambiguous.
     for r in &refs {
         let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
         };
-        let sym = scip_symbol_name(&def.language, &def.qualified_name, &def.path);
+        let symbol = scip_symbol_name(def);
         let line = r.line.saturating_sub(1);
         let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);
         let occ = json!({
             "range": [line, c0, c1],
-            "symbol": sym,
-            "symbol_roles": 0,
+            "symbol": symbol,
+            "symbolRoles": 0,
         });
         docs.entry(r.path.clone())
-            .or_insert_with(|| ("unknown".into(), Vec::new()))
+            .or_insert_with(|| ("plaintext".into(), Vec::new()))
             .1
             .push(occ);
     }
@@ -170,22 +218,24 @@ pub fn export_scip(store: &Store, root: &Path, out: &Path) -> Result<()> {
         .into_iter()
         .map(|(path, (lang, occurrences))| {
             json!({
-                "language": lang,
-                "relative_path": path,
+                "language": scip_language_id(&lang),
+                "relativePath": path,
                 "occurrences": occurrences,
             })
         })
         .collect();
 
-    // schemaVersion "2.1.0" is the SCIP JSON convention; symbol strings below
-    // are experimental and NOT consumable by Sourcegraph / scip CLI yet.
+    // Official scip.Index JSON (proto3 camelCase).
     let scip = json!({
-        "schemaVersion": "2.1.0",
-        "toolInfo": {
-            "name": "agentgraph",
-            "version": env!("CARGO_PKG_VERSION"),
+        "schemaVersion": 0,
+        "metadata": {
+            "toolInfo": {
+                "name": "agentgraph",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+            "projectRoot": file_uri(root, ""),
+            "versionProtocol": SCIP_PROTOCOL_VERSION,
         },
-        "project_root": root.to_string_lossy(),
         "documents": documents,
     });
 
@@ -296,7 +346,7 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
             "inV": rid,
         }))?);
 
-        let scip = scip_symbol_name(&s.language, &s.qualified_name, &s.path);
+        let scip = scip_symbol_name(s);
         let rs_id = *result_set_by_symbol.entry(scip).or_insert_with(|| {
             let id = alloc_id(&mut next_id);
             lines.push(
@@ -331,11 +381,18 @@ pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
         let Some(def) = pick_symbol(r, &symbols, &by_bare) else {
             continue;
         };
-        let scip = scip_symbol_name(&def.language, &def.qualified_name, &def.path);
+        let scip = scip_symbol_name(def);
         let Some(rs) = result_set_by_symbol.get(&scip).copied() else {
             continue;
         };
-        let doc_id = ensure_doc(&mut lines, &mut next_id, &mut doc_by_path, root, &r.path, None)?;
+        let doc_id = ensure_doc(
+            &mut lines,
+            &mut next_id,
+            &mut doc_by_path,
+            root,
+            &r.path,
+            None,
+        )?;
         let rid = alloc_id(&mut next_id);
         let line = r.line.saturating_sub(1);
         let (c0, c1) = name_cols_on_line(root, &r.path, r.line, &r.name);

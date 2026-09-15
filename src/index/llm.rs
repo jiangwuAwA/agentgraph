@@ -29,8 +29,7 @@ impl LlmConfig {
             .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
             .trim_end_matches('/')
             .to_string();
-        let model =
-            std::env::var("AGENTGRAPH_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+        let model = std::env::var("AGENTGRAPH_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
         let concurrency = std::env::var("AGENTGRAPH_ENRICH_CONCURRENCY")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -82,7 +81,12 @@ struct EnrichItem {
     location: String,
 }
 
-pub fn enrich(root: &Path, store: &mut Store, cfg: &LlmConfig, limit: usize) -> Result<EnrichReport> {
+pub fn enrich(
+    root: &Path,
+    store: &mut Store,
+    cfg: &LlmConfig,
+    limit: usize,
+) -> Result<EnrichReport> {
     let pending = store.symbols_needing_description(limit)?;
     let items: Vec<EnrichItem> = pending
         .into_iter()

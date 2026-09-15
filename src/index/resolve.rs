@@ -53,9 +53,7 @@ pub fn resolve_typescript_import(
     if base.is_empty() {
         return None;
     }
-    let exts = [
-        ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs",
-    ];
+    let exts = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
     let mut candidates: Vec<String> = Vec::with_capacity(exts.len() * 2 + 4);
     candidates.push(base.clone());
     for e in exts {
@@ -139,20 +137,20 @@ pub fn resolve_go_import(
         // directory form: .../github.com/foo/bar/pkg/... when import is github.com/foo/bar
         // We require the import path to appear as a complete path tail of some prefix.
         // Match: path ends with /import_path/.go  OR contains /import_path/ as dir and then a file under it.
-        let hit = nf.ends_with(&file_suffix)
-            || {
-                // file under package dir: .../{import_path}/file.go or .../{import_path}/sub/file.go
-                if let Some(pos) = nf.find(&suffix) {
-                    // ensure segment boundary already handled by leading /
-                    let _ = pos;
-                    true
-                } else {
-                    false
-                }
-            };
+        let hit = nf.ends_with(&file_suffix) || {
+            // file under package dir: .../{import_path}/file.go or .../{import_path}/sub/file.go
+            if let Some(pos) = nf.find(&suffix) {
+                // ensure segment boundary already handled by leading /
+                let _ = pos;
+                true
+            } else {
+                false
+            }
+        };
         // Stronger: the directory of the file must end with import_path
         let parent = nf.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-        let strong = parent == import_path || parent.ends_with(&suffix.trim_end_matches('/').to_string())
+        let strong = parent == import_path
+            || parent.ends_with(&suffix.trim_end_matches('/').to_string())
             || parent.ends_with(&format!("/{import_path}"));
         if hit && strong {
             let score = nf.len();

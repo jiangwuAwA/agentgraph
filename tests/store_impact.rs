@@ -25,7 +25,9 @@ fn c() {}
 "#;
     let parsed = extract_file(src, Language::Rust, "src/mod.rs", &known).unwrap();
     store.begin_batch().unwrap();
-    store.replace_file("src/mod.rs", "h1", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/mod.rs", "h1", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
 
     // set description on `a`
@@ -35,7 +37,9 @@ fn c() {}
 
     // reindex same file — description must survive
     store.begin_batch().unwrap();
-    store.replace_file("src/mod.rs", "h2", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/mod.rs", "h2", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
     let syms2 = store.find_symbol_exact("a", 10).unwrap();
     let a2 = syms2.iter().find(|s| s.name == "a").unwrap();
@@ -155,12 +159,16 @@ fn c() {}
 "#;
     let parsed = extract_file(src, Language::Rust, "src/mod.rs", &known).unwrap();
     store.begin_batch().unwrap();
-    store.replace_file("src/mod.rs", "h1", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/mod.rs", "h1", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
 
     let impact = store.impact("c", 3, 50).unwrap();
     // depth1: b; depth2: a (both enclosings exist as symbols)
-    assert!(impact.iter().any(|i| i.depth == 2 && i.enclosing.as_deref() == Some("a")));
+    assert!(impact
+        .iter()
+        .any(|i| i.depth == 2 && i.enclosing.as_deref() == Some("a")));
 
     // Replace with a snippet that calls c from an enclosing named ghost_fn
     // that is NOT defined — BFS must not invent a frontier entry for ghost_fn.
@@ -175,7 +183,9 @@ fn c() {}
     // enclosing function name. If we only have a call at module level... depends
     // on extractor. Instead, assert the gate helper directly.
     let _ = src2;
-    assert!(!store.symbol_name_exists("definitely_missing_symbol").unwrap());
+    assert!(!store
+        .symbol_name_exists("definitely_missing_symbol")
+        .unwrap());
     assert!(store.symbol_name_exists("c").unwrap());
 }
 
@@ -192,7 +202,9 @@ fn email_validator() {}
 "#;
     let parsed = extract_file(src, Language::Rust, "src/lib.rs", &known).unwrap();
     store.begin_batch().unwrap();
-    store.replace_file("src/lib.rs", "h", "rust", &parsed).unwrap();
+    store
+        .replace_file("src/lib.rs", "h", "rust", &parsed)
+        .unwrap();
     store.commit_batch().unwrap();
 
     let exact = store.find_symbol_exact("validate_email", 10).unwrap();
@@ -200,7 +212,10 @@ fn email_validator() {}
     assert_eq!(exact[0].name, "validate_email");
 
     let exact_miss = store.find_symbol_exact("email", 10).unwrap();
-    assert!(exact_miss.is_empty(), "exact must not fuzzy-match: {exact_miss:?}");
+    assert!(
+        exact_miss.is_empty(),
+        "exact must not fuzzy-match: {exact_miss:?}"
+    );
 
     let fuzzy = store.find_symbol_fuzzy("email", 10).unwrap();
     assert!(fuzzy.iter().any(|s| s.name == "validate_email"));

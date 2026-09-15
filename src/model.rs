@@ -137,6 +137,8 @@ pub struct SymbolRecord {
     pub start_col: usize,
     #[serde(default)]
     pub end_col: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

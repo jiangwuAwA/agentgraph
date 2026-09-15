@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::extract::ExtractedFile;
-use crate::model::{
-    EdgeKind, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord,
-};
+use crate::model::{EdgeKind, ImpactNode, IndexStats, ReferenceRecord, SymbolKind, SymbolRecord};
 
 pub struct Store {
     conn: Connection,
@@ -42,6 +40,7 @@ impl Store {
                 description TEXT,
                 start_col INTEGER NOT NULL DEFAULT 0,
                 end_col INTEGER NOT NULL DEFAULT 0,
+                return_type TEXT,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -71,8 +70,15 @@ impl Store {
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qualifier TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved_symbol_id INTEGER", []);
-        let _ = conn.execute("ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0", []);
-        let _ = conn.execute("ALTER TABLE symbols ADD COLUMN end_col INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute(
+            "ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE symbols ADD COLUMN end_col INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE symbols ADD COLUMN return_type TEXT", []);
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
@@ -84,9 +90,11 @@ impl Store {
     pub fn file_hash(&self, path: &str) -> Result<Option<String>> {
         let row = self
             .conn
-            .query_row("SELECT hash FROM files WHERE path = ?1", params![path], |r| {
-                r.get::<_, String>(0)
-            })
+            .query_row(
+                "SELECT hash FROM files WHERE path = ?1",
+                params![path],
+                |r| r.get::<_, String>(0),
+            )
             .optional()?;
         Ok(row)
     }
@@ -196,8 +204,8 @@ impl Store {
         )?;
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col, return_type)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
             for s in &extracted.symbols {
                 let desc = old_desc.get(&s.qualified_name).cloned();
@@ -212,6 +220,7 @@ impl Store {
                     desc,
                     s.start_col as i64,
                     s.end_col as i64,
+                    s.return_type,
                 ])?;
             }
         }
@@ -242,8 +251,7 @@ impl Store {
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
-        let keep: std::collections::HashSet<&str> =
-            keep_paths.iter().map(|s| s.as_str()).collect();
+        let keep: std::collections::HashSet<&str> = keep_paths.iter().map(|s| s.as_str()).collect();
         for path in existing {
             if !keep.contains(path.as_str()) {
                 self.conn
@@ -263,13 +271,11 @@ impl Store {
         let references: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM refs", [], |r| r.get(0))?;
-        let described: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM symbols WHERE description IS NOT NULL AND description != ''",
-                [],
-                |r| r.get(0),
-            )?;
+        let described: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM symbols WHERE description IS NOT NULL AND description != ''",
+            [],
+            |r| r.get(0),
+        )?;
         let mut languages = Vec::new();
         let mut stmt = self
             .conn
@@ -291,13 +297,15 @@ impl Store {
     }
 
     fn escape_like(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+        s.replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
     }
 
     /// Exact match on symbol name or qualified_name (no LIKE).
     pub fn find_symbol_exact(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
              FROM symbols s
              JOIN files f ON f.path = s.path
              WHERE s.name = ?1 OR s.qualified_name = ?1
@@ -320,6 +328,7 @@ impl Store {
                 description: r.get(8)?,
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
+                return_type: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -328,7 +337,7 @@ impl Store {
     /// Substring (LIKE) fuzzy match on symbol name only.
     pub fn find_symbol_fuzzy(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
              FROM symbols s
              JOIN files f ON f.path = s.path
              WHERE s.name LIKE ?1 ESCAPE '\\'
@@ -350,6 +359,7 @@ impl Store {
                 description: r.get(8)?,
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
+                return_type: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -358,7 +368,7 @@ impl Store {
     /// Combined exact + fuzzy (legacy behavior; prefer exact/fuzzy split in new code).
     pub fn find_symbol(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
              FROM symbols s
              JOIN files f ON f.path = s.path
              WHERE s.name = ?1 OR s.qualified_name = ?1 OR s.name LIKE ?2 ESCAPE '\\'
@@ -382,6 +392,7 @@ impl Store {
                 description: r.get(8)?,
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
+                return_type: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -392,7 +403,9 @@ impl Store {
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
             (n.to_string(), format!("{q}.{n}"))
         } else if let Some((q, n)) = name.rsplit_once('.') {
-            if q.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':') {
+            if q.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+            {
                 (n.to_string(), name.to_string())
             } else {
                 (name.to_string(), String::new())
@@ -427,7 +440,8 @@ impl Store {
     /// This avoids dangling ids after DELETE+INSERT of a file whose symbols were targets.
     pub fn resolve_symbol_ids(&mut self) -> Result<usize> {
         // Drop every previous link so incremental reindex cannot leave dangling sids.
-        self.conn.execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
+        self.conn
+            .execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
 
         // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
         {
@@ -492,6 +506,78 @@ impl Store {
         Ok(n as usize)
     }
 
+    /// Cross-file / cross-function qualifier upgrade:
+    /// for `s := f()` define edges, if `f` has a return type, rewrite call
+    /// refs in the same file whose qualifier is the variable `s` to that type.
+    pub fn resolve_qualifiers(&mut self) -> Result<usize> {
+        // (path, var) -> type from define join function return_type
+        let mut map: std::collections::HashMap<(String, String), String> =
+            std::collections::HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT r.path, r.name, s.return_type
+                 FROM refs r
+                 JOIN symbols s ON s.name = r.module
+                 WHERE r.kind = 'define' AND r.module IS NOT NULL
+                   AND s.return_type IS NOT NULL AND s.return_type != ''",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (path, var, ty) = row?;
+                map.insert((path, var), ty);
+            }
+        }
+
+        // Also: New* constructors already set qualifier to type in extract.
+        // Upgrade call refs: qualifier is var name matching define map.
+        let mut updated = 0usize;
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, path, qualifier FROM refs
+                 WHERE kind = 'call' AND qualifier IS NOT NULL",
+            )?;
+            let pending: Vec<(i64, String, String)> = {
+                let rows = stmt.query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            drop(stmt);
+            let mut upd = self
+                .conn
+                .prepare_cached("UPDATE refs SET qualifier = ?1 WHERE id = ?2")?;
+            for (id, path, qual) in pending {
+                // If qualifier already looks like a known type (class/struct), skip.
+                let is_type: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM symbols
+                     WHERE name = ?1 AND kind IN ('class','struct','interface','enum','trait')",
+                    params![qual],
+                    |r| r.get(0),
+                )?;
+                if is_type > 0 {
+                    continue;
+                }
+                if let Some(ty) = map.get(&(path.clone(), qual.clone())) {
+                    if ty != &qual {
+                        upd.execute(params![ty, id])?;
+                        updated += 1;
+                    }
+                }
+            }
+        }
+        Ok(updated)
+    }
+
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
@@ -506,7 +592,7 @@ impl Store {
 
     pub fn all_symbols_for_export(&self) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
              FROM symbols s JOIN files f ON f.path = s.path
              ORDER BY s.path, s.start_line",
         )?;
@@ -524,6 +610,7 @@ impl Store {
                 description: r.get(8)?,
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
+                return_type: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -683,6 +770,7 @@ impl Store {
         Ok(list)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn symbols_needing_description(
         &self,
         limit: usize,
@@ -729,7 +817,13 @@ fn last_segment(s: &str) -> String {
 fn quote_ident(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if cleaned.is_empty() {
         "sp".to_string()

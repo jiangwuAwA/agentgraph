@@ -172,7 +172,8 @@ impl Indexer {
         store.prune_missing(&keep)?;
         store.commit_batch()?;
         let linked = store.resolve_symbol_ids()?;
-        eprintln!("resolved_symbol_id on {linked} ref(s)");
+        let upgraded = store.resolve_qualifiers()?;
+        eprintln!("resolved_symbol_id on {linked} ref(s); upgraded {upgraded} qualifier(s)");
 
         let mut stats = store.stats(&self.root.to_string_lossy())?;
         stats.skipped_files = skipped;

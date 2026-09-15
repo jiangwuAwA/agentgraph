@@ -57,11 +57,14 @@ fn file_uri_windows_drive_has_three_slashes() {
 
     // POSIX absolute still three slashes via file:// + /abs
     let posix = Path::new("/home/user/proj");
-    assert_eq!(file_uri(posix, "src/a.rs"), "file:///home/user/proj/src/a.rs");
+    assert_eq!(
+        file_uri(posix, "src/a.rs"),
+        "file:///home/user/proj/src/a.rs"
+    );
 }
 
 #[test]
-fn scip_export_parses_and_uses_schema_2_1_0() {
+fn scip_export_parses_and_uses_protocol_v3() {
     let dir = temp_dir("scip");
     let store = seed_store(&dir.join("index.db"));
     let out = dir.join("index.scip");
@@ -69,10 +72,35 @@ fn scip_export_parses_and_uses_schema_2_1_0() {
 
     let text = std::fs::read_to_string(&out).unwrap();
     let v: Value = serde_json::from_str(&text).expect("SCIP JSON must parse");
-    assert_eq!(v["schemaVersion"], "2.1.0");
-    assert!(v["documents"].as_array().map(|d| !d.is_empty()).unwrap_or(false));
-    // experimental: do not claim schema-valid; just ensure shape is an object index
-    assert!(v.is_object());
+    assert_eq!(v["schemaVersion"], 0);
+    assert_eq!(v["metadata"]["versionProtocol"], 3);
+    assert_eq!(v["metadata"]["toolInfo"]["name"], "agentgraph");
+    assert!(v["documents"]
+        .as_array()
+        .map(|d| !d.is_empty())
+        .unwrap_or(false));
+    // relativePath camelCase, symbol scheme scip-typescript npm agentgraph ...
+    let docs = v["documents"].as_array().unwrap();
+    let mut saw_symbol = false;
+    for d in docs {
+        assert!(
+            d.get("relativePath").is_some(),
+            "documents need relativePath"
+        );
+        if let Some(occs) = d["occurrences"].as_array() {
+            for o in occs {
+                let sym = o["symbol"].as_str().unwrap_or("");
+                if sym.starts_with("scip-typescript npm agentgraph 0.0.0 ") {
+                    saw_symbol = true;
+                    assert!(o.get("symbolRoles").is_some());
+                }
+            }
+        }
+    }
+    assert!(
+        saw_symbol,
+        "expected scip-typescript npm agentgraph symbols"
+    );
 }
 
 #[test]

@@ -17,6 +17,7 @@ pub struct ExtractedSymbol {
     pub parent: Option<String>,
     pub start_col: usize,
     pub end_col: usize,
+    pub return_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,16 +64,18 @@ pub fn extract_file(
     };
 
     match lang {
-        Language::TypeScript
-        | Language::Tsx
-        | Language::JavaScript
-        | Language::Jsx => walk_ts(root, source, None, &mut symbols, &mut references, &ctx),
+        Language::TypeScript | Language::Tsx | Language::JavaScript | Language::Jsx => {
+            walk_ts(root, source, None, &mut symbols, &mut references, &ctx)
+        }
         Language::Python => walk_py(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Go => walk_go(root, source, None, &mut symbols, &mut references, &ctx),
         Language::Rust => walk_rust(root, source, None, &mut symbols, &mut references, &ctx),
     }
 
-    Ok(ExtractedFile { symbols, references })
+    Ok(ExtractedFile {
+        symbols,
+        references,
+    })
 }
 
 fn node_text<'a>(node: Node, source: &'a str) -> &'a str {
@@ -157,6 +160,25 @@ fn push_import(
     });
 }
 
+/// `s := NewServer()` / `const s = createStore()` → define edge name=s, module=callee.
+fn push_assign(
+    references: &mut Vec<ExtractedRef>,
+    var: String,
+    callee: String,
+    line: usize,
+    enclosing: Option<String>,
+) {
+    references.push(ExtractedRef {
+        name: var,
+        kind: EdgeKind::Define,
+        line,
+        enclosing,
+        module: Some(callee),
+        resolved: None,
+        qualifier: None,
+    });
+}
+
 fn first_identifier_node(node: Node) -> Option<Node> {
     if let Some(n) = child_by_field(&node, "name") {
         return Some(n);
@@ -198,7 +220,39 @@ fn make_symbol(
             .lines
             .col_utf16(source, range_node.end_byte())
             .max(ctx.lines.col_utf16(source, range_node.start_byte()) + 1),
+        return_type: extract_return_type(node, source),
     }
+}
+
+/// Best-effort return type from the function/method signature.
+fn extract_return_type(node: Node, source: &str) -> Option<String> {
+    // TS: type_annotation after parameters; Rust: return_type field; Go: result field.
+    for field in ["return_type", "result", "type"] {
+        if let Some(n) = child_by_field(&node, field) {
+            let t = node_text(n, source).trim();
+            let t = t.trim_start_matches("->").trim();
+            let t = t.trim_start_matches('*').trim();
+            let base = t.split('<').next().unwrap_or(t).trim();
+            if !base.is_empty() && base != "void" && base != "unit" {
+                return Some(base.rsplit('.').next().unwrap_or(base).to_string());
+            }
+        }
+    }
+    // TS function_declaration: look for type_annotation sibling of parameters
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "type_annotation" {
+            let t = node_text(child, source)
+                .trim()
+                .trim_start_matches(':')
+                .trim();
+            let base = t.split('<').next().unwrap_or(t).trim();
+            if !base.is_empty() && base != "void" {
+                return Some(base.rsplit('.').next().unwrap_or(base).to_string());
+            }
+        }
+    }
+    None
 }
 
 // 鈹€鈹€鈹€ TypeScript 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -253,9 +307,7 @@ fn walk_ts(
         "type_alias_declaration" => {
             first_identifier_name(node, source).map(|n| (n, SymbolKind::TypeAlias))
         }
-        "method_definition" => {
-            first_identifier_name(node, source).map(|n| (n, SymbolKind::Method))
-        }
+        "method_definition" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Method)),
         "lexical_declaration" | "variable_declaration" => extract_var_function(node, source),
         _ => None,
     };
@@ -273,12 +325,14 @@ fn walk_ts(
             }
             _ => name.clone(),
         };
-        symbols.push(make_symbol(name.clone(),
+        symbols.push(make_symbol(
+            name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx, source,
+            ctx,
+            source,
         ));
         local_parent = Some(qname);
     }
@@ -300,9 +354,9 @@ fn walk_ts(
         "import_statement" => {
             let line = ctx.lines.line_of(node.start_byte());
             let specifier = ts_import_specifier(node, source);
-            let resolved = specifier.as_ref().and_then(|s| {
-                resolve::resolve_typescript_import(ctx.path, s, ctx.known_files)
-            });
+            let resolved = specifier
+                .as_ref()
+                .and_then(|s| resolve::resolve_typescript_import(ctx.path, s, ctx.known_files));
             collect_import_names(node, source, &mut |name| {
                 push_import(
                     references,
@@ -318,7 +372,14 @@ fn walk_ts(
     }
 
     for child in node.children(&mut cursor) {
-        walk_ts(child, source, local_parent.clone(), symbols, references, ctx);
+        walk_ts(
+            child,
+            source,
+            local_parent.clone(),
+            symbols,
+            references,
+            ctx,
+        );
     }
 
     if let Some(s) = saved_var_types {
@@ -484,7 +545,9 @@ fn collect_ts_var_types(node: Node, source: &str, ctx: &ExtractContext) {
                 for t in part.children(&mut c3) {
                     let tt = node_text(t, source).trim().trim_start_matches('&');
                     if !tt.is_empty() && t.kind() != ":" {
-                        ctx.var_types.borrow_mut().insert(name.clone(), tt.to_string());
+                        ctx.var_types
+                            .borrow_mut()
+                            .insert(name.clone(), tt.to_string());
                         break;
                     }
                 }
@@ -542,27 +605,25 @@ fn collect_ts_param_types(node: Node, source: &str, ctx: &ExtractContext) {
 fn collect_import_names(node: Node, source: &str, sink: &mut impl FnMut(String)) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        match child.kind() {
-            "import_clause" => {
-                let mut c2 = child.walk();
-                for part in child.children(&mut c2) {
-                    match part.kind() {
-                        "identifier" => sink(node_text(part, source).to_string()),
-                        "named_imports" => {
-                            let mut c3 = part.walk();
-                            for imp in part.children(&mut c3) {
-                                if imp.kind() == "import_specifier" {
-                                    if let Some(n) = first_identifier_name(imp, source) {
-                                        sink(n);
-                                    }
-                                }
+        if child.kind() != "import_clause" {
+            continue;
+        }
+        let mut c2 = child.walk();
+        for part in child.children(&mut c2) {
+            match part.kind() {
+                "identifier" => sink(node_text(part, source).to_string()),
+                "named_imports" => {
+                    let mut c3 = part.walk();
+                    for imp in part.children(&mut c3) {
+                        if imp.kind() == "import_specifier" {
+                            if let Some(n) = first_identifier_name(imp, source) {
+                                sink(n);
                             }
                         }
-                        _ => {}
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
@@ -594,12 +655,14 @@ fn walk_py(
             Some(p) => format!("{p}.{name}"),
             None => name.clone(),
         };
-        symbols.push(make_symbol(name.clone(),
+        symbols.push(make_symbol(
+            name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx, source,
+            ctx,
+            source,
         ));
         local_parent = Some(qname);
     }
@@ -619,15 +682,23 @@ fn walk_py(
         }
         "import_statement" => {
             let line = ctx.lines.line_of(node.start_byte());
-            collect_py_import_statement(node, source, 0, ctx, local_parent.clone(), references, line);
+            collect_py_import_statement(
+                node,
+                source,
+                0,
+                ctx,
+                local_parent.clone(),
+                references,
+                line,
+            );
         }
         "import_from_statement" => {
             let line = ctx.lines.line_of(node.start_byte());
             let level = py_import_level(node, source);
             let module = py_import_module(node, source);
-            let resolved = module.as_ref().and_then(|m| {
-                resolve::resolve_python_import(ctx.path, m, level, ctx.known_files)
-            });
+            let resolved = module
+                .as_ref()
+                .and_then(|m| resolve::resolve_python_import(ctx.path, m, level, ctx.known_files));
             collect_py_from_imports(node, source, &mut |name| {
                 push_import(
                     references,
@@ -643,14 +714,24 @@ fn walk_py(
     }
 
     for child in node.children(&mut cursor) {
-        walk_py(child, source, local_parent.clone(), symbols, references, ctx);
+        walk_py(
+            child,
+            source,
+            local_parent.clone(),
+            symbols,
+            references,
+            ctx,
+        );
     }
 }
 
 fn py_import_level(node: Node, source: &str) -> usize {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "import_from" || child.kind() == "relative_import" || child.kind() == "import_prefix" {
+        if child.kind() == "import_from"
+            || child.kind() == "relative_import"
+            || child.kind() == "import_prefix"
+        {
             // count dots in prefix
             let mut c2 = child.walk();
             for p in child.children(&mut c2) {
@@ -776,7 +857,14 @@ fn collect_py_import_statement(
             let t = node_text(child, source);
             let last = t.rsplit('.').next().unwrap_or(t).to_string();
             let resolved = resolve::resolve_python_import(ctx.path, t, 0, ctx.known_files);
-            push_import(references, last, line, enclosing.clone(), Some(t.to_string()), resolved);
+            push_import(
+                references,
+                last,
+                line,
+                enclosing.clone(),
+                Some(t.to_string()),
+                resolved,
+            );
         } else if child.kind() == "aliased_import" {
             let mut c2 = child.walk();
             let mut module = None;
@@ -789,12 +877,14 @@ fn collect_py_import_statement(
                 }
             }
             let name = alias.clone().or_else(|| {
-                module.as_ref().map(|m| m.rsplit('.').next().unwrap_or(m).to_string())
+                module
+                    .as_ref()
+                    .map(|m| m.rsplit('.').next().unwrap_or(m).to_string())
             });
             if let Some(name) = name {
-                let resolved = module.as_ref().and_then(|m| {
-                    resolve::resolve_python_import(ctx.path, m, 0, ctx.known_files)
-                });
+                let resolved = module
+                    .as_ref()
+                    .and_then(|m| resolve::resolve_python_import(ctx.path, m, 0, ctx.known_files));
                 push_import(references, name, line, enclosing.clone(), module, resolved);
             }
         }
@@ -842,11 +932,16 @@ fn walk_go(
     }
     if kind == "short_var_declaration" {
         collect_go_short_var(node, source, ctx);
+        collect_go_assign_refs(node, source, references, local_parent.clone(), ctx);
     }
 
     let symbol_info: Option<(String, SymbolKind)> = match kind {
-        "function_declaration" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Function)),
-        "method_declaration" => first_identifier_name(node, source).map(|n| (n, SymbolKind::Method)),
+        "function_declaration" => {
+            first_identifier_name(node, source).map(|n| (n, SymbolKind::Function))
+        }
+        "method_declaration" => {
+            first_identifier_name(node, source).map(|n| (n, SymbolKind::Method))
+        }
         "type_declaration" => go_type_decl_name(node, source),
         _ => None,
     };
@@ -862,12 +957,14 @@ fn walk_go(
             Some(p) if skind == SymbolKind::Method => format!("{p}.{name}"),
             _ => name.clone(),
         };
-        symbols.push(make_symbol(name.clone(),
+        symbols.push(make_symbol(
+            name.clone(),
             qname.clone(),
             skind,
             node,
             parent_for_qname.clone(),
-            ctx, source,
+            ctx,
+            source,
         ));
         local_parent = Some(qname);
     }
@@ -894,7 +991,14 @@ fn walk_go(
     }
 
     for child in node.children(&mut cursor) {
-        walk_go(child, source, local_parent.clone(), symbols, references, ctx);
+        walk_go(
+            child,
+            source,
+            local_parent.clone(),
+            symbols,
+            references,
+            ctx,
+        );
     }
 
     if let Some(s) = saved_var_types {
@@ -951,21 +1055,20 @@ fn go_call_target(
     match node.kind() {
         "identifier" => Some((node_text(node, source).to_string(), None)),
         "selector_expression" => {
-            let field = child_by_field(&node, "field")
-                .unwrap_or_else(|| {
-                    let mut last = node;
-                    let mut c = node.walk();
-                    for ch in node.children(&mut c) {
-                        if ch.kind() == "field_identifier" {
-                            last = ch;
-                        }
+            let field = child_by_field(&node, "field").unwrap_or_else(|| {
+                let mut last = node;
+                let mut c = node.walk();
+                for ch in node.children(&mut c) {
+                    if ch.kind() == "field_identifier" {
+                        last = ch;
                     }
-                    last
-                });
+                }
+                last
+            });
             let name = node_text(field, source).to_string();
             // Object is the first identifier child (tree-sitter-go may not set "operand").
-            let mut obj: Option<Node> = child_by_field(&node, "operand")
-                .or_else(|| child_by_field(&node, "value"));
+            let mut obj: Option<Node> =
+                child_by_field(&node, "operand").or_else(|| child_by_field(&node, "value"));
             if obj.is_none() {
                 let mut c = node.walk();
                 for ch in node.children(&mut c) {
@@ -975,18 +1078,15 @@ fn go_call_target(
                     }
                 }
             }
-            let q = obj
-                .filter(|o| o.kind() == "identifier")
-                .map(|o| {
-                    let t = node_text(o, source).to_string();
-                    if let Some(ctx) = ctx {
-                        if let Some(ty) = ctx.var_types.borrow().get(&t).cloned() {
-                            return Some(ty);
-                        }
+            let q = obj.filter(|o| o.kind() == "identifier").map(|o| {
+                let t = node_text(o, source).to_string();
+                if let Some(ctx) = ctx {
+                    if let Some(ty) = ctx.var_types.borrow().get(&t).cloned() {
+                        return ty;
                     }
-                    Some(t)
-                })
-                .flatten();
+                }
+                t
+            });
             Some((name, q))
         }
         _ => {
@@ -1054,8 +1154,8 @@ fn collect_go_param_types(node: Node, source: &str, ctx: &ExtractContext) {
 fn collect_go_short_var(node: Node, source: &str, ctx: &ExtractContext) {
     fn find_ctor_type(n: Node, source: &str) -> Option<String> {
         if n.kind() == "call_expression" {
-            let mut fn_name: Option<String> = child_by_field(&n, "function")
-                .map(|f| node_text(f, source).to_string());
+            let mut fn_name: Option<String> =
+                child_by_field(&n, "function").map(|f| node_text(f, source).to_string());
             if fn_name.is_none() {
                 let mut c = n.walk();
                 for ch in n.children(&mut c) {
@@ -1115,6 +1215,55 @@ fn collect_go_short_var(node: Node, source: &str, ctx: &ExtractContext) {
     collect_names(node, source, ctx, &ty);
 }
 
+/// Record `s := f()` define edges for later return-type propagation.
+fn collect_go_assign_refs(
+    node: Node,
+    source: &str,
+    references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
+    ctx: &ExtractContext,
+) {
+    fn first_ident(n: Node, source: &str) -> Option<String> {
+        let mut c = n.walk();
+        for ch in n.children(&mut c) {
+            if ch.kind() == "identifier" {
+                return Some(node_text(ch, source).to_string());
+            }
+        }
+        None
+    }
+    let mut names = Vec::new();
+    let mut callee: Option<String> = None;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "expression_list" && names.is_empty() {
+            let mut c2 = child.walk();
+            for id in child.children(&mut c2) {
+                if id.kind() == "identifier" {
+                    names.push(node_text(id, source).to_string());
+                }
+            }
+        }
+        if child.kind() == "expression_list" && callee.is_none() && !names.is_empty() {
+            // second list may wrap call
+            let mut c2 = child.walk();
+            for ch in child.children(&mut c2) {
+                if ch.kind() == "call_expression" {
+                    callee = first_ident(ch, source);
+                }
+            }
+        }
+    }
+    let line = ctx.lines.line_of(node.start_byte());
+    if let Some(callee) = callee {
+        for n in names {
+            if !n.is_empty() && n != "_" {
+                push_assign(references, n, callee.clone(), line, enclosing.clone());
+            }
+        }
+    }
+}
+
 fn go_collect_imports(
     node: Node,
     source: &str,
@@ -1139,7 +1288,9 @@ fn go_collect_imports(
             match p.kind() {
                 "import_path" | "interpreted_string_literal" | "raw_string_literal" | "string" => {
                     let t = node_text(p, source);
-                    path = t.trim_matches(|c| c == '"' || c == '`' || c == '\'').to_string();
+                    path = t
+                        .trim_matches(|c| c == '"' || c == '`' || c == '\'')
+                        .to_string();
                 }
                 "package_identifier" | "dot" | "blank_identifier" => {
                     alias = Some(node_text(p, source).to_string());
@@ -1152,11 +1303,16 @@ fn go_collect_imports(
         }
         let name = alias
             .filter(|a| a != "." && a != "_")
-            .unwrap_or_else(|| {
-                path.rsplit('/').next().unwrap_or(&path).to_string()
-            });
+            .unwrap_or_else(|| path.rsplit('/').next().unwrap_or(&path).to_string());
         let resolved = resolve::resolve_go_import(ctx.path, &path, ctx.known_files);
-        push_import(references, name, line, enclosing.clone(), Some(path), resolved);
+        push_import(
+            references,
+            name,
+            line,
+            enclosing.clone(),
+            Some(path),
+            resolved,
+        );
     }
 }
 
@@ -1184,7 +1340,8 @@ fn walk_rust(
         None
     };
 
-    if kind == "function_item" || kind == "function_signature_item" || kind == "closure_expression" {
+    if kind == "function_item" || kind == "function_signature_item" || kind == "closure_expression"
+    {
         collect_rust_param_types(node, source, ctx);
     }
 
@@ -1213,12 +1370,14 @@ fn walk_rust(
             Some(p) => format!("{p}::{name}"),
             None => name.clone(),
         };
-        symbols.push(make_symbol(name.clone(),
+        symbols.push(make_symbol(
+            name.clone(),
             qname.clone(),
             skind,
             node,
             parent.clone(),
-            ctx, source,
+            ctx,
+            source,
         ));
         local_parent = Some(qname);
     }
@@ -1254,7 +1413,14 @@ fn walk_rust(
     }
 
     for child in node.children(&mut cursor) {
-        walk_rust(child, source, local_parent.clone(), symbols, references, ctx);
+        walk_rust(
+            child,
+            source,
+            local_parent.clone(),
+            symbols,
+            references,
+            ctx,
+        );
     }
 
     if let Some(s) = saved_var_types {
@@ -1397,9 +1563,7 @@ fn rust_collect_use(
                 let text = node_text(n, source).to_string();
                 let leaf = child_by_field(&n, "name")
                     .map(|x| node_text(x, source).to_string())
-                    .unwrap_or_else(|| {
-                        text.rsplit("::").next().unwrap_or(&text).to_string()
-                    });
+                    .unwrap_or_else(|| text.rsplit("::").next().unwrap_or(&text).to_string());
                 paths.push((text, leaf));
             }
             "identifier" => {
@@ -1433,9 +1597,7 @@ fn rust_collect_use(
                     let text = node_text(ch, source).to_string();
                     let leaf = child_by_field(&ch, "name")
                         .map(|x| node_text(x, source).to_string())
-                        .unwrap_or_else(|| {
-                            text.rsplit("::").next().unwrap_or(&text).to_string()
-                        });
+                        .unwrap_or_else(|| text.rsplit("::").next().unwrap_or(&text).to_string());
                     out.push((text, leaf));
                 }
                 "use_list" | "scoped_use_list" => {

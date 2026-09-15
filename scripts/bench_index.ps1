@@ -11,7 +11,8 @@ if (-not $Root) { $Root = Join-Path $repo "fixtures\sample-app" }
 
 function Invoke-Index([string]$label, [string[]]$indexArgs) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    & $bin --root $Root index @indexArgs 2>$null | Out-Null
+    # agentgraph prints progress on stderr; don't treat as error
+    $null = & $bin --root $Root index @indexArgs 2>&1
     $sw.Stop()
     Write-Host ("{0}: {1} ms" -f $label, [int]$sw.Elapsed.TotalMilliseconds)
     return [int]$sw.Elapsed.TotalMilliseconds

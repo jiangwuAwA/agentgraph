@@ -40,6 +40,8 @@ impl Store {
                 end_line INTEGER NOT NULL,
                 parent TEXT,
                 description TEXT,
+                start_col INTEGER NOT NULL DEFAULT 0,
+                end_col INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -52,6 +54,7 @@ impl Store {
                 enclosing TEXT,
                 module TEXT,
                 resolved TEXT,
+                qualifier TEXT,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -65,6 +68,9 @@ impl Store {
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN description TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN module TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN qualifier TEXT", []);
+        let _ = conn.execute("ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE symbols ADD COLUMN end_col INTEGER NOT NULL DEFAULT 0", []);
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
@@ -128,8 +134,8 @@ impl Store {
         )?;
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             )?;
             for s in &extracted.symbols {
                 let desc = old_desc.get(&s.qualified_name).cloned();
@@ -142,13 +148,15 @@ impl Store {
                     s.end_line as i64,
                     s.parent,
                     desc,
+                    s.start_col as i64,
+                    s.end_col as i64,
                 ])?;
             }
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
             for r in &extracted.references {
                 stmt.execute(params![
@@ -159,6 +167,7 @@ impl Store {
                     r.enclosing,
                     r.module,
                     r.resolved,
+                    r.qualifier,
                 ])?;
             }
         }
@@ -225,7 +234,7 @@ impl Store {
 
     pub fn find_symbol(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
              FROM symbols s
              JOIN files f ON f.path = s.path
              WHERE s.name = ?1 OR s.qualified_name = ?1 OR s.name LIKE ?2 ESCAPE '\\'
@@ -247,16 +256,21 @@ impl Store {
                 end_line: r.get::<_, i64>(6)? as usize,
                 parent: r.get(7)?,
                 description: r.get(8)?,
+                start_col: r.get::<_, i64>(10)? as usize,
+                end_col: r.get::<_, i64>(11)? as usize,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn callers(&self, name: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
+        // Type-aware: match bare name OR qualifier.name / Type::method style queries.
         let mut stmt = self.conn.prepare(
-            "SELECT name, kind, path, line, enclosing, module, resolved
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier
              FROM refs
              WHERE name = ?1
+                OR (qualifier IS NOT NULL AND (qualifier || '.' || name) = ?1)
+                OR (qualifier IS NOT NULL AND (qualifier || '::' || name) = ?1)
              ORDER BY path, line
              LIMIT ?2",
         )?;
@@ -269,6 +283,7 @@ impl Store {
                 enclosing: r.get(4)?,
                 module: r.get(5)?,
                 resolved: r.get(6)?,
+                qualifier: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -291,6 +306,51 @@ impl Store {
                 enclosing: r.get(4)?,
                 module: r.get(5)?,
                 resolved: r.get(6)?,
+                qualifier: r.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn all_symbols_for_export(&self) -> Result<Vec<SymbolRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col
+             FROM symbols s JOIN files f ON f.path = s.path
+             ORDER BY s.path, s.start_line",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(SymbolRecord {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                qualified_name: r.get(2)?,
+                kind: SymbolKind::parse(&r.get::<_, String>(3)?),
+                path: r.get(4)?,
+                language: r.get(9)?,
+                start_line: r.get::<_, i64>(5)? as usize,
+                end_line: r.get::<_, i64>(6)? as usize,
+                parent: r.get(7)?,
+                description: r.get(8)?,
+                start_col: r.get::<_, i64>(10)? as usize,
+                end_col: r.get::<_, i64>(11)? as usize,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn all_refs_for_export(&self) -> Result<Vec<ReferenceRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier FROM refs ORDER BY path, line",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(ReferenceRecord {
+                name: r.get(0)?,
+                kind: EdgeKind::parse(&r.get::<_, String>(1)?),
+                path: r.get(2)?,
+                line: r.get::<_, i64>(3)? as usize,
+                enclosing: r.get(4)?,
+                module: r.get(5)?,
+                resolved: r.get(6)?,
+                qualifier: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)

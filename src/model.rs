@@ -133,6 +133,10 @@ pub struct SymbolRecord {
     pub parent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default)]
+    pub start_col: usize,
+    #[serde(default)]
+    pub end_col: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +150,8 @@ pub struct ReferenceRecord {
     pub module: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qualifier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

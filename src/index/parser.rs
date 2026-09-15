@@ -6,21 +6,21 @@ use crate::model::Language;
 /// Precomputed newline offsets for O(log n) byte→line lookup.
 #[derive(Debug, Clone)]
 pub struct LineIndex {
-    /// Byte offsets of each `\n` (sorted).
-    newlines: Vec<usize>,
+    /// Byte offset where each 1-based line starts.
+    line_starts: Vec<usize>,
     source_len: usize,
 }
 
 impl LineIndex {
     pub fn new(source: &str) -> Self {
-        let mut newlines = Vec::with_capacity(source.len() / 40 + 16);
+        let mut line_starts = vec![0usize];
         for (i, b) in source.bytes().enumerate() {
             if b == b'\n' {
-                newlines.push(i);
+                line_starts.push(i + 1);
             }
         }
         Self {
-            newlines,
+            line_starts,
             source_len: source.len(),
         }
     }
@@ -28,9 +28,15 @@ impl LineIndex {
     /// 1-based line number for a byte offset.
     pub fn line_of(&self, byte_offset: usize) -> usize {
         let off = byte_offset.min(self.source_len);
-        // number of newlines strictly before off
-        let idx = self.newlines.partition_point(|&n| n < off);
-        idx + 1
+        self.line_starts.partition_point(|&s| s <= off)
+    }
+
+    /// 0-based column (byte offset within the line).
+    pub fn col_of(&self, byte_offset: usize) -> usize {
+        let off = byte_offset.min(self.source_len);
+        let line = self.line_of(off);
+        let start = self.line_starts[line.saturating_sub(1)];
+        off.saturating_sub(start)
     }
 }
 

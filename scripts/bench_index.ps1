@@ -11,8 +11,8 @@ if (-not $Root) { $Root = Join-Path $repo "fixtures\sample-app" }
 
 function Invoke-Index([string]$label, [string[]]$indexArgs) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    # agentgraph prints progress on stderr; don't treat as error
-    $null = & $bin --root $Root index @indexArgs 2>&1
+    # Progress goes to stderr; swallow both streams without throwing.
+    cmd /c "`"$bin`" --root `"$Root`" index $($indexArgs -join ' ') >NUL 2>&1"
     $sw.Stop()
     Write-Host ("{0}: {1} ms" -f $label, [int]$sw.Elapsed.TotalMilliseconds)
     return [int]$sw.Elapsed.TotalMilliseconds
@@ -31,7 +31,7 @@ if ($touch) {
     $one = Invoke-Index "1 file change" @()
     $c = Get-Content $touch.FullName
     Set-Content -Path $touch.FullName -Value ($c | Where-Object { $_ -ne "// bench-touch" })
-    & $bin --root $Root index 2>$null | Out-Null
+    cmd /c "`"$bin`" --root `"$Root`" index >NUL 2>&1"
 }
 Write-Host "budgets: full soft (large-repo < 240s); noop/inc target < 200ms on SSD for small files"
 if ($inc -gt 5000) { Write-Error "noop incremental too slow: $inc ms" }

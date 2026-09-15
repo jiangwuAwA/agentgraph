@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use crate::index::Indexer;
+use crate::index::{llm, Indexer};
 use crate::query::Query;
 
 #[derive(Parser, Debug)]
@@ -54,6 +54,18 @@ pub enum Commands {
     Related {
         name: String,
         #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Files that import a given file (module-level edges)
+    Importers {
+        /// Repo-relative file path, e.g. src/auth.ts
+        path: String,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
+    /// Optional LLM pass: one-line responsibility descriptions for symbols
+    Enrich {
+        #[arg(long, default_value_t = 50)]
         limit: usize,
     },
     /// Run as an MCP server over stdio
@@ -108,6 +120,17 @@ pub fn run(cli: Cli) -> Result<()> {
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&mapped)?);
+        }
+        Commands::Importers { path, limit } => {
+            let store = indexer.open_store()?;
+            let hits = store.importers_of_file(&path.replace('\\', "/"), limit)?;
+            println!("{}", serde_json::to_string_pretty(&hits)?);
+        }
+        Commands::Enrich { limit } => {
+            let cfg = llm::LlmConfig::from_env()?;
+            let mut store = indexer.open_store()?;
+            let report = llm::enrich(&indexer.root, &mut store, &cfg, limit)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Commands::Mcp => {
             crate::mcp::server::run_stdio(root)?;

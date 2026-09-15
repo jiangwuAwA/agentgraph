@@ -7,6 +7,8 @@ pub fn ts_language(lang: Language) -> TsLanguage {
     match lang {
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         Language::Python => tree_sitter_python::LANGUAGE.into(),
+        Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Rust => tree_sitter_rust::LANGUAGE.into(),
     }
 }
 
@@ -21,7 +23,7 @@ pub fn parse(source: &str, lang: Language) -> Result<tree_sitter::Tree> {
         .ok_or_else(|| anyhow!("parse returned no tree"))
 }
 
-/// 0-based line -> 1-based line number
+/// Convert byte offset to 1-based line number.
 pub fn line_of(byte_offset: usize, source: &str) -> usize {
     let mut line = 1usize;
     for (i, ch) in source.char_indices() {

@@ -14,6 +14,30 @@ pub fn collect_source_files(root: &std::path::Path) -> Result<Vec<PathBuf>> {
         .git_exclude(true)
         .build();
 
+    const NOISE: &[&str] = &[
+        "node_modules/",
+        "\\node_modules\\",
+        "/target/",
+        "\\target\\",
+        "/dist/",
+        "\\dist\\",
+        "/build/",
+        "\\build\\",
+        "/vendor/",
+        "\\vendor\\",
+        "/.venv/",
+        "\\.venv\\",
+        "/__pycache__/",
+        "\\__pycache__\\",
+        "/.git/",
+        "\\.git\\",
+        "/third_party/",
+        "\\third_party\\",
+        "/testdata/",
+        "\\testdata\\",
+        "/fixtures/generated/",
+    ];
+
     for entry in walker {
         let entry = match entry {
             Ok(e) => e,
@@ -24,17 +48,20 @@ pub fn collect_source_files(root: &std::path::Path) -> Result<Vec<PathBuf>> {
         }
         let path = entry.path();
         let rel = path.strip_prefix(root).unwrap_or(path);
-        let rel_str = rel.to_string_lossy();
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
 
-        // Skip our own index and common noise.
-        if rel_str.starts_with(".agentgraph")
-            || rel_str.contains("node_modules/")
-            || rel_str.contains("\\node_modules\\")
-            || rel_str.contains("/target/")
-            || rel_str.contains("\\target\\")
-            || rel_str.contains(".min.")
-        {
+        if rel_str.starts_with(".agentgraph") || rel_str.contains(".min.") {
             continue;
+        }
+        if NOISE.iter().any(|n| rel_str.contains(&n.replace('\\', "/"))) {
+            continue;
+        }
+
+        // Skip obviously generated / huge files by size
+        if let Ok(meta) = entry.metadata() {
+            if meta.len() > 1_500_000 {
+                continue;
+            }
         }
 
         if Language::from_path(&rel_str).is_some() {

@@ -1,5 +1,7 @@
 pub mod extract;
+pub mod llm;
 pub mod parser;
+pub mod resolve;
 pub mod store;
 pub mod walker;
 
@@ -28,9 +30,21 @@ impl Indexer {
     }
 
     /// Full or incremental index. Unchanged files (same content hash) are skipped.
+    /// Two-pass: first collect file set, then extract with known_files for import resolution.
     pub fn index(&self, force: bool) -> Result<IndexStats> {
         let mut store = self.open_store()?;
         let files = walker::collect_source_files(&self.root)?;
+
+        let known: std::collections::HashSet<String> = files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&self.root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+
         let mut indexed = 0usize;
         let mut skipped = 0usize;
 
@@ -52,27 +66,18 @@ impl Indexer {
             let source = std::fs::read_to_string(path)?;
             let lang = crate::model::Language::from_path(&rel)
                 .ok_or_else(|| anyhow::anyhow!("unsupported language: {rel}"))?;
-            let parsed = extract::extract_file(&source, lang, &rel)?;
+            let parsed = extract::extract_file(&source, lang, &rel, &known)?;
             store.replace_file(&rel, &hash, lang.as_str(), &parsed)?;
             indexed += 1;
         }
 
-        // Drop files that no longer exist on disk.
-        let keep: Vec<String> = files
-            .iter()
-            .map(|p| {
-                p.strip_prefix(&self.root)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
-            .collect();
+        let keep: Vec<String> = known.into_iter().collect();
         store.prune_missing(&keep)?;
 
         let stats = store.stats(&self.root.to_string_lossy())?;
         eprintln!(
-            "indexed {indexed} file(s), skipped {skipped} unchanged; {} symbols, {} refs",
-            stats.symbols, stats.references
+            "indexed {indexed} file(s), skipped {skipped} unchanged; {} symbols, {} refs, {} described",
+            stats.symbols, stats.references, stats.described
         );
         Ok(stats)
     }

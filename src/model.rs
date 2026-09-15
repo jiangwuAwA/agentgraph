@@ -5,15 +5,25 @@ use serde::{Deserialize, Serialize};
 pub enum Language {
     TypeScript,
     Python,
+    Go,
+    Rust,
 }
 
 impl Language {
     pub fn from_path(path: &str) -> Option<Self> {
         let lower = path.to_ascii_lowercase();
-        if lower.ends_with(".ts") || lower.ends_with(".tsx") || lower.ends_with(".mts") || lower.ends_with(".cts") {
+        if lower.ends_with(".ts")
+            || lower.ends_with(".tsx")
+            || lower.ends_with(".mts")
+            || lower.ends_with(".cts")
+        {
             Some(Language::TypeScript)
         } else if lower.ends_with(".py") || lower.ends_with(".pyi") {
             Some(Language::Python)
+        } else if lower.ends_with(".go") {
+            Some(Language::Go)
+        } else if lower.ends_with(".rs") {
+            Some(Language::Rust)
         } else {
             None
         }
@@ -23,6 +33,8 @@ impl Language {
         match self {
             Language::TypeScript => "typescript",
             Language::Python => "python",
+            Language::Go => "go",
+            Language::Rust => "rust",
         }
     }
 }
@@ -37,6 +49,9 @@ pub enum SymbolKind {
     TypeAlias,
     Variable,
     Module,
+    Struct,
+    Enum,
+    Trait,
 }
 
 impl SymbolKind {
@@ -49,6 +64,9 @@ impl SymbolKind {
             SymbolKind::TypeAlias => "type_alias",
             SymbolKind::Variable => "variable",
             SymbolKind::Module => "module",
+            SymbolKind::Struct => "struct",
+            SymbolKind::Enum => "enum",
+            SymbolKind::Trait => "trait",
         }
     }
 
@@ -60,6 +78,9 @@ impl SymbolKind {
             "interface" => SymbolKind::Interface,
             "type_alias" => SymbolKind::TypeAlias,
             "variable" => SymbolKind::Variable,
+            "struct" => SymbolKind::Struct,
+            "enum" => SymbolKind::Enum,
+            "trait" => SymbolKind::Trait,
             _ => SymbolKind::Module,
         }
     }
@@ -102,6 +123,8 @@ pub struct SymbolRecord {
     pub start_line: usize,
     pub end_line: usize,
     pub parent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +134,10 @@ pub struct ReferenceRecord {
     pub path: String,
     pub line: usize,
     pub enclosing: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +147,8 @@ pub struct IndexStats {
     pub references: usize,
     pub languages: Vec<String>,
     pub root: String,
+    #[serde(default)]
+    pub described: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,4 +158,17 @@ pub struct ImpactNode {
     pub line: usize,
     pub kind: EdgeKind,
     pub depth: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enclosing: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichReport {
+    pub attempted: usize,
+    pub described: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub model: String,
 }

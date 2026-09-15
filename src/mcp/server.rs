@@ -156,6 +156,28 @@ fn tools_list() -> Value {
                 "name": "stats",
                 "description": "Show current index statistics (file/symbol/reference counts).",
                 "inputSchema": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "importers",
+                "description": "List files that import a given file (module-level resolved import edges).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Repo-relative file path"},
+                        "limit": {"type": "integer", "default": 50}
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "enrich",
+                "description": "Optional LLM pass: attach one-line responsibility descriptions to undescribed symbols. Requires OPENAI_API_KEY.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "default": 30}
+                    }
+                }
             }
         ]
     })
@@ -262,6 +284,26 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     })
                     .collect();
                 Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
+            }
+            "importers" => {
+                let path = args
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("path required"))?
+                    .replace('\\', "/");
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                let indexer = Indexer::new(&root)?;
+                let store = indexer.open_store()?;
+                let hits = store.importers_of_file(&path, limit)?;
+                Ok(ok_text(serde_json::to_string_pretty(&hits)?))
+            }
+            "enrich" => {
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(30) as usize;
+                let cfg = crate::index::llm::LlmConfig::from_env()?;
+                let indexer = Indexer::new(&root)?;
+                let mut store = indexer.open_store()?;
+                let report = crate::index::llm::enrich(&indexer.root, &mut store, &cfg, limit)?;
+                Ok(ok_text(serde_json::to_string_pretty(&report)?))
             }
             other => Err(anyhow::anyhow!("unknown tool: {other}")),
         }

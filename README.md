@@ -1,97 +1,92 @@
 # agentgraph
 
-Agent-native code understanding: symbol graph, call graph, impact analysis — as a **CLI + MCP server**.
+[![CI](https://github.com/jiangwuAwA/agentgraph/actions/workflows/ci.yml/badge.svg)](https://github.com/jiangwuAwA/agentgraph/actions/workflows/ci.yml)
 
-Not another embedding RAG. When an agent needs to know *who calls this*, *what breaks if I change this*, or *which files matter*, it needs **structural facts**, not similar text chunks.
+Agent-native code understanding: **symbol graph, call graph, impact analysis** — CLI + MCP server.
 
-## Why
+Not another embedding RAG. When an agent needs *who calls this*, *what breaks if I change this*, or *which files matter*, it needs **structural facts**, not similar text chunks.
 
 | Approach | Problem |
 |---|---|
 | Chunk + embed RAG | Loses call/import structure |
-| CodeQL / Sourcegraph | Heavy, enterprise-oriented, hard for agents to call |
+| CodeQL / Sourcegraph | Heavy, enterprise-oriented, awkward for agents to call |
 | Raw LSP | Built for IDE hover, not multi-hop agent reasoning |
 
-`agentgraph` is a local-first index: tree-sitter parse → SQLite symbol/reference store → query API for agents.
+**Pipeline:** tree-sitter parse → SQLite symbol/reference store → query API for agents.
 
-## Features
-
-- **Languages**: TypeScript, **TSX**, JavaScript/**JSX**, Python, Go, Rust
-- **Index**: symbols, call sites, imports (module-resolved when possible)
-- **Import resolution**: TS/JS relative paths, Python packages, local Rust `crate::`/`super::`/`self::`, conservative Go package paths
-- **Incremental**: content-hash skip; LLM descriptions **survive reindex**
-- **Queries**:
-  - `find_symbol` — definitions (exact / escaped fuzzy)
-  - `callers` — call/import sites with `module` + `resolved`
-  - `impact` — **true BFS** blast radius
-  - `related_files` — definition + importers + references
-  - `importers` — who imports this file
-- **`enrich`**: concurrent OpenAI-compatible LLM labels (descriptions persisted)
-- **`watch`**: poll mtime fingerprint and reindex
-- **Type-aware calls (pragmatic)**: `qualifier` from param annotations, receivers, `New*` constructors, and return-type `define` edges; `callers` matches `Type.method` / `Type::method`. Not a full type checker.
-- **`export scip`**: SCIP **protobuf binary** readable by the official `scip` CLI (`scip-<lang> <manager> agentgraph 0.0.0 <descriptor>`, `relativePath`, `symbolRoles`). Also `export scip-json` for JSON mapping. Validated against crate `scip` 0.10. LSIF remains a simplified JSONL dump.
-- **Prebuilt binaries**: GitHub Actions release + `install.sh` / `install.ps1` (SHA256 fail-closed)
-- **CI gate**: `cargo fmt --check` + `clippy -D warnings` are required on all platforms
-- **Performance**: parallel parse (rayon), single-read files, batched SQLite writes, WAL + tuned pragmas, O(log n) line lookup
-- **Windows-safe**: strips `\\?\` UNC prefix from canonical roots
-- **Interfaces**: CLI + MCP (stdio)
-
-## Install
-
-### Prebuilt
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.sh | bash
-
-# Windows PowerShell
-iwr -useb https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.ps1 | iex
-```
-
-Tag `v*` to cut a release (CI builds linux/mac/windows artifacts).
-
-### From source
+## Quick start
 
 ```bash
 cargo install --path .
-# or
-cargo build --release
+cd /path/to/your/repo
+
+agentgraph index
+agentgraph find createUser
+agentgraph callers validateEmail
+agentgraph impact validateEmail --depth 3
+agentgraph importers src/auth.ts
+agentgraph export scip --out index.scip   # official scip CLI can read this
 ```
 
-## CLI
+Index lives at `<root>/.agentgraph/index.db` (add to `.gitignore`).
+
+## Features
+
+### Languages
+
+TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
+
+### Queries
+
+| Command | Purpose |
+|---|---|
+| `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
+| `callers` | Call/import sites (`module`, `resolved`, `qualifier`) |
+| `impact` | True BFS blast radius |
+| `related` | Definition + importers + references (scope retrieval) |
+| `importers` | Who imports a given file |
+
+### Index quality
+
+- **Import resolution** — TS/JS relative paths, Python packages, local Rust `crate::`/`super::`/`self::` (segment-counted), conservative Go packages
+- **Incremental** — content-hash skip; LLM descriptions survive reindex
+- **Type-aware (pragmatic)** — `qualifier` from param annotations, receivers, `New*` constructors, return-type `define` edges; `callers` accepts `Type.method` / `Type::method`. Not a full type checker
+- **Empty-index contract** — CLI *and* MCP fail loudly if you query before `index` (no silent `[]`)
+
+### Export (SCIP)
+
+`export scip` writes **protobuf binary** (what the official `scip` CLI reads).  
+`export scip-json` writes protobuf JSON for debugging.
+
+Official descriptors (validated with `scip lint` exit 0):
+
+- type: `Store#`
+- method: `Store#save().`
+- function: `loginHandler.`
+- namespace: `ns/`
+
+Interop-tested against crate [`scip`](https://crates.io/crates/scip) 0.10 and the official CLI (`print` / `lint` / `stats`).  
+`export lsif` is a simplified JSONL dump (not a full LSIF implementation).
+
+### Enrich (optional LLM)
 
 ```bash
-cd /path/to/your/repo
-agentgraph index
-agentgraph index --force
-agentgraph watch --interval 5
-
-agentgraph find validateEmail
-agentgraph callers hashPassword
-agentgraph impact validateEmail --depth 3
-agentgraph related createUser
-agentgraph importers src/auth.ts
-
 export OPENAI_API_KEY=sk-...
 # optional: OPENAI_BASE_URL, AGENTGRAPH_MODEL, AGENTGRAPH_ENRICH_CONCURRENCY
 agentgraph enrich --limit 50
-agentgraph export scip --out index.scip
-agentgraph export lsif --out index.lsif
 ```
 
-Index: `<root>/.agentgraph/index.db` (gitignore it).
+Concurrent OpenAI-compatible labels; successes are persisted even if the run later bails.
 
-### Export
+### Watch
 
-`export scip` writes **protobuf binary** (what the official `scip` CLI reads). `export scip-json` writes the protobuf JSON mapping (for tests/debugging). Interop-tested with crate `scip` 0.10:
+```bash
+agentgraph watch --interval 5
+```
 
-- symbols: `scip-typescript npm agentgraph 0.0.0 Store#save().`
-- descriptors: `Type#`, `Type#method().`, `fn.`, `ns/`
-- metadata: `toolInfo`, `file:///` project roots (no `schemaVersion` — not in current scip.proto)
+Polls a fingerprint (mtime nanos + size) and reindexes when sources change.
 
-See `tests/scip_interop.rs`. `export lsif` is a simplified JSONL dump.
-
-## MCP
+## MCP server
 
 ```bash
 agentgraph --root /path/to/repo mcp
@@ -99,12 +94,51 @@ agentgraph --root /path/to/repo mcp
 
 Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`.
 
-## Demo
+**Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "agentgraph": {
+      "command": "agentgraph",
+      "args": ["--root", "C:/path/to/repo", "mcp"]
+    }
+  }
+}
+```
+
+## Install
+
+### From source (recommended until a tagged release exists)
+
+```bash
+cargo install --path .
+# or
+cargo build --release
+```
+
+### Prebuilt (after a `v*` release is published)
+
+```bash
+# macOS / Linux (SHA256 fail-closed)
+curl -fsSL https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.sh | bash
+
+# Windows PowerShell
+iwr -useb https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.ps1 | iex
+```
+
+CI builds multi-OS artifacts on tag `v*` (linux gnu/musl, windows, macos) with `SHA256SUMS`.
+
+## Demo (fixture)
 
 ```bash
 agentgraph --root fixtures/sample-app index --force
 agentgraph --root fixtures/sample-app impact validate_email --depth 3
 agentgraph --root fixtures/sample-app importers src/auth.ts
+agentgraph --root fixtures/sample-app export scip --out /tmp/index.scip
+scip lint /tmp/index.scip   # exit 0
 ```
 
 ## Architecture
@@ -114,33 +148,32 @@ source files
     │  ignore (gitignore + segment noise filter)
     ▼
 tree-sitter (TS / TSX / JS / JSX / Python / Go / Rust)
-    │  rayon parallel parse
+    │  rayon parallel parse + LineIndex (UTF-16 cols)
     ▼
-symbols + refs (+ import resolve)
+symbols + refs (+ import resolve + qualifier)
     │  single SQLite batch transaction
     ▼
 .agentgraph/index.db
     │
     ├─ CLI
     ├─ MCP stdio
-    └─ enrich (concurrent, descriptions preserved)
+    ├─ enrich (concurrent)
+    └─ export scip / scip-json / lsif
 ```
 
-Call resolution is **name-based** with optional `qualifier` hints — pragmatic, **not full type inference**. Impact uses true BFS and expands via enclosing symbol leaf names.
+Call resolution is **name-based** with optional type `qualifier` — pragmatic, **not full type inference**. Impact uses true BFS over enclosing-symbol promotion.
 
-## Tests
+## Tests & process
 
 ```bash
 cargo test
-# CLI E2E only
-cargo test --test e2e_cli
-# Full local gate + fixture smoke
-pwsh scripts/e2e.ps1
+cargo test --test e2e_cli          # real binary E2E (CLI + MCP + scip)
+powershell -File scripts/e2e.ps1   # full local gate + fixture smoke
 ```
 
-Covers unit/integration (`tests/*.rs`), **CLI binary E2E** (`tests/e2e_cli.rs`: index/query/export/MCP), and optional official `scip lint` when the CLI is on PATH. CI runs fmt, clippy, tests, E2E, and `scip lint` on Linux.
+CI (ubuntu / windows / macos): `fmt` + `clippy -D warnings` + `build` + `test` + CLI E2E; Linux also runs official `scip lint`.
 
-**Process**: new feature work is TDD-first — see [AGENTS.md](AGENTS.md).
+**Development is TDD-first** — see [AGENTS.md](AGENTS.md). Write a failing test, implement, refactor.
 
 ## License
 

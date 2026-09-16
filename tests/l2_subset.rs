@@ -204,6 +204,24 @@ fn py_dynamic_attr_family_leaves_s() {
 }
 
 #[test]
+fn py_multi_import_module_same_line_leaves_s() {
+    let src = "import importlib\nm = importlib.import_module(\"pkg.mod\"); n = importlib.import_module(name)\n";
+    let r = scan_subset(src, Language::Python, "src/mm.py");
+    assert!(
+        !r.in_subset,
+        "second dynamic import_module: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn py_getattribute_alias_leaves_s() {
+    let src = "g = obj.__getattribute__\nreturn g(name)\n";
+    let r = scan_subset(src, Language::Python, "src/alias.py");
+    assert!(!r.in_subset, "getattribute alias: {:?}", r.violations);
+}
+
+#[test]
 fn py_literal_import_module_stays_in_s() {
     let src = "import importlib\nm = importlib.import_module(\"pkg.mod\")\n";
     let r = scan_subset(src, Language::Python, "src/ok.py");

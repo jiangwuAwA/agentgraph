@@ -199,6 +199,62 @@ func main() {
 }
 
 #[test]
+fn go_factory_return_type_change_reupgrades_sticky() {
+    let dir = std::env::temp_dir().join("agentgraph-test-qual-reup");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("index.db")).unwrap();
+    let main = r#"
+package main
+type Server struct{}
+func (s *Server) Start() {}
+type Client struct{}
+func (c *Client) Start() {}
+func main() {
+  x := createThing()
+  x.Start()
+}
+"#;
+    let f1 = "package main\nfunc createThing() *Server { return nil }\n";
+    let f2 = "package main\nfunc createThing() *Client { return nil }\n";
+    let pm = extract_file(main, Language::Go, "main.go", &HashSet::new()).unwrap();
+    let pf1 = extract_file(f1, Language::Go, "factory.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("main.go", "hm", "go", &pm).unwrap();
+    store.replace_file("factory.go", "hf1", "go", &pf1).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    assert_eq!(
+        store
+            .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.path == "main.go")
+            .count(),
+        1
+    );
+    let pf2 = extract_file(f2, Language::Go, "factory.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("factory.go", "hf2", "go", &pf2).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let server = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "main.go")
+        .count();
+    let client = store
+        .callers_filtered("Client.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "main.go")
+        .count();
+    assert_eq!(server, 0, "stale Server upgrade must be revoked");
+    assert_eq!(client, 1, "must re-upgrade to Client");
+}
+
+#[test]
 fn go_single_typed_factory_name_collision_not_exact_upgrade() {
     let dir = std::env::temp_dir().join("agentgraph-test-qual-single-typed");
     let _ = std::fs::remove_dir_all(&dir);

@@ -1225,13 +1225,23 @@ impl Store {
             let mut restore = self.conn.prepare_cached(
                 "UPDATE refs SET qualifier = ?1, qual_name = NULL, pre_qual = NULL WHERE id = ?2",
             )?;
-            for (id, path, pre, _cur) in pending {
+            let mut reup = self.conn.prepare_cached(
+                "UPDATE refs SET qualifier = ?1, qual_name = ?1 || '.' || name WHERE id = ?2",
+            )?;
+            for (id, path, pre, cur) in pending {
                 let key = (path.clone(), pre.clone());
-                let still_ok =
-                    map.get(&key).map(|t| t.as_str()).is_some() && !ambiguous.contains(&key);
-                if !still_ok {
-                    restore.execute(params![pre, id])?;
-                    revoked += 1;
+                match map.get(&key) {
+                    // R9: factory type changed → re-upgrade sticky qualifier.
+                    Some(ty) if !ambiguous.contains(&key) => {
+                        if ty != &cur {
+                            reup.execute(params![ty, id])?;
+                            revoked += 1;
+                        }
+                    }
+                    _ => {
+                        restore.execute(params![pre, id])?;
+                        revoked += 1;
+                    }
                 }
             }
         }

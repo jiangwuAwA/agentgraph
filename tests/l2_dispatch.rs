@@ -194,6 +194,36 @@ export function wire(bus: any) {
 }
 
 #[test]
+fn dispatch_dirty_repairs_on_noop_index() {
+    let root = temp_dir("dirty-repair");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/a.js"),
+        "export function h() { return 1; }\nexport function s(b:any) { b.on('e', h); }\nexport function f(b:any) { b.emit('e'); }\n",
+    )
+    .unwrap();
+    let indexer = agentgraph::index::Indexer::new(&root).unwrap();
+    indexer.index(false).unwrap();
+    {
+        let mut store = indexer.open_store().unwrap();
+        // Simulate failed dispatch rebuild after durable file commit.
+        store.set_meta("dispatch_dirty", "1").unwrap();
+        // Drop dispatch rows to simulate crash after DELETE.
+        store.clear_dispatch_edges_for_test().unwrap();
+        assert!(store.dispatch_dirty().unwrap());
+    }
+    // Noop index must repair dispatch.
+    indexer.index(false).unwrap();
+    let store = indexer.open_store().unwrap();
+    assert!(!store.dispatch_dirty().unwrap());
+    let (hits, _) = store.callers_sound("h", 20).unwrap();
+    assert!(
+        hits.iter().any(|r| r.enclosing.as_deref() == Some("f")),
+        "noop index must repair dispatch edges; hits={hits:?}"
+    );
+}
+
+#[test]
 fn emit_without_on_is_harmless() {
     let store = seed_js(
         "evt2",

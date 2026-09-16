@@ -190,7 +190,11 @@ impl Indexer {
         let deleted: Vec<String> = db_paths.difference(&known).cloned().collect();
 
         // P0-3: nothing dirty → skip transaction + full resolve.
+        // Still repair dispatch if a prior run left dispatch_dirty (C2).
         if !force && to_parse.is_empty() && deleted.is_empty() {
+            if store.dispatch_dirty()? {
+                store.link_event_dispatch()?;
+            }
             let mut stats = store.stats(&self.root.to_string_lossy())?;
             stats.skipped_files = skipped;
             stats.failed_files = failed_read;

@@ -367,18 +367,27 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                                 .filter(|x| !matches!(x.kind(), "," | "(" | ")"))
                                 .collect();
                             if let Some(handler) = named.get(1) {
+                                let mut h = *handler;
+                                while h.kind() == "parenthesized_expression" {
+                                    let mut pc = h.walk();
+                                    let Some(inner) = h
+                                        .children(&mut pc)
+                                        .find(|x| !matches!(x.kind(), "(" | ")"))
+                                    else {
+                                        break;
+                                    };
+                                    h = inner;
+                                }
                                 let ok_handler = matches!(
-                                    handler.kind(),
+                                    h.kind(),
                                     "identifier"
                                         | "member_expression"
                                         | "arrow_function"
                                         | "function_expression"
-                                        | "function"
                                         | "generator_function"
                                         | "func_literal"
-                                ) || (handler.kind() == "subscript_expression"
-                                    && handler
-                                        .child_by_field_name("index")
+                                ) || (h.kind() == "subscript_expression"
+                                    && h.child_by_field_name("index")
                                         .map(|k| k.kind() == "string")
                                         .unwrap_or(false));
                                 if !ok_handler {
@@ -387,7 +396,7 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                                         path,
                                         line,
                                         "unmodeled_event_handler",
-                                        &snippet_at(source, *handler),
+                                        &snippet_at(source, h),
                                     );
                                 }
                             }

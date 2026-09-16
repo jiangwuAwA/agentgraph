@@ -247,8 +247,8 @@ if !force && dirty.is_empty() && deleted.is_empty() && oversized_only_unchanged:
 - [x] P2-1 `refs.qual_name` + 索引；qualified callers 走索引列  
 - [x] L2 `emit('evt')` 有限域 DynamicCandidate（`ts.event.emit`）  
 - [x] 公开 NestJS starter 冒烟索引  
-- [x] **5k 真树 p95 硬验收**：`agentgraph bench-query` / `docs/eval-query-p95.md`（callers p95 **0.08ms**, impact **0.21ms**）  
-- [x] L2 生产级 S：emit↔on dispatch 闭包 + 文档升级为 production S（仍禁止 S 外超售）  
+- [x] **5k 真树 p95 硬验收**（低扇入）：`bench-query` callers p95 **0.08ms**；hot-name 用**专用轨道**重测（见 eval-query-p95；旧混采数字作废）
+- [x] L2 **S-qualified**：emit↔on dispatch 闭包（非 blanket production S）
 - [ ] Lean 定理（`formal/TODO.md`，明确不在本计划）
 
 **P0 实现摘要：** mtime/size 短路、并行 hash、脏集 early-out、增量 sid、export 前 `ensure_sids_for_export`、qualifier 类型名 HashSet。

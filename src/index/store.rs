@@ -142,6 +142,11 @@ impl Store {
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
             CREATE INDEX IF NOT EXISTS idx_symbols_qname ON symbols(qualified_name);
             CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
@@ -243,6 +248,38 @@ impl Store {
 
     pub fn sid_dirty(&self) -> bool {
         self.sid_dirty.get()
+    }
+
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let v = self
+            .conn
+            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()?;
+        Ok(v)
+    }
+
+    pub fn dispatch_dirty(&self) -> Result<bool> {
+        Ok(self.get_meta("dispatch_dirty")?.as_deref() == Some("1"))
+    }
+
+    /// Test helper: drop dispatch rows without clearing dispatch_dirty.
+    pub fn clear_dispatch_edges_for_test(&mut self) -> Result<usize> {
+        let n = self
+            .conn
+            .execute("DELETE FROM refs WHERE rule_id = 'ts.event.dispatch'", [])?;
+        self.cache.borrow_mut().clear();
+        Ok(n)
     }
 
     /// Refresh mtime/size after a content-hash match (next noop can short-circuit).
@@ -378,6 +415,8 @@ impl Store {
     ) -> Result<()> {
         self.cache.borrow_mut().clear();
         self.sid_dirty.set(true);
+        // Derived dispatch edges may be stale until link_event_dispatch runs.
+        self.set_meta("dispatch_dirty", "1")?;
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
         let mut old_desc: HashMap<String, String> = HashMap::new();
         {
@@ -779,9 +818,13 @@ impl Store {
     /// **Idempotent:** deletes all prior `ts.event.dispatch` rows first
     /// (Critical fix: incremental index must not accumulate duplicates).
     pub fn link_event_dispatch(&mut self) -> Result<usize> {
-        // DELETE + INSERT in **one** transaction so a crash cannot leave
-        // zero dispatch edges with a green S badge (Critical).
-        self.conn.execute_batch("BEGIN")?;
+        // Join outer batch via SAVEPOINT; standalone uses BEGIN IMMEDIATE.
+        let in_tx = !self.conn.is_autocommit();
+        if in_tx {
+            self.conn.execute_batch("SAVEPOINT dispatch_sp")?;
+        } else {
+            self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
         let result = (|| -> Result<usize> {
             self.conn
                 .execute("DELETE FROM refs WHERE rule_id = 'ts.event.dispatch'", [])?;
@@ -844,15 +887,26 @@ impl Store {
         })();
         match result {
             Ok(created) => {
-                self.conn.execute_batch("COMMIT")?;
+                if in_tx {
+                    self.conn.execute_batch("RELEASE dispatch_sp")?;
+                } else {
+                    self.conn.execute_batch("COMMIT")?;
+                }
                 self.cache.borrow_mut().clear();
+                self.set_meta("dispatch_dirty", "0")?;
                 if created > 0 {
                     self.sid_dirty.set(true);
                 }
                 Ok(created)
             }
             Err(e) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
+                if in_tx {
+                    let _ = self.conn.execute_batch("ROLLBACK TO dispatch_sp");
+                    let _ = self.conn.execute_batch("RELEASE dispatch_sp");
+                } else {
+                    let _ = self.conn.execute_batch("ROLLBACK");
+                }
+                let _ = self.set_meta("dispatch_dirty", "1");
                 Err(e)
             }
         }

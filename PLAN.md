@@ -315,7 +315,7 @@ ref {
 
 | 项 | 要求 |
 |---|---|
-| 性能 | **L0 查询 p95 &lt; 50ms（5k 文件）已验收**（hot-name cold：`run` ~4k fan-in callers p95≈**4.2ms** — [docs/eval-query-p95.md](docs/eval-query-p95.md)）；增量 noop P0 已达成；mtime 短路可 `AGENTGRAPH_TRUST_MTIME=0` 关闭 |
+| 性能 | **L0 查询 p95 &lt; 50ms**：5k 低扇入 p95≈0.08ms；**hot `run` ~4k fan-in 专用轨道** cold p95≈**35ms**（max≈49ms，仍 &lt;50）— [docs/eval-query-p95.md](docs/eval-query-p95.md) |
 | 兼容 | 旧 index.db 自动迁移；SCIP 导出保持 `scip lint` 0 |
 | 可观测 | 每次 index 输出：文件数、边按 confidence 分布、耗时 |
 | 隐私 | L2/L3 不外传源码；enrich 仍可选 |

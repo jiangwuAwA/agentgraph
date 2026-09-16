@@ -26,26 +26,22 @@ CI soft gate: `tests/query_p95.rs` (400-file debug DB, same 50ms budget).
 | `callers` (limit 20) | 0.04 ms | **0.08 ms** | 0.15 ms | 0.21 ms |
 | `impact` (depth 2, limit 50) | 0.12 ms | **0.21 ms** | 0.31 ms | 0.36 ms |
 
-### High fan-in hot name (`run`, **~4 000 callers**)
+### High fan-in hot name (`run`, **~4 000 callers**) — dedicated hot track
 
-| mode | callers p50 | **callers p95** | impact p50 | **impact p95** | max (callers) |
-|---|---:|---:|---:|---:|---:|
-| **cold** (new Store/sample, limit 5000) | 2.19 ms | **4.21 ms** | 2.71 ms | **4.24 ms** | 34.7 ms |
-| warm (cache, limit 5000) | 0.11 ms | **0.65 ms** | 0.30 ms | **0.78 ms** | 30.1 ms |
+`bench-query --hot run` measures **only** the hot name (limit 5000).
 
-**PASS** — hot cold p95 ≪ 50 ms (honest numbers after hot-first sampling fix).
-Earlier 0.21/0.39 ms figures were **invalid** (hot never sampled).
+| mode | callers p50 | **callers p95** | callers max | impact p95 |
+|---|---:|---:|---:|---:|
+| warm | 3.69 ms | **5.83 ms** | 6.18 ms | 0.06 ms |
+| cold (new Store/sample) | 30.0 ms | **35.0 ms** | 49.4 ms | 15.8 ms |
 
-Reproduce:
+**PASS p95 &lt; 50 ms** (cold p95 35 ms; cold **max 49 ms** is tight — includes `open_store`).
 
 ```bash
-powershell -File scripts/gen_fixture.ps1 -N 1000 -HotName 4000
-agentgraph --root <fixture> index --force
-agentgraph --root <fixture> bench-query --samples 40 --hot run --cold
+agentgraph --root <hot-fixture> bench-query --samples 40 --hot run --cold
 ```
 
-`--cold` includes **fresh `open_store`** per sample (no in-process cache).
-OS/SQLite page cache may still be warm.
+Earlier “p95 4.2ms / 0.21ms” figures mixed helpers or omitted hot — **invalid**.
 
 ## Caveats
 

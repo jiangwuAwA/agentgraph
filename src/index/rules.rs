@@ -300,7 +300,9 @@ fn ts_call_rules(
         let mut n = fn_node;
         while n.kind() == "parenthesized_expression" {
             let mut c = n.walk();
-            let inner = n.children(&mut c).find(|x| !matches!(x.kind(), "(" | ")"))?;
+            let inner = n
+                .children(&mut c)
+                .find(|x| !matches!(x.kind(), "(" | ")"))?;
             n = inner;
         }
         if n.kind() == "subscript_expression" {
@@ -357,7 +359,6 @@ fn ts_call_rules(
                     a.kind(),
                     "arrow_function"
                         | "function_expression"
-                        | "function"
                         | "generator_function"
                         | "func_literal"
                 )

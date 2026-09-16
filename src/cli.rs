@@ -366,37 +366,33 @@ pub fn run(cli: Cli) -> Result<()> {
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            // Build name list. **Hot goes first** so `0..samples` always hits it
-            // (Critical: appending hot after a samples-sized list never selected it).
-            let mut names: Vec<String> = Vec::new();
-            if let Some(h) = &hot {
-                names.push(h.clone());
-            }
-            {
+            // When --hot is set, run a **dedicated hot-only track** so p95 is
+            // not diluted by thousands of helper names (Critical C1).
+            let names: Vec<String> = if let Some(h) = &hot {
+                vec![h.clone()]
+            } else {
+                let mut v = Vec::new();
                 let hits = store.find_symbol_fuzzy(&prefix, samples.max(20))?;
                 for s in hits {
-                    if !names.contains(&s.name) {
-                        names.push(s.name);
+                    if !v.contains(&s.name) {
+                        v.push(s.name);
                     }
                 }
-            }
-            if names.is_empty() {
-                bail!("no symbols matching prefix '{prefix}' — index first?");
-            }
+                if v.is_empty() {
+                    bail!("no symbols matching prefix '{prefix}' — index first?");
+                }
+                v
+            };
+            let hot_limit = if hot.is_some() { 5000usize } else { 20 };
             let mut callers_ms = Vec::with_capacity(samples);
             let mut impact_ms = Vec::with_capacity(samples);
             if !cold {
-                let _ = store.callers_filtered(&names[0], 20, ConfidenceFilter::Default)?;
+                let _ = store.callers_filtered(&names[0], hot_limit, ConfidenceFilter::Default)?;
                 let _ = store.impact_filtered(&names[0], 2, 50, ConfidenceFilter::Default)?;
             }
             for i in 0..samples {
                 let n = names[i % names.len()].clone();
-                // Hot name: use a high limit so fan-in materialization is measured.
-                let limit = if hot.as_deref() == Some(n.as_str()) {
-                    5000
-                } else {
-                    20
-                };
+                let limit = hot_limit;
                 if cold {
                     let t = std::time::Instant::now();
                     let s2 = indexer.open_store()?;

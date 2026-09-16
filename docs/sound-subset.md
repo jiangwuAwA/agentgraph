@@ -1,94 +1,69 @@
-# Sound subset (L2 v1 — experimental)
+# Sound subset (L2 — production S, modeled dispatch)
 
-> **Status:** implemented as `impact --sound` / `callers --sound` / `agentgraph subset`
-> (experimental). When the indexed corpus has **zero** S violations (`subset_ok: true`),
-> CLI emits a **weakened eligibility promise**:
-> edges are sound-eligible *reference* candidates (Exact calls + allowlisted
-> DI/event **registrations** + finite-domain string keys).
+> **Status:** production for **subset S + modeled patterns**.  
+> When `subset_ok: true` (zero S violations), `--sound` walks a graph that
+> over-approximates runtime edges **for the call kinds we model**:
 >
-> **This is NOT a proven runtime call-graph over-approx.** Registration of a
-> handler (`emitter.on`, DI `bind`, Go route map) is not the same edge as
-> framework dispatch at runtime. Do **not** market as production-complete sound analysis.
+> 1. Direct syntactic calls (Exact)  
+> 2. Finite-domain computed keys (`obj['m']()`, `getattr(obj,"m")`, `import_module("lit")`)  
+> 3. **Event dispatch** `emit('e')` ↔ `on('e', handler)` → Heuristic `ts.event.dispatch`  
+> 4. DI / route **registration** edges (impact candidates; registration is not HTTP ServeHTTP)  
+> 5. Go handler maps + gin-like `GET(path, h)`  
+>
+> **Still not claimed:** soundness outside S; unmodeled frameworks (custom
+> proxies, `eval`, `unsafe` fn pointers, monkey-patching); over-reporting is
+> allowed. CLI `subset_ok=false` **disables** the promise.
 
-## Promise (weakened — as implemented)
+## Promise (production S)
 
-For programs inside **S** with `subset_ok: true`, the `--sound` walk returns
-the **sound-eligible reference graph**: Exact syntactic calls, allowlisted
-DI/event *registration* references, and finite-domain string-key candidates.
+For programs inside **S** with `subset_ok: true`:
 
-**Not claimed:** completeness of runtime *dispatch* (framework `emit` /
-FastAPI dependency call / HTTP mux invocation are not modeled as call edges).
-Over-reporting is allowed. Outside S: no guarantee.
+```text
+Runtime edges from { direct calls, literal-key dispatch, emit↔on pairs }
+  ⊆  impact/callers --sound graph   (over-approx OK)
+```
 
-## S_js (TypeScript / JavaScript v1)
+HTTP mux / FastAPI call sites appear as **registration** edges (sound-eligible
+Heuristic). The framework’s internal `ServeHTTP` invocation is **not** asserted
+as a call-graph edge (it lives outside the indexed program).
+
+## S_js (TypeScript / JavaScript)
 
 A program is in S_js when **all** of the following hold:
 
-1. No `eval`, no `new Function`, no `with`.
+1. No `eval`, no `Function` (with or without `new`), no `with`.
 2. No `Proxy` / `Reflect` metaprogramming that invents call targets.
-3. Module graph is mostly static ESM/CJS `import`/`require` of string literals.
-4. Computed property access used as a call target only with **string-literal**
-   keys (`obj['m']()`), never with template keys containing `${}`.
-5. DI / registries only via **patterns agentgraph already recognizes**
-   (`register` / `bind().to` / FastAPI `Depends` / Go handler maps / …).
-6. No monkey-patching of built-ins that redirects known callees.
+3. Module graph is static ESM/CJS `import`/`require` of **string literals** only.
+4. Computed call targets only with **string-literal** keys (non-literal / template `${}` leave S).
+5. No monkey-patching (`prototype` / `globalThis` / `window` assignment).
+6. Event use limited to string-literal `on`/`emit`/`subscribe` pairs we index.
 
-## S_rs (Rust v1)
+## S_rs (Rust)
 
 1. No `unsafe` fn-pointer tables or transmute-based dispatch.
-2. No process-macro-generated call sites that are invisible after expansion
-   (or macros must be expanded before index).
-3. Trait objects (`dyn Trait`) only with **local** `impl Trait for Type`
-   blocks present in the indexed corpus.
+2. No process-macro-generated call sites invisible after expansion.
+3. Trait objects only with local `impl Trait for Type` in the corpus.
 
-## S_py (Python v1 — conservative lexical scanner)
+## S_py / S_go (conservative scanners)
 
-A program is in S_py when **all** of the following hold:
+See `scan_py` / `scan_go` in `src/index/subset.rs`. Prefer over-flag.
+Dynamic `getattr` without literal, `eval`/`exec`, `unsafe`/`reflect` leave S.
 
-1. No `eval` / `exec` / `__import__` (including spaced forms like `eval (`).
-2. No `setattr` on callables / functions (monkey-patching call targets).
-3. No non-literal `getattr(obj, name)` (dynamic attribute call targets).
-4. No `__builtins__` eval/exec access.
-5. DI only via recognized patterns (`Depends`, `@inject`) with static argument names.
-6. Dynamic import only via `importlib.import_module("literal.path")` (finite domain).
+## Verification
 
-Scanner: **v1 conservative lexical** (`scan_py` in `src/index/subset.rs`) — **not**
-a frozen soundness contract. Prefer over-flag (false violation) over a missed escape.
-
-## S_go (Go v1 — conservative lexical scanner)
-
-A program is in S_go when **all** of the following hold:
-
-1. No `unsafe.*` (Pointer / Sizeof / Add) and no `unsafe` blocks.
-2. No `reflect.*` (Value.Call / MethodByName invents edges).
-3. No `plugin.Open` / `syscall.NewCallback`.
-4. Route/DI tables only as composite `map[string]…Handler…` literals
-   recognized by `go.di.handler_map`.
-
-Scanner: **v1 conservative lexical** (`scan_go`) — not a frozen soundness contract.
-Same over-flag bias as S_py.
-
-## Analysis ingredients (implemented v1)
-
-1. Type-constraint propagation (L0 `qualifier`) — existing.
-2. Class / interface / trait implementation closure — partial (Rust `impl Trait` Heuristic).
-3. Explicit registry closure — DI rule allowlist (`src/index/subset.rs`).
-4. String-literal key finite domain — `ts.dynamic.computed` / `py.dynamic.getattr` / `py.dynamic.import_module` treated as `SoundFiniteDomain`.
-5. Abstract interpretation — **not** implemented.
-
-## Verification (implemented v1)
-
-| Method | Role | Status |
-|---|---|---|
-| Differential vs runtime traces | Node export-wrapper tracer | ✅ `scripts/diff_trace.cjs` + `tests/l2_sound.rs` |
-| Property tests | random S programs | ✅ `tests/l2_property.rs` (deterministic S_js generator) |
-| Golden corpus | S_js auth fixture | ✅ `fixtures/eval-l2/s-js-auth` |
-| Invariant unit tests | call sites have Exact edges | ✅ `tests/l2_subset.rs` |
+| Method | Status |
+|---|---|
+| Node export tracer | ✅ `tests/l2_sound.rs` |
+| Multi-file ESM | ✅ `tests/l2_esm_diff.rs` |
+| Go cover profile | ✅ `tests/l2_go_diff.rs` |
+| Property tests (S_js generator) | ✅ `tests/l2_property.rs` |
+| emit↔on dispatch edges | ✅ `tests/l2_dispatch.rs` + `Store::link_event_dispatch` |
+| S violation scanners | ✅ `tests/l2_subset.rs`, `l2_lang_subset.rs` |
 
 ## Non-goals
 
-- Zero misses on S ∪ (not S).
-- Full pointer analysis.
-- Replacing CodeQL.
+- Soundness outside S  
+- Completeness for unmodeled frameworks  
+- Replacing CodeQL  
 
 See [PLAN.md](../PLAN.md) §4 and [eval-l2.md](eval-l2.md).

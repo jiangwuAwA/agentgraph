@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use crate::index::{llm, Indexer};
+use crate::model::ConfidenceFilter;
 use crate::query::{parse_confidence_flags, Query};
 
 #[derive(Parser, Debug)]
@@ -112,6 +113,14 @@ pub enum Commands {
     },
     /// Run as an MCP server over stdio
     Mcp,
+    /// Measure callers/impact latency percentiles in-process (PLAN query SLO)
+    BenchQuery {
+        #[arg(long, default_value_t = 200)]
+        samples: usize,
+        /// Symbol name prefix used to synthesize query targets (default: helper)
+        #[arg(long, default_value = "helper")]
+        prefix: String,
+    },
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -187,12 +196,12 @@ pub fn run(cli: Cli) -> Result<()> {
                         v
                     })
                     .collect();
-                // C1: claim is reference-graph eligibility, NOT a runtime call-graph theorem.
+                // Production S: modeled dispatch + registrations; disabled when S violated.
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
+                        "S satisfied. Sound walk over-approximates modeled runtime edges (direct, literal-key, emit↔on dispatch, DI/route registration). Not a claim outside S; registration ≠ HTTP ServeHTTP."
                     } else {
                         "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
                     },
@@ -240,7 +249,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
+                        "S satisfied. Sound walk over-approximates modeled runtime edges (direct, literal-key, emit↔on dispatch, DI/route registration). Not a claim outside S; registration ≠ HTTP ServeHTTP."
                     } else {
                         "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
                     },
@@ -341,6 +350,64 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&payload)?);
             if !violations.is_empty() {
                 std::process::exit(2);
+            }
+        }
+        Commands::BenchQuery { samples, prefix } => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            // Discover sample names from the index.
+            let mut names = Vec::new();
+            {
+                let hits = store.find_symbol_fuzzy(&prefix, samples.max(20))?;
+                for s in hits {
+                    names.push(s.name);
+                }
+            }
+            if names.is_empty() {
+                bail!("no symbols matching prefix '{prefix}' — index first?");
+            }
+            let mut callers_ms = Vec::with_capacity(samples);
+            let mut impact_ms = Vec::with_capacity(samples);
+            // Warm
+            let _ = store.callers_filtered(&names[0], 20, ConfidenceFilter::Default)?;
+            let _ = store.impact_filtered(&names[0], 2, 50, ConfidenceFilter::Default)?;
+            for i in 0..samples {
+                let n = &names[i % names.len()];
+                let t = std::time::Instant::now();
+                let _ = store.callers_filtered(n, 20, ConfidenceFilter::Default)?;
+                callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                let t = std::time::Instant::now();
+                let _ = store.impact_filtered(n, 2, 50, ConfidenceFilter::Default)?;
+                impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+            }
+            callers_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            impact_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let pct = |v: &[f64], q: f64| -> f64 {
+                let idx = ((v.len() as f64 * q).ceil() as usize).saturating_sub(1);
+                v[idx.min(v.len() - 1)]
+            };
+            let payload = serde_json::json!({
+                "samples": samples,
+                "symbols": names.len(),
+                "callers_ms": {
+                    "p50": pct(&callers_ms, 0.50),
+                    "p95": pct(&callers_ms, 0.95),
+                    "p99": pct(&callers_ms, 0.99),
+                    "max": callers_ms.last().copied().unwrap_or(0.0),
+                },
+                "impact_ms": {
+                    "p50": pct(&impact_ms, 0.50),
+                    "p95": pct(&impact_ms, 0.95),
+                    "p99": pct(&impact_ms, 0.99),
+                    "max": impact_ms.last().copied().unwrap_or(0.0),
+                },
+                "slo_ms": 50,
+            });
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            let c95 = pct(&callers_ms, 0.95);
+            let i95 = pct(&impact_ms, 0.95);
+            if c95 >= 50.0 || i95 >= 50.0 {
+                bail!("query p95 SLO fail: callers={c95:.2}ms impact={i95:.2}ms (budget 50ms)");
             }
         }
         Commands::Mcp => {

@@ -43,7 +43,7 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **L1 (shipped):** heuristic/dynamic-candidate edges with `confidence` + `evidence`; CLI/MCP `--exact-only` / `--include-dynamic`; eval corpus in `fixtures/eval-l1` + [docs/eval-l1.md](docs/eval-l1.md). L1 is **not** sound — candidates only.
 
-**L2 (experimental):** `impact --sound` / `callers --sound` / `agentgraph subset`; S-violation scan; Node differential (single + multi-file ESM); property tests (`tests/l2_property.rs`). S_js is a conservative AST scanner; S_py/S_go/S_rs are **v1 conservative lexical scanners** (not full freezes). Soundness claim **only** when `subset_ok` (see [docs/sound-subset.md](docs/sound-subset.md) and [docs/eval-l2.md](docs/eval-l2.md)). Not production-complete.
+**L2 (production S):** `impact --sound` / `callers --sound` / `agentgraph subset`; S-violation scan; emit↔on dispatch closure; Node/ESM/Go differential + property tests. Claim **only** when `subset_ok` for **modeled** edges inside S ([docs/sound-subset.md](docs/sound-subset.md), [docs/eval-l2.md](docs/eval-l2.md)). Query p95 SLO: [docs/eval-query-p95.md](docs/eval-query-p95.md). Still not a full ecosystem theorem.
 
 **L3 (research, non-blocking):** `formal/IncrementalIndex.tla` TLC-checked (no errors); I1–I3 in `tests/l3_invariants.rs`; I4 mini-language containment in `src/formal/mini_lang.rs` + `tests/l4_mini_lang.rs`. TLC optional locally (Java + tla2tools.jar); main CI does not require theorem provers.
 

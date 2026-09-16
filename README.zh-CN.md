@@ -53,7 +53,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 - 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
 - `--exact-only`：仅 L0 语法确定边
 - `--include-dynamic`：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
-- `--sound`（L2，实验性）：只走 sound-eligible **引用**边并报告 S 违例；`subset_ok` 门控的是**弱化**的资格承诺（不是运行时调用图定理；DI/事件注册 ≠ 派发）
+- `--sound`（L2，生产级 S）：在 `subset_ok` 时对**已建模**运行时边（直接调用、字面量键、**emit↔on 派发**、DI/路由注册）做 over-approx；注册 ≠ HTTP ServeHTTP。见 [docs/sound-subset.md](docs/sound-subset.md)。查询 p95：[docs/eval-query-p95.md](docs/eval-query-p95.md)。
 
 所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。
 

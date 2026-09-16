@@ -18,6 +18,7 @@ const SOUND_HEURISTIC_RULES: &[&str] = &[
     "ts.di.to",
     "ts.di.decorator",
     "ts.event.subscribe",
+    "ts.event.dispatch",
     "py.di.depends",
     "py.di.inject",
     "py.framework.init_subclass",

@@ -42,12 +42,16 @@ struct L1Edge {
 }
 
 fn push_l1(references: &mut Vec<ExtractedRef>, edge: L1Edge) {
+    push_l1_mod(references, edge, None);
+}
+
+fn push_l1_mod(references: &mut Vec<ExtractedRef>, edge: L1Edge, module: Option<String>) {
     references.push(ExtractedRef {
         name: edge.name,
         kind: EdgeKind::Call,
         line: edge.line,
         enclosing: edge.enclosing,
-        module: None,
+        module,
         resolved: None,
         qualifier: edge.qualifier,
         confidence: edge.confidence,
@@ -293,17 +297,18 @@ fn ts_call_rules(
     // L2: emit('evt') — dispatch site; event name is a finite-domain candidate.
     if matches!(method.as_str(), "emit" | "trigger") {
         if let Some(key) = nth_arg_string_lit(node, source, 0) {
-            push_l1(
+            push_l1_mod(
                 references,
                 L1Edge {
-                    name: key,
+                    name: key.clone(),
                     qualifier: None,
                     line,
                     enclosing: enclosing.clone(),
                     confidence: Confidence::DynamicCandidate,
                     rule_id: "ts.event.emit",
-                    snippet: format!("{method}('…')"),
+                    snippet: format!("{method}('{key}')"),
                 },
+                Some(key),
             );
         }
     }
@@ -313,7 +318,9 @@ fn ts_call_rules(
     ) || is_route
     {
         if let Some(handler) = nth_arg_identifier(node, source, 1) {
-            push_l1(
+            // Record event name (first arg string) in `module` for emit↔on pairing.
+            let evt = nth_arg_string_lit(node, source, 0);
+            push_l1_mod(
                 references,
                 L1Edge {
                     name: handler,
@@ -328,6 +335,7 @@ fn ts_call_rules(
                     },
                     snippet: format!("{}(...)", fn_text),
                 },
+                evt,
             );
         }
     }

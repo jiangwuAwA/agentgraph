@@ -767,6 +767,69 @@ impl Store {
         Ok(n)
     }
 
+    /// L2 production S-sound: pair `emit(evt)` sites with `on(evt, handler)`
+    /// registrations (event name stored in `refs.module`) and insert
+    /// Heuristic dispatch edges so runtime emit→handler is in the sound walk.
+    pub fn link_event_dispatch(&mut self) -> Result<usize> {
+        // (enclosing_or_empty, path, line, event)
+        let emits: Vec<(String, String, i64, String)> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT COALESCE(enclosing,''), path, line, module FROM refs
+                 WHERE module IS NOT NULL AND module != ''
+                   AND evidence LIKE '%ts.event.emit%'",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        // event -> handlers
+        let mut handlers: HashMap<String, Vec<String>> = HashMap::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT name, module FROM refs
+                 WHERE module IS NOT NULL AND module != ''
+                   AND evidence LIKE '%ts.event.subscribe%'",
+            )?;
+            let rows =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            for row in rows {
+                let (name, evt) = row?;
+                handlers.entry(evt).or_default().push(name);
+            }
+        }
+
+        let mut created = 0usize;
+        let mut stmt = self.conn.prepare_cached(
+            "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name)
+             VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL)",
+        )?;
+        for (enclosing, path, line, evt) in emits {
+            let Some(hs) = handlers.get(&evt) else {
+                continue;
+            };
+            for h in hs {
+                let evidence = serde_json::json!({
+                    "rule_id": "ts.event.dispatch",
+                    "snippet": format!("emit('{evt}') → {h}"),
+                })
+                .to_string();
+                stmt.execute(params![h, path, line, enclosing, evt, evidence])?;
+                created += 1;
+            }
+        }
+        if created > 0 {
+            self.cache.borrow_mut().clear();
+            self.sid_dirty.set(true);
+        }
+        Ok(created)
+    }
+
     /// Full resolve when dirty (export safety). Returns refs linked.
     pub fn ensure_sids_for_export(&mut self) -> Result<usize> {
         if self.sid_dirty.get() {

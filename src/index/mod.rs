@@ -276,6 +276,12 @@ impl Indexer {
         store.commit_batch()?;
         let db_ms = t_db.elapsed().as_millis();
 
+        // L2: emit↔on dispatch closure (corpus-wide) before sid link.
+        let dispatched = store.link_event_dispatch()?;
+        if dispatched > 0 {
+            eprintln!("event dispatch edges: {dispatched}");
+        }
+
         // Incremental sid + always run qualifier pass when dirty (P0-4/5).
         let t_sid = std::time::Instant::now();
         let linked = if force {

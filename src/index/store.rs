@@ -175,6 +175,8 @@ impl Store {
         );
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qual_name TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN rule_id TEXT", []);
+        // R8: original qualifier before Exact upgrade (for revoke when factory collides).
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN pre_qual TEXT", []);
         // Backfill: pre-L1 rows are Exact by definition.
         let _ = conn.execute(
             "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
@@ -1153,7 +1155,7 @@ impl Store {
             let mut stmt = self.conn.prepare(
                 "SELECT r.path, r.name, s.return_type, r.module
                  FROM refs r
-                 JOIN symbols s ON s.name = r.module
+                 JOIN symbols s ON s.name = r.module AND s.kind = 'function'
                  WHERE r.kind = 'define' AND r.module IS NOT NULL
                    AND s.return_type IS NOT NULL AND s.return_type != ''",
             )?;
@@ -1200,11 +1202,44 @@ impl Store {
                 type_names.insert(n?);
             }
         }
+        // R8 revoke: restore sticky upgrades when the factory is now ambiguous
+        // or no longer uniquely typed.
+        let mut revoked = 0usize;
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, path, pre_qual, qualifier FROM refs
+                 WHERE kind = 'call' AND pre_qual IS NOT NULL",
+            )?;
+            let pending: Vec<(i64, String, String, String)> = {
+                let rows = stmt.query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            drop(stmt);
+            let mut restore = self.conn.prepare_cached(
+                "UPDATE refs SET qualifier = ?1, qual_name = NULL, pre_qual = NULL WHERE id = ?2",
+            )?;
+            for (id, path, pre, _cur) in pending {
+                let key = (path.clone(), pre.clone());
+                let still_ok =
+                    map.get(&key).map(|t| t.as_str()).is_some() && !ambiguous.contains(&key);
+                if !still_ok {
+                    restore.execute(params![pre, id])?;
+                    revoked += 1;
+                }
+            }
+        }
         let mut updated = 0usize;
         {
             let mut stmt = self.conn.prepare(
                 "SELECT id, path, qualifier FROM refs
-                 WHERE kind = 'call' AND qualifier IS NOT NULL",
+                 WHERE kind = 'call' AND qualifier IS NOT NULL AND pre_qual IS NULL",
             )?;
             let pending: Vec<(i64, String, String)> = {
                 let rows = stmt.query_map([], |r| {
@@ -1218,11 +1253,14 @@ impl Store {
             };
             drop(stmt);
             let mut upd = self.conn.prepare_cached(
-                "UPDATE refs SET qualifier = ?1, qual_name = ?1 || '.' || name WHERE id = ?2",
+                "UPDATE refs SET qualifier = ?1, qual_name = ?1 || '.' || name, pre_qual = qualifier WHERE id = ?2",
             )?;
             for (id, path, qual) in pending {
                 // If qualifier already looks like a known type (class/struct), skip.
                 if type_names.contains(&qual) {
+                    continue;
+                }
+                if ambiguous.contains(&(path.clone(), qual.clone())) {
                     continue;
                 }
                 if let Some(ty) = map.get(&(path.clone(), qual.clone())) {
@@ -1233,7 +1271,7 @@ impl Store {
                 }
             }
         }
-        Ok(updated)
+        Ok(updated + revoked)
     }
 
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {

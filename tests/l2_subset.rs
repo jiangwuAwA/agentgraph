@@ -191,6 +191,30 @@ fn py_getattr_plain_literal_stays_in_s() {
 }
 
 #[test]
+fn py_dynamic_attr_family_leaves_s() {
+    for src in [
+        "x = obj.__getattribute__(name)\n",
+        "from operator import attrgetter\nf = attrgetter(name)\n",
+        "d = vars(obj)[name]\n",
+        "import importlib\nm = importlib.import_module(name)\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "src/d.py");
+        assert!(!r.in_subset, "must leave S: {src:?} → {:?}", r.violations);
+    }
+}
+
+#[test]
+fn py_literal_import_module_stays_in_s() {
+    let src = "import importlib\nm = importlib.import_module(\"pkg.mod\")\n";
+    let r = scan_subset(src, Language::Python, "src/ok.py");
+    assert!(
+        r.in_subset,
+        "literal import_module stays in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

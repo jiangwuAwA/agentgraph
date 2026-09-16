@@ -642,7 +642,39 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         if t.contains("__builtins__") {
             push_v(violations, path, line_no, "py_builtins", t);
         }
+        // R8: sibling dynamic-attr / import APIs leave S_py (fail-closed).
+        if compact.contains("__getattribute__(") || compact.contains("attrgetter(") {
+            push_v(violations, path, line_no, "py_dynamic_attr", t);
+        }
+        if (compact.contains("vars(")
+            || compact.contains("globals(")
+            || compact.contains("locals("))
+            && t.contains('[')
+        {
+            push_v(violations, path, line_no, "py_vars_subscript", t);
+        }
+        // Non-literal importlib.import_module(name)
+        if compact.contains("import_module(") && !import_module_arg_is_string(&compact) {
+            push_v(violations, path, line_no, "py_import_module_dynamic", t);
+        }
     }
+}
+
+/// True when import_module(...) has a same-line plain string first argument.
+fn import_module_arg_is_string(compact: &str) -> bool {
+    let Some(idx) = compact.find("import_module(") else {
+        return false;
+    };
+    let rest = &compact[idx + "import_module(".len()..];
+    let Some(end) = rest.find(')') else {
+        return false; // multi-line — fail closed
+    };
+    let args = rest[..end].trim();
+    let first = args.split(',').next().unwrap_or("").trim();
+    first.len() >= 2
+        && (first.starts_with('\'') || first.starts_with('"'))
+        && first.ends_with(first.chars().next().unwrap())
+        && !first.contains('+')
 }
 
 fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {

@@ -109,6 +109,96 @@ func main() {
 }
 
 #[test]
+fn go_factory_becomes_ambiguous_revokes_sticky_upgrade() {
+    let dir = std::env::temp_dir().join("agentgraph-test-qual-revoke");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("index.db")).unwrap();
+    let main = r#"
+package main
+type Server struct{}
+func (s *Server) Start() {}
+func main() {
+  x := createThing()
+  x.Start()
+}
+"#;
+    let factory = r#"
+package main
+func createThing() *Server { return nil }
+"#;
+    let collide = r#"
+package main
+func createThing() {}
+"#;
+    let pm = extract_file(main, Language::Go, "main.go", &HashSet::new()).unwrap();
+    let pf = extract_file(factory, Language::Go, "factory.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("main.go", "hm", "go", &pm).unwrap();
+    store.replace_file("factory.go", "hf", "go", &pf).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let before = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "main.go")
+        .count();
+    assert_eq!(before, 1, "unique factory should Exact-upgrade");
+    // Insert colliding untyped createThing; only factory.go path re-resolved.
+    let pc = extract_file(collide, Language::Go, "collide.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("collide.go", "hc", "go", &pc).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let after = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "main.go")
+        .count();
+    assert_eq!(
+        after, 0,
+        "sticky upgrade must be revoked when factory collides"
+    );
+}
+
+#[test]
+fn go_method_return_type_does_not_type_package_factory() {
+    let dir = std::env::temp_dir().join("agentgraph-test-qual-method");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("index.db")).unwrap();
+    let src = r#"
+package main
+type Server struct{}
+func (s *Server) Start() {}
+type Factory struct{}
+func (f *Factory) createThing() *Server { return nil }
+func createThing() {}
+func main() {
+  x := createThing()
+  x.Start()
+}
+"#;
+    let p = extract_file(src, Language::Go, "main.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("main.go", "h", "go", &p).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let server = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "main.go")
+        .count();
+    assert_eq!(
+        server, 0,
+        "method createThing must not type package-level createThing"
+    );
+}
+
+#[test]
 fn go_single_typed_factory_name_collision_not_exact_upgrade() {
     let dir = std::env::temp_dir().join("agentgraph-test-qual-single-typed");
     let _ = std::fs::remove_dir_all(&dir);

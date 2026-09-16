@@ -146,6 +146,54 @@ fn index_paths_rebuilds_dispatch() {
 }
 
 #[test]
+fn subscript_emit_and_on_pair() {
+    let store = seed_js(
+        "sub",
+        r#"
+export function h() { return 1; }
+export function s(b: any) { b['on']('e', h); }
+export function f(b: any) { b['emit']('e'); }
+"#,
+    );
+    let (hits, _) = store.callers_sound("h", 20).unwrap();
+    assert!(
+        hits.iter().any(|r| r.enclosing.as_deref() == Some("f")),
+        "bus['emit'] must pair with bus['on']; hits={hits:?}"
+    );
+}
+
+#[test]
+fn generator_function_handler_collects_calls() {
+    let out = extract_file(
+        r#"
+export function handleY() { return 1; }
+export function wire(bus: any) {
+  bus.on('e', function* () { yield handleY(); });
+}
+"#,
+        Language::JavaScript,
+        "src/gen.js",
+        &HashSet::new(),
+    )
+    .unwrap();
+    let names: Vec<_> = out
+        .references
+        .iter()
+        .filter(|r| {
+            r.evidence
+                .as_ref()
+                .map(|e| e.rule_id == "ts.event.subscribe")
+                .unwrap_or(false)
+        })
+        .map(|r| r.name.as_str())
+        .collect();
+    assert!(
+        names.contains(&"handleY"),
+        "generator handler must record handleY; got {names:?}"
+    );
+}
+
+#[test]
 fn emit_without_on_is_harmless() {
     let store = seed_js(
         "evt2",

@@ -26,28 +26,26 @@ CI soft gate: `tests/query_p95.rs` (400-file debug DB, same 50ms budget).
 | `callers` (limit 20) | 0.04 ms | **0.08 ms** | 0.15 ms | 0.21 ms |
 | `impact` (depth 2, limit 50) | 0.12 ms | **0.21 ms** | 0.31 ms | 0.36 ms |
 
-### High fan-in hot name (`run`, **~4 000 callers**, **cold** store per sample)
+### High fan-in hot name (`run`, **~4 000 callers**)
 
-| query | p50 | **p95** | p99 | max |
-|---|---:|---:|---:|---:|
-| `callers` | 0.11 ms | **0.21 ms** | 0.31 ms | 0.31 ms |
-| `impact` | 0.25 ms | **0.39 ms** | 0.68 ms | 0.68 ms |
+| mode | callers p50 | **callers p95** | impact p50 | **impact p95** | max (callers) |
+|---|---:|---:|---:|---:|---:|
+| **cold** (new Store/sample, limit 5000) | 2.19 ms | **4.21 ms** | 2.71 ms | **4.24 ms** | 34.7 ms |
+| warm (cache, limit 5000) | 0.11 ms | **0.65 ms** | 0.30 ms | **0.78 ms** | 30.1 ms |
 
-**PASS** — even hot-name cold p95 ≪ 50 ms.
+**PASS** — hot cold p95 ≪ 50 ms (honest numbers after hot-first sampling fix).
+Earlier 0.21/0.39 ms figures were **invalid** (hot never sampled).
 
 Reproduce:
 
 ```bash
 powershell -File scripts/gen_fixture.ps1 -N 1000 -HotName 4000
 agentgraph --root <fixture> index --force
-agentgraph --root <fixture> bench-query --samples 80 --hot run --cold
+agentgraph --root <fixture> bench-query --samples 40 --hot run --cold
 ```
 
-## Method notes
-
-- **Warm path:** one process, in-process LRU-ish cache (`warm` default).
-- **Cold path (`--cold`):** new `Store` per sample (no query cache).
-- **Hot name:** shared `run` with ~N inbound Exact call refs.
+`--cold` includes **fresh `open_store`** per sample (no in-process cache).
+OS/SQLite page cache may still be warm.
 
 ## Caveats
 

@@ -295,8 +295,40 @@ fn ts_call_rules(
         "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "Handle" | "HandleFunc" | "Any"
     );
     // L2: emit('evt') — dispatch site; event name is a finite-domain candidate.
-    // Non-literal emit keys leave S (scanner flags them) — no dispatch edge.
-    if matches!(method.as_str(), "emit" | "trigger" | "publish" | "fire") {
+    // Also match obj['emit'] / obj["on"] (computed member with string key).
+    let method_from_computed = || -> Option<String> {
+        let mut n = fn_node;
+        while n.kind() == "parenthesized_expression" {
+            let mut c = n.walk();
+            let Some(inner) = n.children(&mut c).find(|x| !matches!(x.kind(), "(" | ")")) else {
+                return None;
+            };
+            n = inner;
+        }
+        if n.kind() == "subscript_expression" {
+            if let Some(key) = n.child_by_field_name("index") {
+                return string_literal_content(key, source);
+            }
+        }
+        None
+    };
+    let method_eff = if matches!(
+        method.as_str(),
+        "emit"
+            | "trigger"
+            | "publish"
+            | "fire"
+            | "on"
+            | "once"
+            | "subscribe"
+            | "addListener"
+            | "addEventListener"
+    ) {
+        method.clone()
+    } else {
+        method_from_computed().unwrap_or_default()
+    };
+    if matches!(method_eff.as_str(), "emit" | "trigger" | "publish" | "fire") {
         if let Some(key) = nth_arg_string_lit(node, source, 0) {
             push_l1_mod(
                 references,
@@ -307,27 +339,29 @@ fn ts_call_rules(
                     enclosing: enclosing.clone(),
                     confidence: Confidence::DynamicCandidate,
                     rule_id: "ts.event.emit",
-                    snippet: format!("{method}('{key}')"),
+                    snippet: format!("{method_eff}('{key}')"),
                 },
                 Some(key),
             );
         }
     }
     let is_subscribe = matches!(
-        method.as_str(),
+        method_eff.as_str(),
         "on" | "once" | "subscribe" | "addListener" | "addEventListener"
     );
     if is_subscribe || is_route {
         let evt = nth_arg_string_lit(node, source, 0);
-        // Function-expression handlers: collect ALL call names (do not use
-        // nth_arg_identifier first — it only returns the first descendant).
         let mut handlers: Vec<String> = Vec::new();
         let arg1 = nth_arg_node(node, source, 1);
         let is_fn_expr = arg1
             .map(|a| {
                 matches!(
                     a.kind(),
-                    "arrow_function" | "function_expression" | "function"
+                    "arrow_function"
+                        | "function_expression"
+                        | "function"
+                        | "generator_function"
+                        | "func_literal"
                 )
             })
             .unwrap_or(false);
@@ -335,8 +369,19 @@ fn ts_call_rules(
             if let Some(arg) = arg1 {
                 collect_call_names(arg, source, &mut handlers);
             }
-        } else if let Some(h) = nth_arg_identifier(node, source, 1) {
-            handlers.push(h);
+        } else if let Some(arg) = arg1 {
+            // Subscript handler obj['handleX'] or identifier / member.
+            if arg.kind() == "subscript_expression" {
+                if let Some(key) = arg.child_by_field_name("index") {
+                    if let Some(h) = string_literal_content(key, source) {
+                        handlers.push(h);
+                    }
+                }
+            } else if let Some(h) = ident_name(arg, source) {
+                handlers.push(h);
+            } else if let Some(h) = nth_arg_identifier(node, source, 1) {
+                handlers.push(h);
+            }
         }
         for handler in handlers {
             push_l1_mod(
@@ -1061,6 +1106,11 @@ fn go_handler_name(node: Node, source: &str) -> Option<String> {
             } else {
                 Some(t.to_string())
             }
+        }
+        "func_literal" | "function_literal" => {
+            let mut names = Vec::new();
+            collect_call_names(node, source, &mut names);
+            names.into_iter().next()
         }
         "literal_element" => {
             let mut cursor = node.walk();

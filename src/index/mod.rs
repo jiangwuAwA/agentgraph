@@ -405,6 +405,12 @@ impl Indexer {
             let mut hasher = Sha256::new();
             hasher.update(&bytes);
             let hash = format!("{:x}", hasher.finalize());
+            if let Ok(Some(prev)) = store.file_meta(&rel) {
+                if prev.hash == hash {
+                    let _ = store.update_file_meta(&rel, mtime_ns, size);
+                    continue;
+                }
+            }
             let source = match String::from_utf8(bytes) {
                 Ok(s) => s,
                 Err(_) => {

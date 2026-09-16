@@ -779,74 +779,83 @@ impl Store {
     /// **Idempotent:** deletes all prior `ts.event.dispatch` rows first
     /// (Critical fix: incremental index must not accumulate duplicates).
     pub fn link_event_dispatch(&mut self) -> Result<usize> {
-        // Drop previous dispatch edges (full rebuild — emit sites are cheap to re-pair).
-        self.conn.execute(
-            "DELETE FROM refs WHERE rule_id = 'ts.event.dispatch' OR evidence LIKE '%ts.event.dispatch%'",
-            [],
-        )?;
-        self.cache.borrow_mut().clear();
+        // DELETE + INSERT in **one** transaction so a crash cannot leave
+        // zero dispatch edges with a green S badge (Critical).
+        self.conn.execute_batch("BEGIN")?;
+        let result = (|| -> Result<usize> {
+            self.conn
+                .execute("DELETE FROM refs WHERE rule_id = 'ts.event.dispatch'", [])?;
 
-        // (enclosing_or_empty, path, line, event)
-        let emits: Vec<(String, String, i64, String)> = {
-            let mut stmt = self.conn.prepare(
-                "SELECT COALESCE(enclosing,''), path, line, module FROM refs
-                 WHERE module IS NOT NULL AND module != ''
-                   AND rule_id = 'ts.event.emit'",
-            )?;
-            let rows = stmt.query_map([], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                    r.get::<_, String>(3)?,
-                ))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        };
-        // event -> handlers (dedup)
-        let mut handlers: HashMap<String, Vec<String>> = HashMap::new();
-        {
-            let mut stmt = self.conn.prepare(
-                "SELECT name, module FROM refs
-                 WHERE module IS NOT NULL AND module != ''
-                   AND rule_id = 'ts.event.subscribe'",
-            )?;
-            let rows =
-                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-            for row in rows {
-                let (name, evt) = row?;
-                let list = handlers.entry(evt).or_default();
-                if !list.contains(&name) {
-                    list.push(name);
+            // (enclosing_or_empty, path, line, event)
+            let emits: Vec<(String, String, i64, String)> = {
+                let mut stmt = self.conn.prepare(
+                    "SELECT COALESCE(enclosing,''), path, line, module FROM refs
+                     WHERE module IS NOT NULL AND module != ''
+                       AND rule_id = 'ts.event.emit'",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                })?;
+                rows.collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            let mut handlers: HashMap<String, Vec<String>> = HashMap::new();
+            {
+                let mut stmt = self.conn.prepare(
+                    "SELECT name, module FROM refs
+                     WHERE module IS NOT NULL AND module != ''
+                       AND rule_id = 'ts.event.subscribe'",
+                )?;
+                let rows =
+                    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                for row in rows {
+                    let (name, evt) = row?;
+                    let list = handlers.entry(evt).or_default();
+                    if !list.contains(&name) {
+                        list.push(name);
+                    }
                 }
             }
-        }
 
-        let mut created = 0usize;
-        let mut stmt = self.conn.prepare_cached(
-            "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
-             VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL, 'ts.event.dispatch')",
-        )?;
-        self.conn.execute_batch("BEGIN")?;
-        for (enclosing, path, line, evt) in emits {
-            let Some(hs) = handlers.get(&evt) else {
-                continue;
-            };
-            for h in hs {
-                let evidence = serde_json::json!({
-                    "rule_id": "ts.event.dispatch",
-                    "snippet": format!("emit('{evt}') → {h}"),
-                })
-                .to_string();
-                stmt.execute(params![h, path, line, enclosing, evt, evidence])?;
-                created += 1;
+            let mut created = 0usize;
+            let mut stmt = self.conn.prepare_cached(
+                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
+                 VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL, 'ts.event.dispatch')",
+            )?;
+            for (enclosing, path, line, evt) in emits {
+                let Some(hs) = handlers.get(&evt) else {
+                    continue;
+                };
+                for h in hs {
+                    let evidence = serde_json::json!({
+                        "rule_id": "ts.event.dispatch",
+                        "snippet": format!("emit('{evt}') → {h}"),
+                    })
+                    .to_string();
+                    stmt.execute(params![h, path, line, enclosing, evt, evidence])?;
+                    created += 1;
+                }
+            }
+            Ok(created)
+        })();
+        match result {
+            Ok(created) => {
+                self.conn.execute_batch("COMMIT")?;
+                self.cache.borrow_mut().clear();
+                if created > 0 {
+                    self.sid_dirty.set(true);
+                }
+                Ok(created)
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
             }
         }
-        self.conn.execute_batch("COMMIT")?;
-        if created > 0 {
-            self.sid_dirty.set(true);
-        }
-        Ok(created)
     }
 
     /// How many `ts.event.dispatch` rows exist (tests / idempotency).

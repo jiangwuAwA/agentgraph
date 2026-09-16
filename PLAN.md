@@ -251,7 +251,7 @@ ref {
 ### 4.5 L2 交付物
 
 - `docs/sound-subset.md` ✅（S_js 保守 AST 扫描；S_py/S_go/S_rs **v1 保守词法扫描**，非完整冻结）
-- `impact --sound` / `callers --sound` ✅ 生产级 S（已建模边；违例关闭承诺）
+- `impact --sound` / `callers --sound` ✅ S 限定（已建模边；违例关闭承诺）
 - 差分测试 harness ✅ Node export tracer + 多文件 ESM + **Go cover**（`tests/l2_go_diff.rs`）
 - 属性测试 ✅ `tests/l2_property.rs`（确定性 S_js 生成器：Exact 边 + impact_sound 包含）
 - Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr/getattr 非字面量）
@@ -315,7 +315,7 @@ ref {
 
 | 项 | 要求 |
 |---|---|
-| 性能 | **L0 查询 p95 &lt; 50ms（5k 文件）已验收**（含 hot-name cold：`run` ~4k fan-in callers p95≈0.21ms — [docs/eval-query-p95.md](docs/eval-query-p95.md)）；增量 noop P0 已达成；mtime 短路可 `AGENTGRAPH_TRUST_MTIME=0` 关闭 |
+| 性能 | **L0 查询 p95 &lt; 50ms（5k 文件）已验收**（hot-name cold：`run` ~4k fan-in callers p95≈**4.2ms** — [docs/eval-query-p95.md](docs/eval-query-p95.md)）；增量 noop P0 已达成；mtime 短路可 `AGENTGRAPH_TRUST_MTIME=0` 关闭 |
 | 兼容 | 旧 index.db 自动迁移；SCIP 导出保持 `scip lint` 0 |
 | 可观测 | 每次 index 输出：文件数、边按 confidence 分布、耗时 |
 | 隐私 | L2/L3 不外传源码；enrich 仍可选 |

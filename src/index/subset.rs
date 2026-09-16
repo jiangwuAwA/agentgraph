@@ -309,7 +309,31 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                         | "addListener"
                         | "addEventListener"
                 );
-                if is_event_api {
+                // bus['emit'](...) / bus["on"](...)
+                let computed_event_key = if unwrapped.kind() == "subscript_expression" {
+                    unwrapped
+                        .child_by_field_name("index")
+                        .map(|k| {
+                            let kt = snippet_at(source, k);
+                            let inner = string_lit_inner(&kt);
+                            matches!(
+                                inner,
+                                "emit"
+                                    | "trigger"
+                                    | "publish"
+                                    | "fire"
+                                    | "on"
+                                    | "once"
+                                    | "subscribe"
+                                    | "addListener"
+                                    | "addEventListener"
+                            )
+                        })
+                        .unwrap_or(false)
+                } else {
+                    false
+                };
+                if is_event_api || computed_event_key {
                     if let Some(args) = node.child_by_field_name("arguments") {
                         let mut ac = args.walk();
                         let first = args
@@ -327,6 +351,45 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                             };
                             if !is_plain {
                                 push_v(violations, path, line, "nonliteral_event_key", &kt);
+                            }
+                        }
+                    }
+                    let is_sub = is_event_api
+                        && matches!(
+                            last,
+                            "on" | "once" | "subscribe" | "addListener" | "addEventListener"
+                        );
+                    if is_sub {
+                        if let Some(args) = node.child_by_field_name("arguments") {
+                            let mut ac = args.walk();
+                            let named: Vec<_> = args
+                                .children(&mut ac)
+                                .filter(|x| !matches!(x.kind(), "," | "(" | ")"))
+                                .collect();
+                            if let Some(handler) = named.get(1) {
+                                let ok_handler = matches!(
+                                    handler.kind(),
+                                    "identifier"
+                                        | "member_expression"
+                                        | "arrow_function"
+                                        | "function_expression"
+                                        | "function"
+                                        | "generator_function"
+                                        | "func_literal"
+                                ) || (handler.kind() == "subscript_expression"
+                                    && handler
+                                        .child_by_field_name("index")
+                                        .map(|k| k.kind() == "string")
+                                        .unwrap_or(false));
+                                if !ok_handler {
+                                    push_v(
+                                        violations,
+                                        path,
+                                        line,
+                                        "unmodeled_event_handler",
+                                        &snippet_at(source, *handler),
+                                    );
+                                }
                             }
                         }
                     }

@@ -366,16 +366,18 @@ pub fn run(cli: Cli) -> Result<()> {
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            let mut names = Vec::new();
+            // Build name list. **Hot goes first** so `0..samples` always hits it
+            // (Critical: appending hot after a samples-sized list never selected it).
+            let mut names: Vec<String> = Vec::new();
+            if let Some(h) = &hot {
+                names.push(h.clone());
+            }
             {
                 let hits = store.find_symbol_fuzzy(&prefix, samples.max(20))?;
                 for s in hits {
-                    names.push(s.name);
-                }
-            }
-            if let Some(h) = &hot {
-                if !names.contains(h) {
-                    names.push(h.clone());
+                    if !names.contains(&s.name) {
+                        names.push(s.name);
+                    }
                 }
             }
             if names.is_empty() {
@@ -389,18 +391,24 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             for i in 0..samples {
                 let n = names[i % names.len()].clone();
+                // Hot name: use a high limit so fan-in materialization is measured.
+                let limit = if hot.as_deref() == Some(n.as_str()) {
+                    5000
+                } else {
+                    20
+                };
                 if cold {
-                    // Fresh Store per sample → no in-process query cache.
-                    let s2 = indexer.open_store()?;
                     let t = std::time::Instant::now();
-                    let _ = s2.callers_filtered(&n, 20, ConfidenceFilter::Default)?;
+                    let s2 = indexer.open_store()?;
+                    let _ = s2.callers_filtered(&n, limit, ConfidenceFilter::Default)?;
                     callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
                     let t = std::time::Instant::now();
+                    let s2 = indexer.open_store()?;
                     let _ = s2.impact_filtered(&n, 2, 50, ConfidenceFilter::Default)?;
                     impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
                 } else {
                     let t = std::time::Instant::now();
-                    let _ = store.callers_filtered(&n, 20, ConfidenceFilter::Default)?;
+                    let _ = store.callers_filtered(&n, limit, ConfidenceFilter::Default)?;
                     callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
                     let t = std::time::Instant::now();
                     let _ = store.impact_filtered(&n, 2, 50, ConfidenceFilter::Default)?;

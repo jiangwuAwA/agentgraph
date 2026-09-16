@@ -1,7 +1,11 @@
 //! TDD: AGENTGRAPH_TRUST_MTIME=0 disables mtime short-circuit (hash is truth).
+//! Tests that mutate process-global env take ENV_LOCK (parallel-test race fix).
 
 use agentgraph::index::Indexer;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn temp_root(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("agentgraph-mtime-{tag}"));
@@ -12,6 +16,7 @@ fn temp_root(tag: &str) -> PathBuf {
 
 #[test]
 fn trust_mtime_zero_still_indexes_and_is_idempotent() {
+    let _g = ENV_LOCK.lock().unwrap();
     let root = temp_root("off");
     let file = root.join("src/a.ts");
     std::fs::write(&file, "export function a() { return 1; }\n").unwrap();
@@ -24,12 +29,12 @@ fn trust_mtime_zero_still_indexes_and_is_idempotent() {
     let s2 = indexer.index(false).unwrap();
     std::env::remove_var("AGENTGRAPH_TRUST_MTIME");
     assert!(s1.files >= 1);
-    // With trust off, every index rehashes; noop still succeeds (dirty=0).
     assert_eq!(s1.symbols, s2.symbols);
 }
 
 #[test]
 fn trust_mtime_default_short_circuits_unchanged() {
+    let _g = ENV_LOCK.lock().unwrap();
     let root = temp_root("on");
     std::fs::write(root.join("src/a.ts"), "export function a() { return 1; }\n").unwrap();
     let indexer = Indexer::new(&root).unwrap();

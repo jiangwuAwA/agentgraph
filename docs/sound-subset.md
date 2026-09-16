@@ -1,20 +1,20 @@
-# Sound subset (L2 — production S, modeled dispatch)
+# Sound subset (L2 — S-qualified modeled edges)
 
-> **Status:** production for **subset S + modeled patterns**.  
-> When `subset_ok: true` (zero S violations), `--sound` walks a graph that
-> over-approximates runtime edges **for the call kinds we model**:
+> **Status:** **S-qualified** (not a blanket “production” label). When
+> `subset_ok: true`, `--sound` walks Exact + allowlisted Heuristic +
+> finite-domain dynamic edges **for the call kinds we model**:
 >
-> 1. Direct syntactic calls (Exact)  
-> 2. Finite-domain computed keys (`obj['m']()`, `getattr(obj,"m")`, `import_module("lit")`)  
-> 3. **Event dispatch** `emit('e')` ↔ `on('e', handler)` → Heuristic `ts.event.dispatch`  
-> 4. DI / route **registration** edges (impact candidates; registration is not HTTP ServeHTTP)  
-> 5. Go handler maps + gin-like `GET(path, h)`  
+> 1. Direct syntactic calls  
+> 2. Finite-domain computed keys (`obj['m']()`, string `getattr` / `import_module`)  
+> 3. Event dispatch `emit`/`once`/`on` with **string-literal** keys and
+>    identifier / fn-expr / string-subscript handlers → `ts.event.dispatch`  
+> 4. DI / route registration (impact candidates; registration ≠ HTTP ServeHTTP)  
 >
-> **Still not claimed:** soundness outside S; unmodeled frameworks (custom
-> proxies, `eval`, `unsafe` fn pointers, monkey-patching); over-reporting is
-> allowed. CLI `subset_ok=false` **disables** the promise.
+> **Explicitly outside the claim:** unmodeled bus aliases, non-ident handlers
+> (leave S), RxJS `next`, custom frameworks, anything with S violations.
+> CLI promise is disabled when `subset_ok: false`.
 
-## Promise (production S)
+## Promise (S-qualified)
 
 For programs inside **S** with `subset_ok: true`:
 

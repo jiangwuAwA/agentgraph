@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::index::{llm, Indexer};
 use crate::model::ConfidenceFilter;
-use crate::query::{parse_confidence_flags, Query};
+use crate::query::{parse_confidence_flags, parse_query_flags, Query};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -51,6 +51,9 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
+        /// Prefer recall: same as --include-dynamic (use when you fear missed edges)
+        #[arg(long, default_value_t = false)]
+        recall: bool,
         /// L2: only sound-eligible edges + S-violation report
         #[arg(long, default_value_t = false)]
         sound: bool,
@@ -68,6 +71,9 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
+        /// Prefer recall: same as --include-dynamic (use when you fear missed edges)
+        #[arg(long, default_value_t = false)]
+        recall: bool,
         /// L2: walk only sound-eligible edges; report S-violations; never claims sound outside S
         #[arg(long, default_value_t = false)]
         sound: bool,
@@ -176,14 +182,15 @@ pub fn run(cli: Cli) -> Result<()> {
             limit,
             exact_only,
             include_dynamic,
+            recall,
             sound,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             if sound {
-                if exact_only || include_dynamic {
+                if exact_only || include_dynamic || recall {
                     bail!(
-                        "--sound is mutually exclusive with --exact-only / --include-dynamic \
+                        "--sound is mutually exclusive with --exact-only / --include-dynamic / --recall \
                          (sound walk uses its own eligibility filter)"
                     );
                 }
@@ -218,7 +225,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 return Ok(());
             }
             let q = Query::new(&store);
-            let filter = parse_confidence_flags(exact_only, include_dynamic);
+            let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.callers_filtered(&name, limit, filter)?;
             let mapped: Vec<serde_json::Value> = hits
                 .into_iter()
@@ -241,13 +248,16 @@ pub fn run(cli: Cli) -> Result<()> {
             limit,
             exact_only,
             include_dynamic,
+            recall,
             sound,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             if sound {
-                if exact_only || include_dynamic {
-                    bail!("--sound is mutually exclusive with --exact-only / --include-dynamic");
+                if exact_only || include_dynamic || recall {
+                    bail!(
+                        "--sound is mutually exclusive with --exact-only / --include-dynamic / --recall"
+                    );
                 }
                 let (hits, violations) = store.impact_sound(&name, depth, limit)?;
                 let subset_ok = violations.is_empty();
@@ -266,7 +276,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 return Ok(());
             }
             let q = Query::new(&store);
-            let filter = parse_confidence_flags(exact_only, include_dynamic);
+            let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.impact_filtered(&name, depth, limit, filter)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }

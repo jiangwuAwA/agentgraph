@@ -51,10 +51,28 @@ impl<'a> Query<'a> {
 }
 
 /// CLI/MCP string flag → filter. Default = Exact + Heuristic.
+///
+/// `--recall` is an alias for `--include-dynamic` (prefer missing nothing
+/// over a clean graph). Prefer `--sound` when S is satisfied.
 pub fn parse_confidence_flags(exact_only: bool, include_dynamic: bool) -> ConfidenceFilter {
     if exact_only {
         ConfidenceFilter::ExactOnly
     } else if include_dynamic {
+        ConfidenceFilter::IncludeDynamic
+    } else {
+        ConfidenceFilter::Default
+    }
+}
+
+/// Map explicit CLI/MCP flags; `recall` forces IncludeDynamic unless exact_only.
+pub fn parse_query_flags(
+    exact_only: bool,
+    include_dynamic: bool,
+    recall: bool,
+) -> ConfidenceFilter {
+    if exact_only {
+        ConfidenceFilter::ExactOnly
+    } else if recall || include_dynamic {
         ConfidenceFilter::IncludeDynamic
     } else {
         ConfidenceFilter::Default

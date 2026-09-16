@@ -60,6 +60,12 @@ Dynamic `getattr` without literal, `eval`/`exec`, `unsafe`/`reflect` leave S.
 | emit↔on dispatch edges | ✅ `tests/l2_dispatch.rs` + `Store::link_event_dispatch` |
 | S violation scanners | ✅ `tests/l2_subset.rs`, `l2_lang_subset.rs` |
 
+## If you fear missed edges (怕漏)
+
+1. Prefer `impact/callers --sound` when `subset_ok: true` (S-qualified over-approx).  
+2. Or `--recall` / `--include-dynamic` for a wider heuristic window.  
+3. Do **not** expect zero misses **and** zero extras on arbitrary code — see PLAN §0.2.
+
 ## Known over-approx / accepted false positives
 
 - `obj['on']` / `obj['emit']` on **any** receiver is treated as the event API

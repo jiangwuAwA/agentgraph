@@ -56,8 +56,10 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 
 - default: **Exact + Heuristic** (L1 DI/factory/event candidates)
 - `--exact-only`: L0 syntactic edges only
-- `--include-dynamic`: also DynamicCandidate (reflection / computed keys — noisier)
+- `--include-dynamic` / **`--recall`**: also DynamicCandidate (reflection / computed keys — noisier)
 - `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md).
+
+**怕漏（missed edges）时：** 优先 `--sound`（`subset_ok` 时）或 `--recall`。干净的图 ≠ 完整的图。
 
 Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md), [docs/eval-l2.md](docs/eval-l2.md).
 

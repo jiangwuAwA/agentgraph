@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::index::Indexer;
-use crate::query::{parse_confidence_flags, Query};
+use crate::query::{parse_confidence_flags, parse_query_flags, Query};
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
     let state = Mutex::new(ServerState { root });
@@ -125,6 +125,7 @@ fn tools_list() -> Value {
                         "limit": {"type": "integer", "default": 50},
                         "exact_only": {"type": "boolean", "default": false},
                         "include_dynamic": {"type": "boolean", "default": false},
+                        "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
@@ -132,7 +133,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "impact",
-                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; exact_only / include_dynamic adjust the confidence window. sound=true uses the L2 sound-eligible edge set and reports S-violations.",
+                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -141,6 +142,7 @@ fn tools_list() -> Value {
                         "limit": {"type": "integer", "default": 100},
                         "exact_only": {"type": "boolean", "default": false},
                         "include_dynamic": {"type": "boolean", "default": false},
+                        "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false}
                     },
                     "required": ["name"]
@@ -329,14 +331,18 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("include_dynamic")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let recall = args
+                    .get("recall")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
                 if sound {
-                    if exact_only || include_dynamic {
+                    if exact_only || include_dynamic || recall {
                         return Err(anyhow::anyhow!(
-                            "sound is mutually exclusive with exact_only / include_dynamic \
+                            "sound is mutually exclusive with exact_only / include_dynamic / recall \
                              (sound walk uses its own eligibility filter)"
                         ));
                     }
@@ -365,7 +371,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     });
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
-                let filter = parse_confidence_flags(exact_only, include_dynamic);
+                let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
@@ -385,13 +391,17 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("include_dynamic")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let recall = args
+                    .get("recall")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
                 if sound {
-                    if exact_only || include_dynamic {
+                    if exact_only || include_dynamic || recall {
                         return Err(anyhow::anyhow!(
-                            "sound is mutually exclusive with exact_only / include_dynamic"
+                            "sound is mutually exclusive with exact_only / include_dynamic / recall"
                         ));
                     }
                     let (hits, violations) = store.impact_sound(sym, depth, limit)?;
@@ -409,7 +419,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     });
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
-                let filter = parse_confidence_flags(exact_only, include_dynamic);
+                let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }

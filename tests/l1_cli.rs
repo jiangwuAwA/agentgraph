@@ -76,6 +76,19 @@ fn cli_callers_exact_only_drops_heuristic() {
 }
 
 #[test]
+fn cli_callers_recall_includes_dynamic() {
+    let root = temp_root("recall");
+    let (ok, _, err) = run(&root, &["index"]);
+    assert!(ok, "index failed: {err}");
+    let (ok, stdout, err) = run(&root, &["callers", "UserService", "--recall"]);
+    assert!(ok, "callers failed: {err}");
+    assert!(
+        stdout.contains("\"dynamic_candidate\""),
+        "--recall must surface DynamicCandidate; got {stdout}"
+    );
+}
+
+#[test]
 fn cli_callers_include_dynamic() {
     let root = temp_root("dyn");
     let (ok, _, err) = run(&root, &["index"]);

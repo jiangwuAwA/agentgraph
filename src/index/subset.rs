@@ -33,6 +33,7 @@ const SOUND_FINITE_DYNAMIC_RULES: &[&str] = &[
     "ts.dynamic.computed",
     "py.dynamic.getattr",
     "py.dynamic.import_module",
+    "ts.event.emit",
 ];
 
 /// How an edge participates in the sound over-approx.

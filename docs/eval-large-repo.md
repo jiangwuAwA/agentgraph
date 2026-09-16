@@ -14,14 +14,17 @@ agentgraph --root ... callers <symbol>            # default: Exact+Heuristic
 
 ## Index performance (this machine, release build)
 
-### After perf-plan P0 (this commit)
+### After perf-plan P0 + P1 sid batch (this commit)
 
 | op | result |
 |---|---|
-| Full index (`--force`) | ~45 s（其中 **`resolve_sids_ms ≈ 27s`** 为全量 relink；parse≈5s, db≈8s） |
-| **Incremental noop** | **~0.8 s**（`noop_early_out`，994/995 mtime 命中） |
-| 1 file change (public `lib.rs`) | **~3.0 s**（dirty=1；`resolve_sids_ms≈2s` 为该符号入边重链） |
-| 1k synthetic fixture noop | **~0.7 s**（`scripts/bench_index.ps1 -Generate 1000`） |
+| Full index (`--force`) | **~27 s**（`resolve_sids_ms≈3.4s` 批量 relink；db≈13s, parse≈5s） |
+| **Incremental noop** | **~1.0 s**（`noop_early_out`） |
+| 1 file change (public `lib.rs`) | **~3.0 s** |
+| 1k synthetic fixture noop | **~0.7 s** |
+| Watch path-scoped | `index_paths`（≤64 路径；否则全量） |
+
+Public NestJS `typescript-starter` (smoke): 8 files index OK.
 
 TRACE (`AGENTGRAPH_TRACE=1`) 示例 noop：`walk≈164ms, read_hash≈40ms, phase=noop_early_out`。
 

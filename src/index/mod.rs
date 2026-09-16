@@ -338,6 +338,131 @@ impl Indexer {
         Ok(stats)
     }
 
+    /// Path-scoped incremental index (watch UX / perf-plan P1-1).
+    ///
+    /// Falls back to full `index(false)` when the path set is large or unknown.
+    pub fn index_paths(&self, paths: &[PathBuf]) -> Result<IndexStats> {
+        const MAX_SCOPED: usize = 64;
+        if paths.is_empty() || paths.len() > MAX_SCOPED {
+            return self.index(false);
+        }
+        let mut store = self.open_store()?;
+        let mut to_parse = Vec::new();
+        let mut failed_read = 0usize;
+        let mut deleted: Vec<String> = Vec::new();
+
+        for path in paths {
+            let rel = path
+                .strip_prefix(&self.root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !path.exists() {
+                deleted.push(rel);
+                continue;
+            }
+            let Some(lang) = Language::from_path(&rel) else {
+                continue;
+            };
+            let meta = std::fs::metadata(path).ok();
+            let mtime_ns = meta
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos() as i64)
+                .unwrap_or(0);
+            let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("skip {rel}: read error: {e}");
+                    failed_read += 1;
+                    continue;
+                }
+            };
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            let hash = format!("{:x}", hasher.finalize());
+            let source = match String::from_utf8(bytes) {
+                Ok(s) => s,
+                Err(_) => {
+                    failed_read += 1;
+                    continue;
+                }
+            };
+            to_parse.push(FileWork {
+                rel,
+                hash,
+                source,
+                lang,
+                mtime_ns,
+                size,
+            });
+        }
+
+        if to_parse.is_empty() && deleted.is_empty() {
+            let mut stats = store.stats(&self.root.to_string_lossy())?;
+            stats.failed_files = failed_read;
+            return Ok(stats);
+        }
+
+        let known: std::collections::HashSet<String> = walker::collect_source_files(&self.root)?
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&self.root)
+                    .unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+
+        let mut dirty_paths: Vec<String> = Vec::new();
+        store.begin_batch()?;
+        for fw in to_parse {
+            let lang_str = fw.lang.as_str();
+            match extract::extract_file(&fw.source, fw.lang, &fw.rel, &known) {
+                Ok(extracted) => {
+                    let subset = subset::scan_subset(&fw.source, fw.lang, &fw.rel);
+                    store.begin_savepoint("file_sp")?;
+                    match store.replace_file_with_subset_meta(
+                        &fw.rel,
+                        &fw.hash,
+                        lang_str,
+                        &extracted,
+                        &subset,
+                        fw.mtime_ns,
+                        fw.size,
+                    ) {
+                        Ok(()) => {
+                            store.release_savepoint("file_sp")?;
+                            dirty_paths.push(fw.rel);
+                        }
+                        Err(e) => {
+                            store.rollback_savepoint("file_sp")?;
+                            eprintln!("db error {}: {e:#}", fw.rel);
+                        }
+                    }
+                }
+                Err(e) => eprintln!("parse fail {}: {e:#}", fw.rel),
+            }
+        }
+        if !deleted.is_empty() {
+            // Drop deleted paths from DB via prune of remaining tree.
+            let keep: Vec<String> = known.into_iter().collect();
+            store.prune_missing(&keep)?;
+        }
+        store.commit_batch()?;
+        let mut dirty = dirty_paths.clone();
+        dirty.extend(deleted.iter().cloned());
+        if !dirty.is_empty() {
+            store.resolve_symbol_ids_for_paths(&dirty)?;
+            store.resolve_qualifiers()?;
+        }
+        let mut stats = store.stats(&self.root.to_string_lossy())?;
+        stats.failed_files = failed_read;
+        Ok(stats)
+    }
+
     pub fn stats(&self) -> Result<IndexStats> {
         let store = self.open_store()?;
         store.stats(&self.root.to_string_lossy())
@@ -396,6 +521,8 @@ impl Indexer {
             let _watcher = watcher;
             let mut pending = false;
             let mut last_event = Instant::now();
+            let mut pending_paths: std::collections::HashSet<PathBuf> =
+                std::collections::HashSet::new();
 
             loop {
                 let tick = Duration::from_millis(debounce.as_millis().max(10) as u64);
@@ -404,6 +531,9 @@ impl Indexer {
                         if is_source_event(&ev, &root) {
                             pending = true;
                             last_event = Instant::now();
+                            for p in ev.paths {
+                                pending_paths.insert(p);
+                            }
                         }
                     }
                     Ok(Err(_)) => {}
@@ -413,11 +543,17 @@ impl Indexer {
 
                 if pending && last_event.elapsed() >= debounce {
                     pending = false;
+                    let paths: Vec<PathBuf> = pending_paths.drain().collect();
                     let indexer = Indexer {
                         root: root.clone(),
                         db_path: db_path.clone(),
                     };
-                    match indexer.index(false) {
+                    let result = if paths.is_empty() {
+                        indexer.index(false)
+                    } else {
+                        indexer.index_paths(&paths)
+                    };
+                    match result {
                         Ok(stats) => {
                             if tx.send(stats).is_err() {
                                 break;

@@ -290,6 +290,23 @@ fn ts_call_rules(
         method.as_str(),
         "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "Handle" | "HandleFunc" | "Any"
     );
+    // L2: emit('evt') — dispatch site; event name is a finite-domain candidate.
+    if matches!(method.as_str(), "emit" | "trigger") {
+        if let Some(key) = nth_arg_string_lit(node, source, 0) {
+            push_l1(
+                references,
+                L1Edge {
+                    name: key,
+                    qualifier: None,
+                    line,
+                    enclosing: enclosing.clone(),
+                    confidence: Confidence::DynamicCandidate,
+                    rule_id: "ts.event.emit",
+                    snippet: format!("{method}('…')"),
+                },
+            );
+        }
+    }
     if matches!(
         method.as_str(),
         "on" | "subscribe" | "addListener" | "addEventListener"
@@ -314,6 +331,20 @@ fn ts_call_rules(
             );
         }
     }
+}
+
+fn nth_arg_string_lit(node: Node, source: &str, idx: usize) -> Option<String> {
+    let mut cursor = node.walk();
+    let args = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "arguments")?;
+    let mut ac = args.walk();
+    let named: Vec<Node> = args
+        .children(&mut ac)
+        .filter(|c| !matches!(c.kind(), "," | "(" | ")"))
+        .collect();
+    let arg = named.get(idx)?;
+    string_literal_content(*arg, source)
 }
 
 fn first_interesting_arg<'a>(node: Node<'a>, _source: &str) -> Option<Node<'a>> {

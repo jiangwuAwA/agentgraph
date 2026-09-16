@@ -54,6 +54,27 @@ export function usePanel() {
 }
 
 #[test]
+fn ts_emit_literal_is_finite_domain_dynamic() {
+    use agentgraph::index::extract::extract_file;
+    use agentgraph::model::Language;
+    use std::collections::HashSet;
+    let src = r#"
+export function wire(bus: any) {
+  bus.emit('trade');
+}
+"#;
+    let out = extract_file(src, Language::JavaScript, "src/emit.js", &HashSet::new()).unwrap();
+    let hit = out.references.iter().any(|r| {
+        r.name == "trade" && r.confidence == agentgraph::model::Confidence::DynamicCandidate
+    });
+    assert!(
+        hit,
+        "emit('trade') must yield DynamicCandidate trade; refs={:?}",
+        out.references
+    );
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

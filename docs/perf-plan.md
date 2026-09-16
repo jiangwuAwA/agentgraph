@@ -242,13 +242,13 @@ if !force && dirty.is_empty() && deleted.is_empty() && oversized_only_unchanged:
 
 ## 7. 验收清单
 
-- [x] 1k 生成 fixture：noop 增量 **< 2s**（**0.7s**，`bench_index.ps1 -Generate 1000`）  
-- [x] 真仓 noop **< 2s**（stock-trading-app **0.8s**，`noop_early_out`）  
-- [x] 1 文件变更（小文件）**< 2s**（fixture **0.6s**；公开 API `lib.rs` 约 **3s** 因入边重链）  
-- [x] TRACE 分项（`AGENTGRAPH_TRACE=1`）  
-- [x] `tests/perf_p0.rs`（meta / incremental sid / export ensure / batch qual）  
-- [ ] full `--force` 显著加速（**未做**：sid 全量 27s 仍主导）— 留给 P1 set-based  
-- [x] 全测试套件绿  
+- [x] P1-1 watch **路径级** `index_paths`（≤64 路径，否则全量）  
+- [x] P1 sid **内存批量 relink + 事务内 point UPDATE**（force sid 27s→**3.4s**）  
+- [x] P2-1 `refs.qual_name` + 索引；qualified callers 走索引列  
+- [x] L2 `emit('evt')` 有限域 DynamicCandidate（`ts.event.emit`）  
+- [x] 公开 NestJS starter 冒烟索引  
+- [ ] 5k 真树 p95 钉死（有合成 200 文件软预算测试 `perf_p2_query`）  
+- [ ] Lean 定理（`formal/TODO.md`，明确不在本计划）
 
 **P0 实现摘要：** mtime/size 短路、并行 hash、脏集 early-out、增量 sid、export 前 `ensure_sids_for_export`、qualifier 类型名 HashSet。
 

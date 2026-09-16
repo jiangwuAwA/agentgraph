@@ -128,6 +128,7 @@ impl Store {
                 resolved_symbol_id INTEGER,
                 confidence TEXT NOT NULL DEFAULT 'exact',
                 evidence TEXT,
+                qual_name TEXT,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -166,6 +167,7 @@ impl Store {
             "ALTER TABLE files ADD COLUMN size INTEGER NOT NULL DEFAULT 0",
             [],
         );
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN qual_name TEXT", []);
         // Backfill: pre-L1 rows are Exact by definition.
         let _ = conn.execute(
             "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
@@ -184,7 +186,8 @@ impl Store {
             "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
              CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);
-             CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);",
+             CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);
+             CREATE INDEX IF NOT EXISTS idx_refs_qual_name ON refs(qual_name);",
         )?;
         Ok(Self {
             conn,
@@ -438,14 +441,18 @@ impl Store {
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
             for r in &extracted.references {
                 let evidence_json = r
                     .evidence
                     .as_ref()
                     .and_then(|e| serde_json::to_string(e).ok());
+                let qual_name = match (&r.qualifier, &r.name) {
+                    (Some(q), n) if !q.is_empty() => Some(format!("{q}.{n}")),
+                    _ => None,
+                };
                 stmt.execute(params![
                     r.name,
                     r.kind.as_str(),
@@ -457,6 +464,7 @@ impl Store {
                     r.qualifier,
                     r.confidence.as_str(),
                     evidence_json,
+                    qual_name,
                 ])?;
             }
         }
@@ -715,10 +723,11 @@ impl Store {
                  ORDER BY path, line{limit_sql}"
             )
         } else {
+            // Indexed materialized column (P2-1); fallback expression for legacy rows.
             format!(
                 "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
                  FROM refs
-                 WHERE ((qualifier || '.' || name) = ?1 OR (qualifier || '::' || name) = ?1)
+                 WHERE (qual_name = ?1 OR (qualifier || '.' || name) = ?1 OR (qualifier || '::' || name) = ?1)
                    AND {conf}
                  ORDER BY path, line{limit_sql}"
             )
@@ -812,60 +821,119 @@ impl Store {
             }
         }
 
-        // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
+        // In-memory bulk relink (P1): two SQL scans + executemany, not per-row SELECT.
+        // Correlated UPDATE with refs.path is not portable in SQLite UPDATE subqueries.
+        struct Sym {
+            id: i64,
+            name: String,
+            qname: String,
+            path: String,
+        }
+        let mut by_qname: HashMap<String, Vec<Sym>> = HashMap::new();
+        let mut by_name: HashMap<String, Vec<Sym>> = HashMap::new();
         {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id, name, qualified_name, path FROM symbols")?;
+            let rows = stmt.query_map([], |r| {
+                Ok(Sym {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    qname: r.get(2)?,
+                    path: r.get(3)?,
+                })
+            })?;
+            for row in rows {
+                let s = row?;
+                by_name.entry(s.name.clone()).or_default().push(Sym {
+                    id: s.id,
+                    name: s.name.clone(),
+                    qname: s.qname.clone(),
+                    path: s.path.clone(),
+                });
+                by_qname.entry(s.qname.clone()).or_default().push(Sym {
+                    id: s.id,
+                    name: s.name.clone(),
+                    qname: s.qname.clone(),
+                    path: s.path.clone(),
+                });
+            }
+        }
+
+        let pick = |cands: &Vec<Sym>, path: &str| -> Option<i64> {
+            // Prefer same path, then lexicographically smallest path.
+            let mut best: Option<&Sym> = None;
+            for c in cands {
+                let better = match best {
+                    None => true,
+                    Some(b) => {
+                        let b_same = b.path == path;
+                        let c_same = c.path == path;
+                        if c_same != b_same {
+                            c_same
+                        } else {
+                            c.path < b.path
+                        }
+                    }
+                };
+                if better {
+                    best = Some(c);
+                }
+            }
+            best.map(|c| c.id)
+        };
+
+        let pending: Vec<(i64, String, Option<String>, String)> = {
             let mut stmt = self.conn.prepare(
                 "SELECT id, name, qualifier, path FROM refs WHERE resolved_symbol_id IS NULL",
             )?;
-            let pending: Vec<(i64, String, Option<String>, String)> = {
-                let rows = stmt.query_map([], |r| {
-                    Ok((
-                        r.get::<_, i64>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, Option<String>>(2)?,
-                        r.get::<_, String>(3)?,
-                    ))
-                })?;
-                rows.collect::<rusqlite::Result<Vec<_>>>()?
-            };
-            drop(stmt);
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
 
-            let mut lookup_q = self.conn.prepare_cached(
-                "SELECT id FROM symbols
-                 WHERE (qualified_name = ?1 OR qualified_name = ?2)
-                 ORDER BY CASE WHEN path = ?3 THEN 0 ELSE 1 END, path
-                 LIMIT 1",
-            )?;
-            let mut lookup_n = self.conn.prepare_cached(
-                "SELECT id FROM symbols WHERE name = ?1
-                 ORDER BY CASE WHEN path = ?2 THEN 0 ELSE 1 END, path
-                 LIMIT 1",
-            )?;
-            let mut update = self
-                .conn
-                .prepare_cached("UPDATE refs SET resolved_symbol_id = ?1 WHERE id = ?2")?;
-
-            for (id, name, qual, rpath) in pending {
-                let mut sid: Option<i64> = None;
-                if let Some(q) = qual.as_deref() {
-                    if !q.is_empty() {
-                        sid = lookup_q
-                            .query_row(
-                                params![format!("{q}.{name}"), format!("{q}::{name}"), rpath],
-                                |r| r.get(0),
-                            )
-                            .optional()?;
+        let mut updates: Vec<(i64, i64)> = Vec::with_capacity(pending.len());
+        for (rid, name, qual, rpath) in pending {
+            let mut sid = None;
+            if let Some(q) = qual.as_deref() {
+                if !q.is_empty() {
+                    let q1 = format!("{q}.{name}");
+                    let q2 = format!("{q}::{name}");
+                    if let Some(cands) = by_qname.get(&q1) {
+                        sid = pick(cands, &rpath);
+                    }
+                    if sid.is_none() {
+                        if let Some(cands) = by_qname.get(&q2) {
+                            sid = pick(cands, &rpath);
+                        }
                     }
                 }
-                if sid.is_none() {
-                    sid = lookup_n
-                        .query_row(params![name, rpath], |r| r.get(0))
-                        .optional()?;
-                }
-                if let Some(sid) = sid {
-                    update.execute(params![sid, id])?;
+            }
+            if sid.is_none() {
+                if let Some(cands) = by_name.get(&name) {
+                    sid = pick(cands, &rpath);
                 }
             }
+            if let Some(sid) = sid {
+                updates.push((sid, rid));
+            }
+        }
+        {
+            let mut upd = self
+                .conn
+                .prepare_cached("UPDATE refs SET resolved_symbol_id = ?1 WHERE id = ?2")?;
+            // One explicit transaction for thousands of point updates.
+            self.conn.execute_batch("BEGIN")?;
+            for (sid, rid) in updates {
+                upd.execute(params![sid, rid])?;
+            }
+            self.conn.execute_batch("COMMIT")?;
         }
         let n: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM refs WHERE resolved_symbol_id IS NOT NULL",
@@ -934,9 +1002,9 @@ impl Store {
                 rows.collect::<rusqlite::Result<Vec<_>>>()?
             };
             drop(stmt);
-            let mut upd = self
-                .conn
-                .prepare_cached("UPDATE refs SET qualifier = ?1 WHERE id = ?2")?;
+            let mut upd = self.conn.prepare_cached(
+                "UPDATE refs SET qualifier = ?1, qual_name = ?1 || '.' || name WHERE id = ?2",
+            )?;
             for (id, path, qual) in pending {
                 // If qualifier already looks like a known type (class/struct), skip.
                 if type_names.contains(&qual) {

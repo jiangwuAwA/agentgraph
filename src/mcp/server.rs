@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::index::Indexer;
-use crate::query::{parse_confidence_flags, parse_query_flags, Query};
+use crate::query::{parse_query_flags, Query};
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
     let state = Mutex::new(ServerState { root });

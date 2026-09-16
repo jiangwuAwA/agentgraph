@@ -26,13 +26,16 @@ CI soft gate: `tests/query_p95.rs` (400-file debug DB, same 50ms budget).
 
 **PASS** — p95 ≪ 50 ms (≈600× headroom on callers).
 
-## Caveats
+## Caveats (adversarial review)
 
-- Synthetic uniform `helperN`/`mainN` graph (low fan-in). Real repos with
-  hot names (`execute`, `run`) have higher absolute times; see
-  [eval-large-repo.md](eval-large-repo.md) for stock-trading-app samples.
-- First query after open includes schema/prepare; we warm with one call.
-- `bench-query` fails the process (exit ≠ 0) when p95 ≥ 50 ms.
+- Synthetic uniform `helperN`/`mainN` graph has **fan-in = 1**; hot names in
+  real repos (`run`/`execute` with 10³–10⁴ callers) are slower. This number
+  is a **floor**, not a worst-case guarantee.
+- Warmup + in-process **query cache** mean repeated names are hits; first-hit
+  and cold-open are not isolated here.
+- CI gate is 400-file debug (`tests/query_p95.rs`); 5k release is script-only.
+- CLI process-spawn timing (~400–600 ms) is **not** query latency — use
+  `bench-query`.
 
 ## Related
 

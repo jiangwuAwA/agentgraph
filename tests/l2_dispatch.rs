@@ -1,4 +1,4 @@
-//! TDD: L2 production S-sound — event emit↔on dispatch closure.
+//! TDD: L2 production S-sound — event emit↔on dispatch closure (Critical fixes).
 
 use agentgraph::index::extract::extract_file;
 use agentgraph::index::store::Store;
@@ -13,11 +13,25 @@ fn temp_dir(tag: &str) -> PathBuf {
     d
 }
 
+fn seed_js(tag: &str, src: &str) -> Store {
+    let db = temp_dir(tag).join("index.db");
+    let mut store = Store::open(&db).unwrap();
+    let parsed = extract_file(src, Language::JavaScript, "src/bus.js", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store
+        .replace_file("src/bus.js", "h", "javascript", &parsed)
+        .unwrap();
+    store.commit_batch().unwrap();
+    store.link_event_dispatch().unwrap();
+    store.resolve_symbol_ids().unwrap();
+    store
+}
+
 #[test]
 fn emit_on_same_file_produces_dispatch_edge() {
-    let db = temp_dir("evt").join("index.db");
-    let mut store = Store::open(&db).unwrap();
-    let src = r#"
+    let store = seed_js(
+        "evt",
+        r#"
 export function handleClick() { return 1; }
 export function wire(bus: any) {
   bus.on('click', handleClick);
@@ -25,16 +39,8 @@ export function wire(bus: any) {
 export function fire(bus: any) {
   bus.emit('click');
 }
-"#;
-    let parsed = extract_file(src, Language::JavaScript, "src/bus.js", &HashSet::new()).unwrap();
-    store.begin_batch().unwrap();
-    store
-        .replace_file("src/bus.js", "h", "javascript", &parsed)
-        .unwrap();
-    store.commit_batch().unwrap();
-    store.link_event_dispatch().expect("dispatch link");
-    store.resolve_symbol_ids().unwrap();
-
+"#,
+    );
     let (hits, viols) = store.callers_sound("handleClick", 20).unwrap();
     assert!(viols.is_empty());
     assert!(
@@ -45,40 +51,120 @@ export function fire(bus: any) {
 }
 
 #[test]
-fn emit_without_on_is_harmless() {
-    let db = temp_dir("evt2").join("index.db");
-    let mut store = Store::open(&db).unwrap();
-    let src = "export function fire(bus: any) { bus.emit('orphan'); }\n";
-    let parsed = extract_file(src, Language::JavaScript, "src/o.js", &HashSet::new()).unwrap();
-    store.begin_batch().unwrap();
-    store
-        .replace_file("src/o.js", "h", "javascript", &parsed)
-        .unwrap();
-    store.commit_batch().unwrap();
+fn once_is_subscribe_and_pairs_with_emit() {
+    let store = seed_js(
+        "once",
+        r#"
+export function onTrade() { return 1; }
+export function setup(bus: any) { bus.once('trade', onTrade); }
+export function pump(bus: any) { bus.emit('trade'); }
+"#,
+    );
+    let (hits, _) = store.callers_sound("onTrade", 20).unwrap();
+    assert!(
+        hits.iter().any(|r| r.enclosing.as_deref() == Some("pump")),
+        "once must pair with emit; hits={hits:?}"
+    );
+}
+
+#[test]
+fn link_event_dispatch_is_idempotent() {
+    let mut store = seed_js(
+        "idem",
+        r#"
+export function h() { return 1; }
+export function s(b: any) { b.on('e', h); }
+export function f(b: any) { b.emit('e'); }
+"#,
+    );
+    let n1 = store.event_dispatch_count().unwrap();
+    assert!(n1 >= 1);
     store.link_event_dispatch().unwrap();
-    store.resolve_symbol_ids().unwrap();
+    store.link_event_dispatch().unwrap();
+    let n2 = store.event_dispatch_count().unwrap();
+    assert_eq!(n1, n2, "dispatch rebuild must not accumulate duplicates");
+}
+
+#[test]
+fn arrow_handler_collects_all_call_targets() {
+    let out = extract_file(
+        r#"
+export function handleA() { return 1; }
+export function handleB() { return 2; }
+export function wire(bus: any) {
+  bus.on('e', () => { handleA(); handleB(); });
+}
+export function fire(bus: any) { bus.emit('e'); }
+"#,
+        Language::JavaScript,
+        "src/arrow.js",
+        &HashSet::new(),
+    )
+    .unwrap();
+    let names: Vec<_> = out
+        .references
+        .iter()
+        .filter(|r| {
+            r.evidence
+                .as_ref()
+                .map(|e| e.rule_id == "ts.event.subscribe")
+                .unwrap_or(false)
+        })
+        .map(|r| r.name.as_str())
+        .collect();
+    assert!(
+        names.contains(&"handleA") && names.contains(&"handleB"),
+        "arrow multi-call handler must record both callees; got {names:?}"
+    );
+}
+
+#[test]
+fn index_paths_rebuilds_dispatch() {
+    let root = temp_dir("watch-disp");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/a.js"),
+        "export function h() { return 1; }\nexport function s(b:any) { b.on('e', h); }\n",
+    )
+    .unwrap();
+    let indexer = agentgraph::index::Indexer::new(&root).unwrap();
+    indexer.index(false).unwrap();
+    std::fs::write(
+        root.join("src/a.js"),
+        "export function h() { return 1; }\nexport function s(b:any) { b.on('e', h); }\nexport function f(b:any) { b.emit('e'); }\n",
+    )
+    .unwrap();
+    indexer
+        .index_paths(&[indexer.root.join("src/a.js")])
+        .unwrap();
+    let store = indexer.open_store().unwrap();
+    let (hits, _) = store.callers_sound("h", 20).unwrap();
+    assert!(
+        hits.iter().any(|r| r.enclosing.as_deref() == Some("f")),
+        "path-scoped index must rebuild dispatch; hits={hits:?}"
+    );
+}
+
+#[test]
+fn emit_without_on_is_harmless() {
+    let store = seed_js(
+        "evt2",
+        "export function fire(bus: any) { bus.emit('orphan'); }\n",
+    );
     let (hits, _) = store.callers_sound("orphan", 10).unwrap();
-    // emit edge itself is DynamicCandidate (sound-eligible finite domain)
     assert!(hits.iter().any(|r| r.name == "orphan") || hits.is_empty());
 }
 
 #[test]
 fn dispatch_edges_are_heuristic_and_sound_eligible() {
-    let db = temp_dir("evt3").join("index.db");
-    let mut store = Store::open(&db).unwrap();
-    let src = r#"
+    let store = seed_js(
+        "evt3",
+        r#"
 export function handler() { return 2; }
 export function setup(b: any) { b.on('trade', handler); }
 export function pump(b: any) { b.emit('trade'); }
-"#;
-    let parsed = extract_file(src, Language::TypeScript, "src/t.ts", &HashSet::new()).unwrap();
-    store.begin_batch().unwrap();
-    store
-        .replace_file("src/t.ts", "h", "typescript", &parsed)
-        .unwrap();
-    store.commit_batch().unwrap();
-    store.link_event_dispatch().unwrap();
-    store.resolve_symbol_ids().unwrap();
+"#,
+    );
     let hits = store
         .callers_filtered("handler", 20, ConfidenceFilter::Default)
         .unwrap();

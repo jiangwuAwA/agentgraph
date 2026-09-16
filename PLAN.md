@@ -251,7 +251,7 @@ ref {
 ### 4.5 L2 交付物
 
 - `docs/sound-subset.md` ✅（S_js 保守 AST 扫描；S_py/S_go/S_rs **v1 保守词法扫描**，非完整冻结）
-- `impact --sound` / `callers --sound` ✅ 实验性（违例则关闭 sound 承诺）
+- `impact --sound` / `callers --sound` ✅ 生产级 S（已建模边；违例关闭承诺）
 - 差分测试 harness ✅ Node export tracer + 多文件 ESM + **Go cover**（`tests/l2_go_diff.rs`）
 - 属性测试 ✅ `tests/l2_property.rs`（确定性 S_js 生成器：Exact 边 + impact_sound 包含）
 - Go/Py S 扫描器 ✅ `scan_go` / `scan_py`（unsafe/reflect/plugin、eval/exec/setattr/getattr 非字面量）

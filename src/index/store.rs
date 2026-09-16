@@ -770,7 +770,17 @@ impl Store {
     /// L2 production S-sound: pair `emit(evt)` sites with `on(evt, handler)`
     /// registrations (event name stored in `refs.module`) and insert
     /// Heuristic dispatch edges so runtime emit→handler is in the sound walk.
+    ///
+    /// **Idempotent:** deletes all prior `ts.event.dispatch` rows first
+    /// (Critical fix: incremental index must not accumulate duplicates).
     pub fn link_event_dispatch(&mut self) -> Result<usize> {
+        // Drop previous dispatch edges (full rebuild — emit sites are cheap to re-pair).
+        self.conn.execute(
+            "DELETE FROM refs WHERE evidence LIKE '%ts.event.dispatch%'",
+            [],
+        )?;
+        self.cache.borrow_mut().clear();
+
         // (enclosing_or_empty, path, line, event)
         let emits: Vec<(String, String, i64, String)> = {
             let mut stmt = self.conn.prepare(
@@ -788,7 +798,7 @@ impl Store {
             })?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
-        // event -> handlers
+        // event -> handlers (dedup)
         let mut handlers: HashMap<String, Vec<String>> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
@@ -800,7 +810,10 @@ impl Store {
                 stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
             for row in rows {
                 let (name, evt) = row?;
-                handlers.entry(evt).or_default().push(name);
+                let list = handlers.entry(evt).or_default();
+                if !list.contains(&name) {
+                    list.push(name);
+                }
             }
         }
 
@@ -809,6 +822,7 @@ impl Store {
             "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name)
              VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL)",
         )?;
+        self.conn.execute_batch("BEGIN")?;
         for (enclosing, path, line, evt) in emits {
             let Some(hs) = handlers.get(&evt) else {
                 continue;
@@ -823,11 +837,21 @@ impl Store {
                 created += 1;
             }
         }
+        self.conn.execute_batch("COMMIT")?;
         if created > 0 {
-            self.cache.borrow_mut().clear();
             self.sid_dirty.set(true);
         }
         Ok(created)
+    }
+
+    /// How many `ts.event.dispatch` rows exist (tests / idempotency).
+    pub fn event_dispatch_count(&self) -> Result<usize> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM refs WHERE evidence LIKE '%ts.event.dispatch%'",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(n as usize)
     }
 
     /// Full resolve when dirty (export safety). Returns refs linked.

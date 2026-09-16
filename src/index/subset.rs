@@ -295,6 +295,43 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                     }
                 }
 
+                // Non-literal event keys (emit/on/once/…) leave S — we cannot
+                // pair dispatch without a finite event name.
+                let is_event_api = matches!(
+                    last,
+                    "emit"
+                        | "trigger"
+                        | "publish"
+                        | "fire"
+                        | "on"
+                        | "once"
+                        | "subscribe"
+                        | "addListener"
+                        | "addEventListener"
+                );
+                if is_event_api {
+                    if let Some(args) = node.child_by_field_name("arguments") {
+                        let mut ac = args.walk();
+                        let first = args
+                            .children(&mut ac)
+                            .find(|x| !matches!(x.kind(), "," | "(" | ")"));
+                        if let Some(key) = first {
+                            let kt = snippet_at(source, key);
+                            let is_plain = key.kind() == "string" && {
+                                let inner = string_lit_inner(&kt);
+                                !inner.is_empty()
+                                    && !kt.contains("${")
+                                    && inner
+                                        .chars()
+                                        .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.')
+                            };
+                            if !is_plain {
+                                push_v(violations, path, line, "nonliteral_event_key", &kt);
+                            }
+                        }
+                    }
+                }
+
                 // Subscript callee: obj['eval'] / obj[k]
                 if unwrapped.kind() == "subscript_expression" {
                     if let Some(key) = unwrapped.child_by_field_name("index") {

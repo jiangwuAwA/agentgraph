@@ -75,6 +75,21 @@ export function wire(bus: any) {
 }
 
 #[test]
+fn s_js_nonliteral_event_key_is_violation() {
+    let src = r#"
+const k = getEvt();
+bus.emit(k);
+bus.on(k, handler);
+"#;
+    let r = scan_subset(src, Language::JavaScript, "src/evtk.js");
+    assert!(
+        !r.in_subset,
+        "non-literal emit/on key must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

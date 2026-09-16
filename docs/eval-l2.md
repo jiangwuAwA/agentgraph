@@ -1,8 +1,7 @@
 # L2 Evaluation Report — sound subset over-approx
 
-**Status:** experimental. Soundness claim applies **only** inside subset S
-(see [sound-subset.md](sound-subset.md)). Outside S, `--sound` disables the
-claim and reports violations.
+**Status:** production S for **modeled** edges when `subset_ok` (see
+[sound-subset.md](sound-subset.md)). Outside S or unmodeled APIs: no claim.
 
 Reproduce:
 
@@ -90,8 +89,8 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 ## Next hardening
 
 - Broader Node DI-container fixtures; property tests for S_py/S_go (S_js property tests ship in `tests/l2_property.rs`).
-- Model framework dispatch edges (emit / mux / Depends resolve) if we ever
-  want a *runtime call* claim again — currently out of scope by design.
+- ~~Model framework dispatch edges (emit).~~ **Done:** `Store::link_event_dispatch` + `tests/l2_dispatch.rs` (once, idempotent, arrow multi-call, index_paths).
+- Hot-name p95 fixture (low fan-in synthetic understates real `run`/`execute` latency — see eval-query-p95 caveats).
 
 ## Adversarial review follow-up (this drop — C1/C2/M3–M7)
 

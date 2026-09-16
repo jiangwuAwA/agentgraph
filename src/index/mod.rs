@@ -458,6 +458,8 @@ impl Indexer {
             store.prune_missing(&keep)?;
         }
         store.commit_batch()?;
+        // Rebuild emit↔on dispatch BEFORE sid resolve so new dispatch refs get sids.
+        store.link_event_dispatch()?;
         let mut dirty = dirty_paths.clone();
         dirty.extend(deleted.iter().cloned());
         if !dirty.is_empty() {

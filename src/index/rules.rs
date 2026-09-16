@@ -295,7 +295,8 @@ fn ts_call_rules(
         "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "Handle" | "HandleFunc" | "Any"
     );
     // L2: emit('evt') — dispatch site; event name is a finite-domain candidate.
-    if matches!(method.as_str(), "emit" | "trigger") {
+    // Non-literal emit keys leave S (scanner flags them) — no dispatch edge.
+    if matches!(method.as_str(), "emit" | "trigger" | "publish" | "fire") {
         if let Some(key) = nth_arg_string_lit(node, source, 0) {
             push_l1_mod(
                 references,
@@ -312,14 +313,32 @@ fn ts_call_rules(
             );
         }
     }
-    if matches!(
+    let is_subscribe = matches!(
         method.as_str(),
-        "on" | "subscribe" | "addListener" | "addEventListener"
-    ) || is_route
-    {
-        if let Some(handler) = nth_arg_identifier(node, source, 1) {
-            // Record event name (first arg string) in `module` for emit↔on pairing.
-            let evt = nth_arg_string_lit(node, source, 0);
+        "on" | "once" | "subscribe" | "addListener" | "addEventListener"
+    );
+    if is_subscribe || is_route {
+        let evt = nth_arg_string_lit(node, source, 0);
+        // Function-expression handlers: collect ALL call names (do not use
+        // nth_arg_identifier first — it only returns the first descendant).
+        let mut handlers: Vec<String> = Vec::new();
+        let arg1 = nth_arg_node(node, source, 1);
+        let is_fn_expr = arg1
+            .map(|a| {
+                matches!(
+                    a.kind(),
+                    "arrow_function" | "function_expression" | "function"
+                )
+            })
+            .unwrap_or(false);
+        if is_fn_expr {
+            if let Some(arg) = arg1 {
+                collect_call_names(arg, source, &mut handlers);
+            }
+        } else if let Some(h) = nth_arg_identifier(node, source, 1) {
+            handlers.push(h);
+        }
+        for handler in handlers {
             push_l1_mod(
                 references,
                 L1Edge {
@@ -335,9 +354,42 @@ fn ts_call_rules(
                     },
                     snippet: format!("{}(...)", fn_text),
                 },
-                evt,
+                evt.clone(),
             );
         }
+    }
+}
+
+fn nth_arg_node<'a>(node: Node<'a>, _source: &str, idx: usize) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    let args = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "arguments")?;
+    let mut ac = args.walk();
+    let named: Vec<Node> = args
+        .children(&mut ac)
+        .filter(|c| !matches!(c.kind(), "," | "(" | ")"))
+        .collect();
+    named.get(idx).copied()
+}
+
+/// Collect direct call / member-call base names inside a handler body.
+fn collect_call_names(node: Node, source: &str, out: &mut Vec<String>) {
+    let mut cursor = node.walk();
+    if node.kind() == "call_expression" {
+        if let Some(f) = node
+            .child_by_field_name("function")
+            .or_else(|| node.child_by_field_name("constructor"))
+        {
+            if let Some(n) = ident_name(f, source) {
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    for c in node.children(&mut cursor) {
+        collect_call_names(c, source, out);
     }
 }
 

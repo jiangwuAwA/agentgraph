@@ -224,13 +224,55 @@ fn dispatch_dirty_repairs_on_noop_index() {
 }
 
 #[test]
-fn emit_without_on_is_harmless() {
+fn index_paths_early_out_repairs_dispatch_dirty() {
+    let root = temp_dir("ip-dirty");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/a.js"),
+        "export function h() { return 1; }\nexport function s(b:any) { b.on('e', h); }\nexport function f(b:any) { b.emit('e'); }\n",
+    )
+    .unwrap();
+    let indexer = agentgraph::index::Indexer::new(&root).unwrap();
+    indexer.index(false).unwrap();
+    {
+        let mut store = indexer.open_store().unwrap();
+        store.set_meta("dispatch_dirty", "1").unwrap();
+        store.clear_dispatch_edges_for_test().unwrap();
+    }
+    // index_paths on an unchanged file → hash-skip early-out; must still repair.
+    indexer
+        .index_paths(&[indexer.root.join("src/a.js")])
+        .unwrap();
+    let store = indexer.open_store().unwrap();
+    assert!(!store.dispatch_dirty().unwrap());
+    let (hits, _) = store.callers_sound("h", 20).unwrap();
+    assert!(
+        hits.iter().any(|r| r.enclosing.as_deref() == Some("f")),
+        "index_paths early-out must repair dispatch; hits={hits:?}"
+    );
+}
+
+#[test]
+fn emit_without_on_has_no_dispatch_edge() {
     let store = seed_js(
         "evt2",
-        "export function fire(bus: any) { bus.emit('orphan'); }\n",
+        r#"
+export function orphan() { return 1; }
+export function fire(bus: any) { bus.emit('orphan'); }
+"#,
     );
     let (hits, _) = store.callers_sound("orphan", 10).unwrap();
-    assert!(hits.iter().any(|r| r.name == "orphan") || hits.is_empty());
+    let dispatch = hits.iter().any(|r| {
+        r.enclosing.as_deref() == Some("fire")
+            && r.evidence
+                .as_ref()
+                .map(|e| e.rule_id == "ts.event.dispatch")
+                .unwrap_or(false)
+    });
+    assert!(
+        !dispatch,
+        "must not invent dispatch without subscribe; hits={hits:?}"
+    );
 }
 
 #[test]

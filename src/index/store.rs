@@ -796,6 +796,7 @@ impl Store {
     pub fn resolve_symbol_ids(&mut self) -> Result<usize> {
         let n = self.resolve_symbol_ids_core(true, &[])?;
         self.sid_dirty.set(false);
+        self.set_meta("sid_dirty", "0")?;
         Ok(n)
     }
 
@@ -805,10 +806,17 @@ impl Store {
             return Ok(0);
         }
         let n = self.resolve_symbol_ids_core(false, dirty_paths)?;
-        // Partial relink may leave other paths' inbound links stale if names collide;
-        // we still mark dirty only if we did a partial pass without full clear.
+        // Partial relink may leave other paths' inbound links stale if names collide.
         self.sid_dirty.set(true);
+        self.set_meta("sid_dirty", "1")?;
         Ok(n)
+    }
+
+    /// Load process-local sid_dirty from meta (restart safety).
+    pub fn load_sid_dirty(&self) -> Result<bool> {
+        let v = self.get_meta("sid_dirty")?.as_deref() == Some("1");
+        self.sid_dirty.set(v);
+        Ok(v)
     }
 
     /// L2 production S-sound: pair `emit(evt)` sites with `on(evt, handler)`
@@ -924,6 +932,8 @@ impl Store {
 
     /// Full resolve when dirty (export safety). Returns refs linked.
     pub fn ensure_sids_for_export(&mut self) -> Result<usize> {
+        // Honor persisted flag across process restarts (R4 M5).
+        self.load_sid_dirty()?;
         if self.sid_dirty.get() {
             self.resolve_symbol_ids()
         } else {

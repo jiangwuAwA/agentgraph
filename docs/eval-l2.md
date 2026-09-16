@@ -1,6 +1,6 @@
 # L2 Evaluation Report — sound subset over-approx
 
-**Status:** production S for **modeled** edges when `subset_ok` (see
+**Status:** **S-qualified** for **modeled** edges when `subset_ok` (see
 [sound-subset.md](sound-subset.md)). Outside S or unmodeled APIs: no claim.
 
 Reproduce:

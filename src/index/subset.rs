@@ -440,8 +440,8 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 }
             }
         }
-        "assignment_expression" | "augmented_assignment_expression" => {
-            // Monkey-patching: obj.fn = ..., Function.prototype.x = ..., global.eval = ...
+        "assignment_expression" | "augmented_assignment_expression" | "variable_declarator" => {
+            // Monkey-patching / eval-Function aliasing (C1 R4).
             let t = snippet_at(source, node);
             if t.contains("prototype")
                 || t.starts_with("globalThis")
@@ -456,6 +456,10 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                     &t.replace('\n', " "),
                 );
             }
+            // const e = eval; const F = Function; const e = globalThis.eval;
+            if looks_like_eval_alias(&t) {
+                push_v(violations, path, line, "eval_alias", &t.replace('\n', " "));
+            }
         }
         _ => {}
     }
@@ -463,6 +467,25 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
     for child in node.children(&mut cursor) {
         walk_js(child, source, path, violations);
     }
+}
+
+/// Conservative: any binding that aliases eval/Function leaves S.
+fn looks_like_eval_alias(t: &str) -> bool {
+    let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    // e=eval / e=Function / e=globalThis.eval / e=window.Function / e=global.eval
+    let ends = [
+        "=eval",
+        "=Function",
+        "=globalThis.eval",
+        "=globalThis.Function",
+        "=window.eval",
+        "=window.Function",
+        "=global.eval",
+        "=global.Function",
+        "=this.eval",
+        "=this.Function",
+    ];
+    ends.iter().any(|s| compact.ends_with(s))
 }
 
 /// Drop whitespace that sits immediately before `(` so `eval (` matches `eval(`.

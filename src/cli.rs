@@ -202,14 +202,14 @@ pub fn run(cli: Cli) -> Result<()> {
                         v
                     })
                     .collect();
-                // Production S: modeled dispatch + registrations; disabled when S violated.
+                // S-qualified modeled edges; disabled when S violated.
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "S satisfied. Sound walk over-approximates modeled runtime edges (direct, literal-key, emit↔on dispatch, DI/route registration). Not a claim outside S; registration ≠ HTTP ServeHTTP."
+                        crate::mcp::server::SOUND_PROMISE_OK
                     } else {
-                        "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
+                        crate::mcp::server::SOUND_PROMISE_DISABLED
                     },
                     "subset_violations": violations,
                     "callers": mapped,
@@ -255,9 +255,9 @@ pub fn run(cli: Cli) -> Result<()> {
                     "mode": "sound",
                     "subset_ok": subset_ok,
                     "promise": if subset_ok {
-                        "S satisfied. Sound walk over-approximates modeled runtime edges (direct, literal-key, emit↔on dispatch, DI/route registration). Not a claim outside S; registration ≠ HTTP ServeHTTP."
+                        crate::mcp::server::SOUND_PROMISE_OK
                     } else {
-                        "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
+                        crate::mcp::server::SOUND_PROMISE_DISABLED
                     },
                     "subset_violations": violations,
                     "impact": hits,

@@ -101,6 +101,13 @@ fn s_js_unmodeled_event_handler_is_violation() {
 }
 
 #[test]
+fn s_js_eval_alias_leaves_s() {
+    let src = "const e = eval;\nexport function main() { e('x'); }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/alias.js");
+    assert!(!r.in_subset, "eval alias must leave S: {:?}", r.violations);
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

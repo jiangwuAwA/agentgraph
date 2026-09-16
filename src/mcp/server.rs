@@ -205,6 +205,11 @@ fn tool_error(code: i64, message: &str) -> Value {
     json!({"code": code, "message": message})
 }
 
+/// Shared promise strings (CLI + MCP must not drift — R4 M3).
+pub const SOUND_PROMISE_OK: &str = "S satisfied. Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP.";
+pub const SOUND_PROMISE_DISABLED: &str =
+    "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only.";
+
 fn ok_text(text: String) -> Value {
     json!({
         "content": [{"type": "text", "text": text}],
@@ -372,25 +377,6 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
                 let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
-                let indexer = Indexer::new(&root)?;
-                let store = indexer.open_store()?;
-                store.ensure_indexed()?;
-                if sound {
-                    let (hits, violations) = store.impact_sound(sym, depth, limit)?;
-                    let subset_ok = violations.is_empty();
-                    let payload = serde_json::json!({
-                        "mode": "sound",
-                        "subset_ok": subset_ok,
-                        "promise": if subset_ok {
-                            "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
-                        } else {
-                            "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
-                        },
-                        "subset_violations": violations,
-                        "impact": hits,
-                    });
-                    return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
-                }
                 let exact_only = args
                     .get("exact_only")
                     .and_then(|v| v.as_bool())
@@ -399,6 +385,30 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("include_dynamic")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let indexer = Indexer::new(&root)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                if sound {
+                    if exact_only || include_dynamic {
+                        return Err(anyhow::anyhow!(
+                            "sound is mutually exclusive with exact_only / include_dynamic"
+                        ));
+                    }
+                    let (hits, violations) = store.impact_sound(sym, depth, limit)?;
+                    let subset_ok = violations.is_empty();
+                    let payload = serde_json::json!({
+                        "mode": "sound",
+                        "subset_ok": subset_ok,
+                        "promise": if subset_ok {
+                            SOUND_PROMISE_OK
+                        } else {
+                            SOUND_PROMISE_DISABLED
+                        },
+                        "subset_violations": violations,
+                        "impact": hits,
+                    });
+                    return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
+                }
                 let filter = parse_confidence_flags(exact_only, include_dynamic);
                 let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))

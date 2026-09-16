@@ -433,6 +433,9 @@ impl Indexer {
         }
 
         if to_parse.is_empty() && deleted.is_empty() {
+            if store.dispatch_dirty()? {
+                store.link_event_dispatch()?;
+            }
             let mut stats = store.stats(&self.root.to_string_lossy())?;
             stats.failed_files = failed_read;
             return Ok(stats);

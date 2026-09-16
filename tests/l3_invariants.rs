@@ -17,8 +17,7 @@ fn temp_db(tag: &str) -> PathBuf {
     dir.join("index.db")
 }
 
-/// I1: every DirectCall AST node in a parseable tree yields ≥1 Exact call ref.
-/// Fixture uses TS because DirectCall kinds are well-defined there.
+/// I1: every call_expression AST node yields ≥1 Exact call ref (strengthened R4).
 #[test]
 fn i1_every_direct_call_yields_exact_ref() {
     let src = r#"
@@ -36,15 +35,34 @@ export class S {
         .iter()
         .filter(|r| r.kind == EdgeKind::Call && r.confidence == Confidence::Exact)
         .collect();
-    // At least: a(), b(), a(), m() — 4 Exact calls. this.m() may be Exact with qualifier.
     assert!(
         exact_calls.len() >= 4,
         "I1: expected ≥4 Exact call refs, got {exact_calls:?}"
     );
-    for name in ["a", "b", "m"] {
+    use agentgraph::index::parser;
+    let tree = parser::parse(src, Language::TypeScript).unwrap();
+    fn collect_callees(n: tree_sitter::Node, src: &str, out: &mut Vec<String>) {
+        if n.kind() == "call_expression" {
+            if let Some(f) = n.child_by_field_name("function") {
+                let t = src.get(f.byte_range()).unwrap_or("");
+                let name = t.rsplit(['.', ':']).next().unwrap_or(t).trim().to_string();
+                if !name.is_empty() {
+                    out.push(name);
+                }
+            }
+        }
+        let mut c = n.walk();
+        for ch in n.children(&mut c) {
+            collect_callees(ch, src, out);
+        }
+    }
+    let mut callees = Vec::new();
+    collect_callees(tree.root_node(), src, &mut callees);
+    assert!(!callees.is_empty());
+    for callee in &callees {
         assert!(
-            exact_calls.iter().any(|r| r.name == name),
-            "I1: missing Exact call to {name}"
+            exact_calls.iter().any(|r| &r.name == callee),
+            "I1: call_expression {callee} has no Exact ref among {exact_calls:?}"
         );
     }
 }

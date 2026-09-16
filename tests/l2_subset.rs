@@ -132,6 +132,65 @@ fn py_getattr_with_space_leaves_s() {
 }
 
 #[test]
+fn py_getattr_multiline_open_leaves_s() {
+    let src = "def f(obj, name):\n    return getattr(\n        obj, name\n    )\n";
+    let r = scan_subset(src, Language::Python, "src/g_ml.py");
+    assert!(
+        !r.in_subset,
+        "multi-line getattr( must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn py_getattr_split_before_comma_leaves_s() {
+    let src = "def f(obj, name):\n    x = getattr(obj\n    , name)\n    return x\n";
+    let r = scan_subset(src, Language::Python, "src/g_sp.py");
+    assert!(
+        !r.in_subset,
+        "getattr split before comma must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn py_second_getattr_dynamic_on_same_line_leaves_s() {
+    let src = "def f(a, b, name):\n    return (getattr(a, \"ok\"), getattr(b, name))\n";
+    let r = scan_subset(src, Language::Python, "src/g_2nd.py");
+    assert!(
+        !r.in_subset,
+        "second getattr dynamic must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn py_getattr_ternary_and_concat_leave_s() {
+    for src in [
+        "def f(obj, c):\n    return getattr(obj, 'a' if c else 'b')\n",
+        "def f(obj, name):\n    return getattr(obj, 'pre' + name)\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "src/g_dyn.py");
+        assert!(
+            !r.in_subset,
+            "non-plain getattr second arg must leave S: {src:?} {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_getattr_plain_literal_stays_in_s() {
+    let src = "def f(obj):\n    return getattr(obj, \"name\")\n";
+    let r = scan_subset(src, Language::Python, "src/g_ok.py");
+    assert!(
+        r.in_subset,
+        "getattr(obj, \"name\") must stay in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

@@ -124,9 +124,11 @@ pub fn scan_tree(root: &std::path::Path) -> Vec<SubsetReport> {
     let Ok(files) = super::walker::collect_source_files(root) else {
         return out;
     };
+    let base = parser::normalize_root(root);
     for path in files {
-        let rel = path
-            .strip_prefix(root)
+        let p_n = parser::normalize_root(&path);
+        let rel = p_n
+            .strip_prefix(&base)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
@@ -218,6 +220,99 @@ fn unwrap_js_callee<'a>(mut n: Node<'a>) -> Node<'a> {
 
 fn string_lit_inner(text: &str) -> &str {
     text.trim_matches(|ch| ch == '\'' || ch == '"' || ch == '`')
+}
+
+/// True when `s` contains `word` as a standalone identifier (not `__getattr__` / `foogetattr`).
+fn contains_ident(s: &str, word: &str) -> bool {
+    let bytes = s.as_bytes();
+    let w = word.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut i = 0;
+    while i + w.len() <= bytes.len() {
+        if &bytes[i..i + w.len()] == w {
+            let before_ok = i == 0 || !is_ident(bytes[i - 1]);
+            let after = i + w.len();
+            let after_ok = after >= bytes.len() || !is_ident(bytes[after]);
+            if before_ok && after_ok {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// True when the remainder after `getattr(` proves the second arg is a *plain*
+/// string literal on this line (same-line only). Fail-closed: multi-line args,
+/// concat, ternary, or a second call of `getattr` with a dynamic name are dynamic.
+fn getattr_call_second_is_plain_literal(rest: &str) -> bool {
+    let mut depth = 0i32;
+    let mut in_str: Option<char> = None;
+    let mut comma_at: Option<usize> = None;
+    let mut closed = false;
+    for (i, ch) in rest.char_indices() {
+        if let Some(q) = in_str {
+            if ch == q {
+                in_str = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => in_str = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => {
+                if depth == 0 {
+                    closed = true;
+                    break;
+                }
+                depth -= 1;
+            }
+            ',' if depth == 0 => {
+                comma_at = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    if comma_at.is_none() {
+        // Single-arg getattr is not a name lookup — but only if we actually saw `)`.
+        // Open-ended (multi-line args) must leave S.
+        return closed;
+    }
+    let ci = comma_at.unwrap();
+    let after = rest[ci + 1..].trim_start();
+    let Some(q) = after.chars().next() else {
+        return false; // comma then EOL — multi-line second arg
+    };
+    if q != '\'' && q != '"' {
+        return false;
+    }
+    let body = &after[1..];
+    let Some(end) = body.find(q) else {
+        return false; // unterminated — multi-line
+    };
+    let tail = body[end + 1..].trim_start();
+    // Only closing of the getattr call (or another arg / comment) may follow.
+    tail.is_empty() || tail.starts_with(')') || tail.starts_with(',') || tail.starts_with('#')
+}
+
+/// True when this line's `getattr` uses are all safe for S_py.
+/// Over-flags: a missed escape is worse than a false S violation.
+fn line_getattr_is_s_safe(compact_line: &str) -> bool {
+    // `getattr` / `getattr (` split across lines: identifier without `(` on this line.
+    if contains_ident(compact_line, "getattr") && !compact_line.contains("getattr(") {
+        return false;
+    }
+    let mut search = 0usize;
+    while let Some(rel) = compact_line[search..].find("getattr(") {
+        let start = search + rel;
+        let rest = &compact_line[start + "getattr(".len()..];
+        if !getattr_call_second_is_plain_literal(rest) {
+            return false;
+        }
+        search = start + "getattr(".len();
+    }
+    true
 }
 
 /// True when the call's single argument is a plain `string` node (static module specifier).
@@ -520,46 +615,6 @@ fn strip_space_before_paren(s: &str) -> String {
     out
 }
 
-/// True when `getattr(`'s second argument is a plain string literal.
-/// Conservative: anything else (identifiers, concatenations, calls) is dynamic.
-fn getattr_second_is_string_literal(line: &str) -> bool {
-    let Some(start) = line.find("getattr(") else {
-        return true;
-    };
-    let rest = &line[start + "getattr(".len()..];
-    let mut depth = 0i32;
-    let mut in_str: Option<char> = None;
-    let mut comma_at: Option<usize> = None;
-    for (i, ch) in rest.char_indices() {
-        if let Some(q) = in_str {
-            if ch == q {
-                in_str = None;
-            }
-            continue;
-        }
-        match ch {
-            '\'' | '"' => in_str = Some(ch),
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => {
-                if depth == 0 {
-                    return true; // no second arg
-                }
-                depth -= 1;
-            }
-            ',' if depth == 0 => {
-                comma_at = Some(i);
-                break;
-            }
-            _ => {}
-        }
-    }
-    let Some(ci) = comma_at else {
-        return true; // single-arg getattr — not a name lookup
-    };
-    let after = rest[ci + 1..].trim_start();
-    after.starts_with('\'') || after.starts_with('"')
-}
-
 fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
     // v1 conservative lexical scanner (not a full freeze / AST analysis).
     // Prefer over-flag: a false violation is cheaper than a missed escape.
@@ -579,8 +634,8 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         if compact.contains("setattr(") {
             push_v(violations, path, line_no, "py_setattr", t);
         }
-        // Non-literal getattr second arg invents call targets (use compact — R6 M3).
-        if compact.contains("getattr(") && !getattr_second_is_string_literal(&compact) {
+        // Non-literal / multi-line getattr invents call targets (R6 space + R7 fail-closed).
+        if !line_getattr_is_s_safe(&compact) {
             push_v(violations, path, line_no, "py_getattr_dynamic", t);
         }
         // M3: `__builtins__['eval']` / `__builtins__.eval` escapes S_py.

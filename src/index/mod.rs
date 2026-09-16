@@ -373,8 +373,9 @@ impl Indexer {
         let mut deleted: Vec<String> = Vec::new();
 
         for path in paths {
-            // Normalize UNC/case so strip_prefix matches Indexer::new (R6 M2).
-            let cand = parser::normalize_root(path);
+            // Canonicalize then strip UNC so strip_prefix matches Indexer::new (R6 M2 + R7).
+            let cand_canon = path.canonicalize().unwrap_or_else(|_| path.clone());
+            let cand = parser::normalize_root(&cand_canon);
             let base = parser::normalize_root(&self.root);
             let Some(rel_path) = cand.strip_prefix(&base).ok() else {
                 eprintln!(
@@ -454,7 +455,9 @@ impl Indexer {
         let known: std::collections::HashSet<String> = walker::collect_source_files(&self.root)?
             .iter()
             .map(|p| {
-                p.strip_prefix(&self.root)
+                let p_n = parser::normalize_root(p);
+                let base = parser::normalize_root(&self.root);
+                p_n.strip_prefix(&base)
                     .unwrap_or(p)
                     .to_string_lossy()
                     .replace('\\', "/")

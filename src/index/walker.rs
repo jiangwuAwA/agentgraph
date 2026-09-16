@@ -2,6 +2,7 @@ use anyhow::Result;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
+use super::parser::normalize_root;
 use crate::model::Language;
 
 /// One collectible source file with freshness metadata (perf-plan P0-1).
@@ -62,7 +63,9 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
             continue;
         }
         let path = entry.path();
-        let rel = path.strip_prefix(root).unwrap_or(path);
+        let p_n = normalize_root(path);
+        let root_n = normalize_root(root);
+        let rel = p_n.strip_prefix(&root_n).unwrap_or(path);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
 
         if rel_str.starts_with(".agentgraph") || rel_str.contains(".min.") {

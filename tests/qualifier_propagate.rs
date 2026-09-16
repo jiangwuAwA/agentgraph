@@ -107,3 +107,45 @@ func main() {
         "ambiguous createThing must not Exact-upgrade main.x.Start to both types; server={server} client={client}"
     );
 }
+
+#[test]
+fn go_single_typed_factory_name_collision_not_exact_upgrade() {
+    let dir = std::env::temp_dir().join("agentgraph-test-qual-single-typed");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("index.db")).unwrap();
+    // Only Server factory has a return type; Client factory does not.
+    let a = r#"
+package main
+func createThing() *Server { return nil }
+type Server struct{}
+func (s *Server) Start() {}
+"#;
+    let b = r#"
+package main
+func createThing() { }
+type Client struct{}
+func (c *Client) Start() {}
+func main() {
+  x := createThing()
+  x.Start()
+}
+"#;
+    let pa = extract_file(a, Language::Go, "a.go", &HashSet::new()).unwrap();
+    let pb = extract_file(b, Language::Go, "b.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("a.go", "ha", "go", &pa).unwrap();
+    store.replace_file("b.go", "hb", "go", &pb).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let server = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "b.go")
+        .count();
+    assert_eq!(
+        server, 0,
+        "createThing with no result in b.go must not Exact-upgrade x.Start to Server"
+    );
+}

@@ -1127,14 +1127,31 @@ impl Store {
     /// refs in the same file whose qualifier is the variable `s` to that type.
     pub fn resolve_qualifiers(&mut self) -> Result<usize> {
         // (path, var) -> type from define join function return_type.
-        // Skip ambiguous factory names (multiple distinct return_types).
+        // Skip ambiguous factory names (multiple distinct return_types, or
+        // multiple function symbols sharing the name — R6 + R7).
         let mut map: std::collections::HashMap<(String, String), String> =
             std::collections::HashMap::new();
         let mut ambiguous: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
+        // Factory names with >1 function symbol cannot be typed by name alone
+        // (even when only one of them has a return_type annotation).
+        let mut multi_fn_names: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         {
             let mut stmt = self.conn.prepare(
-                "SELECT r.path, r.name, s.return_type
+                "SELECT name FROM symbols
+                 WHERE kind = 'function'
+                 GROUP BY name
+                 HAVING COUNT(*) > 1",
+            )?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            for n in rows {
+                multi_fn_names.insert(n?);
+            }
+        }
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT r.path, r.name, s.return_type, r.module
                  FROM refs r
                  JOIN symbols s ON s.name = r.module
                  WHERE r.kind = 'define' AND r.module IS NOT NULL
@@ -1145,11 +1162,17 @@ impl Store {
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })?;
             for row in rows {
-                let (path, var, ty) = row?;
+                let (path, var, ty, module) = row?;
                 let key = (path, var);
+                if multi_fn_names.contains(&module) {
+                    map.remove(&key);
+                    ambiguous.insert(key);
+                    continue;
+                }
                 if let Some(prev) = map.get(&key) {
                     if prev != &ty {
                         ambiguous.insert(key);

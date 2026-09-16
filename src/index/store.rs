@@ -67,6 +67,16 @@ impl QueryCache {
 pub struct Store {
     conn: Connection,
     cache: RefCell<QueryCache>,
+    /// True when refs/symbols may have stale `resolved_symbol_id` after partial relink.
+    sid_dirty: std::cell::Cell<bool>,
+}
+
+/// File freshness metadata (content hash + mtime/size short-circuit).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileMetaRow {
+    pub hash: String,
+    pub mtime_ns: i64,
+    pub size: i64,
 }
 
 impl Store {
@@ -84,7 +94,9 @@ impl Store {
             CREATE TABLE IF NOT EXISTS files (
                 path TEXT PRIMARY KEY,
                 hash TEXT NOT NULL,
-                language TEXT NOT NULL
+                language TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL DEFAULT 0,
+                size INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS symbols (
@@ -146,6 +158,14 @@ impl Store {
             [],
         );
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN evidence TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN size INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
         // Backfill: pre-L1 rows are Exact by definition.
         let _ = conn.execute(
             "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
@@ -163,11 +183,13 @@ impl Store {
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
-             CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);",
+             CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);
+             CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);",
         )?;
         Ok(Self {
             conn,
             cache: RefCell::new(QueryCache::new()),
+            sid_dirty: std::cell::Cell::new(false),
         })
     }
 
@@ -181,6 +203,49 @@ impl Store {
             )
             .optional()?;
         Ok(row)
+    }
+
+    /// Hash + mtime/size for short-circuit skip (perf-plan P0-1).
+    pub fn file_meta(&self, path: &str) -> Result<Option<FileMetaRow>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT hash, mtime_ns, size FROM files WHERE path = ?1",
+                params![path],
+                |r| {
+                    Ok(FileMetaRow {
+                        hash: r.get(0)?,
+                        mtime_ns: r.get(1)?,
+                        size: r.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    /// All indexed relative paths (for delete detection / early-out).
+    pub fn list_paths(&self) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self.conn.prepare("SELECT path FROM files")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut set = std::collections::HashSet::new();
+        for p in rows {
+            set.insert(p?);
+        }
+        Ok(set)
+    }
+
+    pub fn sid_dirty(&self) -> bool {
+        self.sid_dirty.get()
+    }
+
+    /// Refresh mtime/size after a content-hash match (next noop can short-circuit).
+    pub fn update_file_meta(&mut self, path: &str, mtime_ns: i64, size: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE files SET mtime_ns = ?1, size = ?2 WHERE path = ?3",
+            params![mtime_ns, size, path],
+        )?;
+        Ok(())
     }
 
     pub fn begin_batch(&mut self) -> Result<()> {
@@ -261,13 +326,25 @@ impl Store {
         language: &str,
         extracted: &ExtractedFile,
     ) -> Result<()> {
+        self.replace_file_with_meta(path, hash, language, extracted, 0, 0)
+    }
+
+    pub fn replace_file_with_meta(
+        &mut self,
+        path: &str,
+        hash: &str,
+        language: &str,
+        extracted: &ExtractedFile,
+        mtime_ns: i64,
+        size: i64,
+    ) -> Result<()> {
         let empty = SubsetReport {
             path: path.to_string(),
             language: language.to_string(),
             in_subset: true,
             violations: Vec::new(),
         };
-        self.replace_file_with_subset(path, hash, language, extracted, &empty)
+        self.replace_file_with_subset_meta(path, hash, language, extracted, &empty, mtime_ns, size)
     }
 
     /// Replace file rows. Does NOT open its own transaction (caller uses begin_batch/commit_batch).
@@ -279,7 +356,22 @@ impl Store {
         extracted: &ExtractedFile,
         subset: &SubsetReport,
     ) -> Result<()> {
+        self.replace_file_with_subset_meta(path, hash, language, extracted, subset, 0, 0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn replace_file_with_subset_meta(
+        &mut self,
+        path: &str,
+        hash: &str,
+        language: &str,
+        extracted: &ExtractedFile,
+        subset: &SubsetReport,
+        mtime_ns: i64,
+        size: i64,
+    ) -> Result<()> {
         self.cache.borrow_mut().clear();
+        self.sid_dirty.set(true);
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
         let mut old_desc: HashMap<String, String> = HashMap::new();
         {
@@ -305,9 +397,13 @@ impl Store {
             params![path],
         )?;
         self.conn.execute(
-            "INSERT INTO files(path, hash, language) VALUES(?1, ?2, ?3)
-             ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, language = excluded.language",
-            params![path, hash, language],
+            "INSERT INTO files(path, hash, language, mtime_ns, size) VALUES(?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(path) DO UPDATE SET
+               hash = excluded.hash,
+               language = excluded.language,
+               mtime_ns = excluded.mtime_ns,
+               size = excluded.size",
+            params![path, hash, language, mtime_ns, size],
         )?;
         {
             let mut stmt = self.conn.prepare(
@@ -383,6 +479,7 @@ impl Store {
             }
         }
         if deleted {
+            self.sid_dirty.set(true);
             // m8: callers/impact cache must not return rows for deleted files.
             self.cache.borrow_mut().clear();
         }
@@ -644,9 +741,76 @@ impl Store {
     /// Always starts by clearing all `resolved_symbol_id` values, then fully relinks.
     /// This avoids dangling ids after DELETE+INSERT of a file whose symbols were targets.
     pub fn resolve_symbol_ids(&mut self) -> Result<usize> {
-        // Drop every previous link so incremental reindex cannot leave dangling sids.
-        self.conn
-            .execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
+        let n = self.resolve_symbol_ids_core(true, &[])?;
+        self.sid_dirty.set(false);
+        Ok(n)
+    }
+
+    /// Relink only refs touching `dirty_paths` (and inbound links to those paths' old sids).
+    pub fn resolve_symbol_ids_for_paths(&mut self, dirty_paths: &[String]) -> Result<usize> {
+        if dirty_paths.is_empty() {
+            return Ok(0);
+        }
+        let n = self.resolve_symbol_ids_core(false, dirty_paths)?;
+        // Partial relink may leave other paths' inbound links stale if names collide;
+        // we still mark dirty only if we did a partial pass without full clear.
+        self.sid_dirty.set(true);
+        Ok(n)
+    }
+
+    /// Full resolve when dirty (export safety). Returns refs linked.
+    pub fn ensure_sids_for_export(&mut self) -> Result<usize> {
+        if self.sid_dirty.get() {
+            self.resolve_symbol_ids()
+        } else {
+            Ok(0)
+        }
+    }
+
+    pub fn assert_no_dangling_sids(&self) -> Result<()> {
+        let n: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM refs r
+             WHERE r.resolved_symbol_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM symbols s WHERE s.id = r.resolved_symbol_id)",
+            [],
+            |r| r.get(0),
+        )?;
+        if n > 0 {
+            anyhow::bail!("{n} dangling resolved_symbol_id(s)");
+        }
+        Ok(())
+    }
+
+    fn resolve_symbol_ids_core(&mut self, full: bool, dirty_paths: &[String]) -> Result<usize> {
+        if full {
+            // Drop every previous link so incremental reindex cannot leave dangling sids.
+            self.conn
+                .execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
+        } else {
+            // Snapshot old symbol ids on dirty paths, then NULL those + refs pointing at them.
+            let mut old_ids: Vec<i64> = Vec::new();
+            for p in dirty_paths {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT id FROM symbols WHERE path = ?1")?;
+                let rows = stmt.query_map(params![p], |r| r.get::<_, i64>(0))?;
+                for id in rows {
+                    old_ids.push(id?);
+                }
+            }
+            for p in dirty_paths {
+                self.conn.execute(
+                    "UPDATE refs SET resolved_symbol_id = NULL WHERE path = ?1",
+                    params![p],
+                )?;
+            }
+            for id in &old_ids {
+                self.conn.execute(
+                    "UPDATE refs SET resolved_symbol_id = NULL WHERE resolved_symbol_id = ?1",
+                    params![id],
+                )?;
+            }
+        }
 
         // Two-pass: qualified match first, then bare name. Uses only portable SQLite.
         {
@@ -741,6 +905,18 @@ impl Store {
 
         // Also: New* constructors already set qualifier to type in extract.
         // Upgrade call refs: qualifier is var name matching define map.
+        // P0-5: prefetch type names once instead of per-row COUNT(*).
+        let mut type_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT name FROM symbols
+                 WHERE kind IN ('class','struct','interface','enum','trait')",
+            )?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            for n in rows {
+                type_names.insert(n?);
+            }
+        }
         let mut updated = 0usize;
         {
             let mut stmt = self.conn.prepare(
@@ -763,13 +939,7 @@ impl Store {
                 .prepare_cached("UPDATE refs SET qualifier = ?1 WHERE id = ?2")?;
             for (id, path, qual) in pending {
                 // If qualifier already looks like a known type (class/struct), skip.
-                let is_type: i64 = self.conn.query_row(
-                    "SELECT COUNT(*) FROM symbols
-                     WHERE name = ?1 AND kind IN ('class','struct','interface','enum','trait')",
-                    params![qual],
-                    |r| r.get(0),
-                )?;
-                if is_type > 0 {
+                if type_names.contains(&qual) {
                     continue;
                 }
                 if let Some(ty) = map.get(&(path.clone(), qual.clone())) {

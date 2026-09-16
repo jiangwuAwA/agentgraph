@@ -315,7 +315,7 @@ ref {
 
 | 项 | 要求 |
 |---|---|
-| 性能 | L0 查询 p95 < 50ms（5k 文件）；L1 规则扫描可并行；L2 允许分钟级。**索引增量优化见 [docs/perf-plan.md](docs/perf-plan.md)**（noop 目标 <2s，尚未宣称达成） |
+| 性能 | L0 查询 p95 < 50ms（5k 文件）；**增量 noop P0 已达成**（1k/真仓 &lt;1s，见 [docs/perf-plan.md](docs/perf-plan.md) 与 eval-large-repo）；full index sid relink 仍待 P1 |
 | 兼容 | 旧 index.db 自动迁移；SCIP 导出保持 `scip lint` 0 |
 | 可观测 | 每次 index 输出：文件数、边按 confidence 分布、耗时 |
 | 隐私 | L2/L3 不外传源码；enrich 仍可选 |

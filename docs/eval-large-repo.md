@@ -14,11 +14,27 @@ agentgraph --root ... callers <symbol>            # default: Exact+Heuristic
 
 ## Index performance (this machine, release build)
 
+### After perf-plan P0 (this commit)
+
+| op | result |
+|---|---|
+| Full index (`--force`) | ~45 s（其中 **`resolve_sids_ms ≈ 27s`** 为全量 relink；parse≈5s, db≈8s） |
+| **Incremental noop** | **~0.8 s**（`noop_early_out`，994/995 mtime 命中） |
+| 1 file change (public `lib.rs`) | **~3.0 s**（dirty=1；`resolve_sids_ms≈2s` 为该符号入边重链） |
+| 1k synthetic fixture noop | **~0.7 s**（`scripts/bench_index.ps1 -Generate 1000`） |
+
+TRACE (`AGENTGRAPH_TRACE=1`) 示例 noop：`walk≈164ms, read_hash≈40ms, phase=noop_early_out`。
+
+### Baseline (before P0)
+
 | op | result |
 |---|---|
 | Full index (`--force`) | **~39 s** → 995 files, **20 924** symbols, **167 600** refs, 0 parse failures |
-| Incremental (no change) | **~21 s** (hash walk of 995 files; not p95&lt;50ms query — index path) |
+| Incremental (no change) | **~21 s** |
 | Languages | rust, typescript, tsx, python, javascript |
+
+**P0 达成：** 1k noop **&lt; 2s**（真仓 0.8s / fixture 0.7s）。  
+**未达成：** full `--force` 仍由全量 sid relink 主导（后续 P1 set-based SQL）。
 
 ## L0 vs L1 sample (callers, limit 500)
 

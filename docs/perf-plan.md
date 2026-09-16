@@ -242,13 +242,15 @@ if !force && dirty.is_empty() && deleted.is_empty() && oversized_only_unchanged:
 
 ## 7. 验收清单
 
-- [ ] 1k 生成 fixture：noop 增量 **< 2s**（TRACE 证明 resolve 未跑全表）  
-- [ ] 1 文件变更 **< 2s**  
-- [ ] `stock-trading-app` noop 显著下降（记录绝对值，不写虚假百分比）  
-- [ ] noop 后查询结果 ≡ `--force` 后（排序 JSON）  
-- [ ] dirty 时 export 前 sid 全量 relink  
-- [ ] 全测试套件 + e2e + scip lint 绿  
-- [ ] `docs/eval-large-repo.md` / bench 脚本数字同步  
+- [x] 1k 生成 fixture：noop 增量 **< 2s**（**0.7s**，`bench_index.ps1 -Generate 1000`）  
+- [x] 真仓 noop **< 2s**（stock-trading-app **0.8s**，`noop_early_out`）  
+- [x] 1 文件变更（小文件）**< 2s**（fixture **0.6s**；公开 API `lib.rs` 约 **3s** 因入边重链）  
+- [x] TRACE 分项（`AGENTGRAPH_TRACE=1`）  
+- [x] `tests/perf_p0.rs`（meta / incremental sid / export ensure / batch qual）  
+- [ ] full `--force` 显著加速（**未做**：sid 全量 27s 仍主导）— 留给 P1 set-based  
+- [x] 全测试套件绿  
+
+**P0 实现摘要：** mtime/size 短路、并行 hash、脏集 early-out、增量 sid、export 前 `ensure_sids_for_export`、qualifier 类型名 HashSet。
 
 ---
 

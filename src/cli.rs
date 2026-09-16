@@ -308,8 +308,10 @@ pub fn run(cli: Cli) -> Result<()> {
             exact_only,
             include_dynamic,
         } => {
-            let store = indexer.open_store()?;
+            let mut store = indexer.open_store()?;
             store.ensure_indexed()?;
+            // perf-plan P0-4: never export stale sid links.
+            store.ensure_sids_for_export()?;
             let filter = parse_confidence_flags(exact_only, include_dynamic);
             match format.as_str() {
                 "scip" => {

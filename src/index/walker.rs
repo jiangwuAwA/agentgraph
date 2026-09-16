@@ -4,17 +4,39 @@ use std::path::{Path, PathBuf};
 
 use crate::model::Language;
 
+/// One collectible source file with freshness metadata (perf-plan P0-1).
+#[derive(Debug, Clone)]
+pub struct SourceFile {
+    pub path: PathBuf,
+    /// Repo-relative path with `/` separators.
+    pub rel: String,
+    pub mtime_ns: i64,
+    pub size: i64,
+}
+
 /// Result of a source-file walk, including silent skips that used to vanish.
 #[derive(Debug, Clone)]
 pub struct CollectResult {
-    pub files: Vec<PathBuf>,
+    pub files: Vec<SourceFile>,
     /// Supported source files skipped because they exceeded the size cap (1.5 MiB).
     pub oversized_skipped: usize,
 }
 
 /// Walk the repo, respecting .gitignore, collecting supported source files.
 pub fn collect_source_files(root: &Path) -> Result<Vec<PathBuf>> {
-    Ok(collect_source_files_with_stats(root)?.files)
+    Ok(collect_source_files_with_stats(root)?
+        .files
+        .into_iter()
+        .map(|f| f.path)
+        .collect())
+}
+
+fn mtime_ns(meta: &std::fs::Metadata) -> i64 {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos() as i64)
+        .unwrap_or(0)
 }
 
 /// Same as [`collect_source_files`] but also reports oversized-file skips (m10).
@@ -64,7 +86,8 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
         }
 
         let is_source = Language::from_path(&rel_str).is_some();
-        if let Ok(meta) = entry.metadata() {
+        let meta = entry.metadata().ok();
+        if let Some(meta) = &meta {
             if meta.len() > 1_500_000 {
                 if is_source {
                     oversized_skipped += 1;
@@ -74,11 +97,19 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
         }
 
         if is_source {
-            out.push(path.to_path_buf());
+            let (mtime_ns, size) = match &meta {
+                Some(m) => (mtime_ns(m), m.len() as i64),
+                None => (0, 0),
+            };
+            out.push(SourceFile {
+                path: path.to_path_buf(),
+                rel: rel_str,
+                mtime_ns,
+                size,
+            });
         }
     }
 
-    out.sort();
     Ok(CollectResult {
         files: out,
         oversized_skipped,

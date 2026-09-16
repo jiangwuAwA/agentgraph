@@ -362,7 +362,10 @@ fn walk_ts(
 
     match kind {
         "call_expression" | "new_expression" => {
-            if let Some(fn_node) = child_by_field(&node, "function") {
+            // tree-sitter-typescript: new_expression field is `constructor`.
+            let fn_node =
+                child_by_field(&node, "function").or_else(|| child_by_field(&node, "constructor"));
+            if let Some(fn_node) = fn_node {
                 if let Some((n, q)) = call_target_q_with_ctx(fn_node, source, ctx) {
                     push_call_q(
                         references,

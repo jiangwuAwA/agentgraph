@@ -1,5 +1,5 @@
 use agentgraph::index::extract::extract_file;
-use agentgraph::model::Language;
+use agentgraph::model::{Confidence, Language};
 use std::collections::HashSet;
 
 #[test]
@@ -27,5 +27,31 @@ export function loginHandler(email: string, password: string) {
             .any(|r| r.resolved.as_deref() == Some("src/auth.ts")),
         "imports not resolved: {:?}",
         imports
+    );
+}
+
+#[test]
+fn new_expression_yields_exact_constructor_call_edge() {
+    let src = r#"
+class Store {
+  save() { return 1; }
+}
+export function run() {
+  return new Store();
+}
+"#;
+    let out = extract_file(src, Language::TypeScript, "src/n.ts", &HashSet::new()).unwrap();
+    let hits: Vec<_> = out
+        .references
+        .iter()
+        .filter(|r| r.name == "Store" && r.confidence == Confidence::Exact)
+        .collect();
+    assert!(
+        !hits.is_empty(),
+        "new Store() must yield Exact call edge to Store; refs={:?}",
+        out.references
+            .iter()
+            .map(|r| (r.name.clone(), r.confidence.as_str()))
+            .collect::<Vec<_>>()
     );
 }

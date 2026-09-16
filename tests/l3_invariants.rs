@@ -42,8 +42,11 @@ export class S {
     use agentgraph::index::parser;
     let tree = parser::parse(src, Language::TypeScript).unwrap();
     fn collect_callees(n: tree_sitter::Node, src: &str, out: &mut Vec<String>) {
-        if n.kind() == "call_expression" {
-            if let Some(f) = n.child_by_field_name("function") {
+        if n.kind() == "call_expression" || n.kind() == "new_expression" {
+            let f = n
+                .child_by_field_name("function")
+                .or_else(|| n.child_by_field_name("constructor"));
+            if let Some(f) = f {
                 let t = src.get(f.byte_range()).unwrap_or("");
                 let name = t.rsplit(['.', ':']).next().unwrap_or(t).trim().to_string();
                 if !name.is_empty() {

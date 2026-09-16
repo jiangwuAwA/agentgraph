@@ -1,7 +1,7 @@
 //! Cross-file / return-type qualifier propagation.
 use agentgraph::index::extract::extract_file;
 use agentgraph::index::store::Store;
-use agentgraph::model::{EdgeKind, Language};
+use agentgraph::model::{ConfidenceFilter, EdgeKind, Language};
 use std::collections::HashSet;
 
 #[test]
@@ -59,4 +59,51 @@ function run(s: Store) { s.save(); }
         .find(|r| r.name == "save" && matches!(r.kind, EdgeKind::Call))
         .unwrap();
     assert_eq!(hit.qualifier.as_deref(), Some("Store"));
+}
+
+#[test]
+fn go_ambiguous_factory_name_is_not_upgraded() {
+    let dir = std::env::temp_dir().join("agentgraph-test-qual-ambig");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir.join("index.db")).unwrap();
+    let a = r#"
+package main
+func createThing() *Server { return nil }
+type Server struct{}
+func (s *Server) Start() {}
+"#;
+    let b = r#"
+package main
+func createThing() *Client { return nil }
+type Client struct{}
+func (c *Client) Start() {}
+func main() {
+  x := createThing()
+  x.Start()
+}
+"#;
+    let pa = extract_file(a, Language::Go, "a.go", &HashSet::new()).unwrap();
+    let pb = extract_file(b, Language::Go, "b.go", &HashSet::new()).unwrap();
+    store.begin_batch().unwrap();
+    store.replace_file("a.go", "ha", "go", &pa).unwrap();
+    store.replace_file("b.go", "hb", "go", &pb).unwrap();
+    store.commit_batch().unwrap();
+    store.resolve_qualifiers().unwrap();
+    let server = store
+        .callers_filtered("Server.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "b.go")
+        .count();
+    let client = store
+        .callers_filtered("Client.Start", 10, ConfidenceFilter::ExactOnly)
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.path == "b.go")
+        .count();
+    assert!(
+        server == 0 || client == 0,
+        "ambiguous createThing must not Exact-upgrade main.x.Start to both types; server={server} client={client}"
+    );
 }

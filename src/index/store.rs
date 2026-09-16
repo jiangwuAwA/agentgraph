@@ -1126,9 +1126,12 @@ impl Store {
     /// for `s := f()` define edges, if `f` has a return type, rewrite call
     /// refs in the same file whose qualifier is the variable `s` to that type.
     pub fn resolve_qualifiers(&mut self) -> Result<usize> {
-        // (path, var) -> type from define join function return_type
+        // (path, var) -> type from define join function return_type.
+        // Skip ambiguous factory names (multiple distinct return_types).
         let mut map: std::collections::HashMap<(String, String), String> =
             std::collections::HashMap::new();
+        let mut ambiguous: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
         {
             let mut stmt = self.conn.prepare(
                 "SELECT r.path, r.name, s.return_type
@@ -1146,7 +1149,17 @@ impl Store {
             })?;
             for row in rows {
                 let (path, var, ty) = row?;
-                map.insert((path, var), ty);
+                let key = (path, var);
+                if let Some(prev) = map.get(&key) {
+                    if prev != &ty {
+                        ambiguous.insert(key);
+                    }
+                } else if !ambiguous.contains(&key) {
+                    map.insert(key, ty);
+                }
+            }
+            for k in &ambiguous {
+                map.remove(k);
             }
         }
 

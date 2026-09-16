@@ -373,11 +373,18 @@ impl Indexer {
         let mut deleted: Vec<String> = Vec::new();
 
         for path in paths {
-            let rel = path
-                .strip_prefix(&self.root)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            // Normalize UNC/case so strip_prefix matches Indexer::new (R6 M2).
+            let cand = parser::normalize_root(path);
+            let base = parser::normalize_root(&self.root);
+            let Some(rel_path) = cand.strip_prefix(&base).ok() else {
+                eprintln!(
+                    "index_paths: skip {} (outside root {})",
+                    path.display(),
+                    self.root.display()
+                );
+                continue;
+            };
+            let rel = rel_path.to_string_lossy().replace('\\', "/");
             if !path.exists() {
                 deleted.push(rel);
                 continue;

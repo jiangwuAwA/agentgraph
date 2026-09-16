@@ -579,8 +579,8 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         if compact.contains("setattr(") {
             push_v(violations, path, line_no, "py_setattr", t);
         }
-        // M3: non-literal getattr second arg invents call targets.
-        if t.contains("getattr(") && !getattr_second_is_string_literal(t) {
+        // Non-literal getattr second arg invents call targets (use compact — R6 M3).
+        if compact.contains("getattr(") && !getattr_second_is_string_literal(&compact) {
             push_v(violations, path, line_no, "py_getattr_dynamic", t);
         }
         // M3: `__builtins__['eval']` / `__builtins__.eval` escapes S_py.

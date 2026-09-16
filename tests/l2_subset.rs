@@ -121,6 +121,17 @@ fn s_js_eval_alias_paren_and_subscript_leave_s() {
 }
 
 #[test]
+fn py_getattr_with_space_leaves_s() {
+    let src = "def f(obj, name):\n    return getattr (obj, name)\n";
+    let r = scan_subset(src, Language::Python, "src/g.py");
+    assert!(
+        !r.in_subset,
+        "getattr (obj, name) must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

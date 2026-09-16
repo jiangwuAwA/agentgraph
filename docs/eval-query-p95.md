@@ -35,7 +35,7 @@ CI soft gate: `tests/query_p95.rs` (400-file debug DB, same 50ms budget).
 | warm | 3.69 ms | **5.83 ms** | 6.18 ms | 0.06 ms |
 | cold (new Store/sample) | 30.0 ms | **35.0 ms** | 49.4 ms | 15.8 ms |
 
-**PASS p95 &lt; 50 ms** (cold p95 35 ms; cold **max 49 ms** is tight — includes `open_store`).
+**PASS p95 &lt; 50 ms** (cold p95 35 ms; cold **max 49 ms** is **tight** — machine-local, includes `open_store`; not a CI 5k gate).
 
 ```bash
 agentgraph --root <hot-fixture> bench-query --samples 40 --hot run --cold

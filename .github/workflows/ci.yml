@@ -29,6 +29,13 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/scip.tgz https://github.com/scip-code/scip/releases/download/v0.10.0/scip-linux-amd64.tar.gz
+          # Pin checksum when SCIP_SHA256 secret/env is set (fail-closed).
+          if [ -n "${SCIP_SHA256:-}" ]; then
+            echo "${SCIP_SHA256}  /tmp/scip.tgz" | sha256sum -c -
+          else
+            echo "SCIP_SHA256 not set; recording artifact hash for pinning:"
+            sha256sum /tmp/scip.tgz
+          fi
           tar -xzf /tmp/scip.tgz -C /tmp
           sudo install -m 755 /tmp/scip /usr/local/bin/scip
           cargo run --quiet -- --root fixtures/sample-app index --force

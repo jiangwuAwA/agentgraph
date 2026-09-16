@@ -60,6 +60,12 @@ Dynamic `getattr` without literal, `eval`/`exec`, `unsafe`/`reflect` leave S.
 | emit↔on dispatch edges | ✅ `tests/l2_dispatch.rs` + `Store::link_event_dispatch` |
 | S violation scanners | ✅ `tests/l2_subset.rs`, `l2_lang_subset.rs` |
 
+## Known over-approx / accepted false positives
+
+- `obj['on']` / `obj['emit']` on **any** receiver is treated as the event API
+  (e.g. a state machine `states['on']`). Over-approx is soundness-safe; L1 noise possible.
+- Event **names** as DynamicCandidate callees (`emit('trade')` → name `trade`).
+
 ## Non-goals
 
 - Soundness outside S  

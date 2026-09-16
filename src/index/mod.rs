@@ -199,6 +199,7 @@ impl Indexer {
             stats.skipped_files = skipped;
             stats.failed_files = failed_read;
             stats.oversized_files = collected.oversized_skipped;
+            stats.noise_skipped_files = collected.noise_skipped;
             emit_trace(&serde_json::json!({
                 "phase": "noop_early_out",
                 "walk_ms": walk_ms,
@@ -320,6 +321,7 @@ impl Indexer {
         stats.skipped_files = skipped;
         stats.failed_files = failed_read + failed_parse;
         stats.oversized_files = collected.oversized_skipped;
+        stats.noise_skipped_files = collected.noise_skipped;
         let stats_ms = t_stats.elapsed().as_millis();
 
         emit_trace(&serde_json::json!({
@@ -343,10 +345,11 @@ impl Indexer {
             .map(|(k, v)| format!("{k}={v}"))
             .collect();
         eprintln!(
-            "indexed {indexed} file(s), skipped {skipped} unchanged ({} meta), failed {}; oversize-skip {}; {} symbols, {} refs [{}], {} described",
+            "indexed {indexed} file(s), skipped {skipped} unchanged ({} meta), failed {}; oversize-skip {}; noise-skip {}; {} symbols, {} refs [{}], {} described",
             meta_skipped,
             stats.failed_files,
             collected.oversized_skipped,
+            collected.noise_skipped,
             stats.symbols,
             stats.references,
             conf_summary.join(","),

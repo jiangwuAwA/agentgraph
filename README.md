@@ -32,6 +32,10 @@ agentgraph export scip --out index.scip   # official scip CLI can read this
 
 Index lives at `<root>/.agentgraph/index.db` (add to `.gitignore`).
 
+Incremental index skips rehash when **mtime+size match**. On network/FAT volumes
+or tools that preserve mtime across content edits, set `AGENTGRAPH_TRUST_MTIME=0`
+to force content-hash every file (hash remains the source of truth).
+
 ## Features
 
 ### Languages

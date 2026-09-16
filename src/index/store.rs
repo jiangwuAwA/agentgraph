@@ -581,6 +581,7 @@ impl Store {
             skipped_files: 0,
             failed_files: 0,
             oversized_files: 0,
+            noise_skipped_files: 0,
             refs_by_confidence,
         })
     }
@@ -1297,7 +1298,8 @@ impl Store {
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
-        let fetch_cap = limit.saturating_mul(4).max(200);
+        // Raise fetch_cap so high-fan-in frontiers are not starved under small --limit (R4 m).
+        let fetch_cap = limit.saturating_mul(4).max(2000);
         let mut frontier: std::collections::VecDeque<(String, usize)> =
             std::collections::VecDeque::new();
         frontier.push_back((name.to_string(), 0));

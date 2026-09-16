@@ -20,6 +20,8 @@ pub struct CollectResult {
     pub files: Vec<SourceFile>,
     /// Supported source files skipped because they exceeded the size cap (1.5 MiB).
     pub oversized_skipped: usize,
+    /// Supported source files skipped by the noise-dir filter (testdata, …).
+    pub noise_skipped: usize,
 }
 
 /// Walk the repo, respecting .gitignore, collecting supported source files.
@@ -43,6 +45,7 @@ fn mtime_ns(meta: &std::fs::Metadata) -> i64 {
 pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
     let mut out = Vec::new();
     let mut oversized_skipped = 0usize;
+    let mut noise_skipped = 0usize;
     let walker = WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(true)
@@ -65,7 +68,8 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
         if rel_str.starts_with(".agentgraph") || rel_str.contains(".min.") {
             continue;
         }
-        // Skip if any path segment is a noise dir
+        let is_source = Language::from_path(&rel_str).is_some();
+        // Skip if any path segment is a noise dir — **count** source skips (R4 m).
         let noisy = rel_str.split('/').any(|seg| {
             matches!(
                 seg,
@@ -82,10 +86,12 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
             )
         });
         if noisy {
+            if is_source {
+                noise_skipped += 1;
+            }
             continue;
         }
 
-        let is_source = Language::from_path(&rel_str).is_some();
         let meta = entry.metadata().ok();
         if let Some(meta) = &meta {
             if meta.len() > 1_500_000 {
@@ -113,5 +119,6 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
     Ok(CollectResult {
         files: out,
         oversized_skipped,
+        noise_skipped,
     })
 }

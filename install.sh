@@ -6,6 +6,8 @@ REPO="${AGENTGRAPH_REPO:-jiangwuAwA/agentgraph}"
 VERSION="${1:-latest}"
 BIN_DIR="${AGENTGRAPH_BIN_DIR:-$HOME/.local/bin}"
 # Fail closed on checksum problems unless AGENTGRAPH_SKIP_CHECKSUM=1.
+# Checksums are same-origin as the binary (GitHub release assets) — they detect
+# corruption/partial download, not a fully compromised release channel.
 SKIP_CHECKSUM="${AGENTGRAPH_SKIP_CHECKSUM:-0}"
 mkdir -p "$BIN_DIR"
 

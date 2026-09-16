@@ -52,7 +52,7 @@ Relative lift on nestjs-inversify: 28% → 100% (**+250%** ≥15% M2).
 | Criterion | Required | Observed |
 |---|---|---|
 | Heuristic recall lift vs L0 on ≥1 DI corpus | ≥15% relative | **ts-di: 25% → 100%** (+300% relative) |
-| Heuristic noise (proxy: unmatched-by-golden) | ≤30% | **0%** on this corpus (12/12 matched) |
+| Heuristic noise (proxy: unmatched-by-golden) | ≤30% | **0%** on **fixture** corpora only — **not** a production noise rate |
 
 CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_meets_m2_threshold_on_mixed_corpus`, `heuristic_noise_rate_below_m2_threshold`).
 

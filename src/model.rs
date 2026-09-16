@@ -245,6 +245,9 @@ pub struct IndexStats {
     /// Supported source files skipped because they exceeded the 1.5 MiB cap.
     #[serde(default)]
     pub oversized_files: usize,
+    /// Supported source files skipped due to noise-dir filter (e.g. testdata/).
+    #[serde(default)]
+    pub noise_skipped_files: usize,
     /// Edge counts by confidence (`exact` / `heuristic` / `dynamic_candidate`).
     #[serde(default)]
     pub refs_by_confidence: Vec<(String, usize)>,

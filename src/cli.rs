@@ -120,6 +120,12 @@ pub enum Commands {
         /// Symbol name prefix used to synthesize query targets (default: helper)
         #[arg(long, default_value = "helper")]
         prefix: String,
+        /// Also include this exact hot symbol (high fan-in), e.g. run
+        #[arg(long)]
+        hot: Option<String>,
+        /// Skip query cache (cold path) — measures uncached SQL
+        #[arg(long, default_value_t = false)]
+        cold: bool,
     },
 }
 
@@ -352,10 +358,14 @@ pub fn run(cli: Cli) -> Result<()> {
                 std::process::exit(2);
             }
         }
-        Commands::BenchQuery { samples, prefix } => {
+        Commands::BenchQuery {
+            samples,
+            prefix,
+            hot,
+            cold,
+        } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            // Discover sample names from the index.
             let mut names = Vec::new();
             {
                 let hits = store.find_symbol_fuzzy(&prefix, samples.max(20))?;
@@ -363,22 +373,39 @@ pub fn run(cli: Cli) -> Result<()> {
                     names.push(s.name);
                 }
             }
+            if let Some(h) = &hot {
+                if !names.contains(h) {
+                    names.push(h.clone());
+                }
+            }
             if names.is_empty() {
                 bail!("no symbols matching prefix '{prefix}' — index first?");
             }
             let mut callers_ms = Vec::with_capacity(samples);
             let mut impact_ms = Vec::with_capacity(samples);
-            // Warm
-            let _ = store.callers_filtered(&names[0], 20, ConfidenceFilter::Default)?;
-            let _ = store.impact_filtered(&names[0], 2, 50, ConfidenceFilter::Default)?;
+            if !cold {
+                let _ = store.callers_filtered(&names[0], 20, ConfidenceFilter::Default)?;
+                let _ = store.impact_filtered(&names[0], 2, 50, ConfidenceFilter::Default)?;
+            }
             for i in 0..samples {
-                let n = &names[i % names.len()];
-                let t = std::time::Instant::now();
-                let _ = store.callers_filtered(n, 20, ConfidenceFilter::Default)?;
-                callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
-                let t = std::time::Instant::now();
-                let _ = store.impact_filtered(n, 2, 50, ConfidenceFilter::Default)?;
-                impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                let n = names[i % names.len()].clone();
+                if cold {
+                    // Fresh Store per sample → no in-process query cache.
+                    let s2 = indexer.open_store()?;
+                    let t = std::time::Instant::now();
+                    let _ = s2.callers_filtered(&n, 20, ConfidenceFilter::Default)?;
+                    callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                    let t = std::time::Instant::now();
+                    let _ = s2.impact_filtered(&n, 2, 50, ConfidenceFilter::Default)?;
+                    impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                } else {
+                    let t = std::time::Instant::now();
+                    let _ = store.callers_filtered(&n, 20, ConfidenceFilter::Default)?;
+                    callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                    let t = std::time::Instant::now();
+                    let _ = store.impact_filtered(&n, 2, 50, ConfidenceFilter::Default)?;
+                    impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                }
             }
             callers_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
             impact_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -389,6 +416,8 @@ pub fn run(cli: Cli) -> Result<()> {
             let payload = serde_json::json!({
                 "samples": samples,
                 "symbols": names.len(),
+                "hot": hot,
+                "cold": cold,
                 "callers_ms": {
                     "p50": pct(&callers_ms, 0.50),
                     "p95": pct(&callers_ms, 0.95),

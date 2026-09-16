@@ -90,7 +90,7 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 
 - Broader Node DI-container fixtures; property tests for S_py/S_go (S_js property tests ship in `tests/l2_property.rs`).
 - ~~Model framework dispatch edges (emit).~~ **Done:** `Store::link_event_dispatch` + `tests/l2_dispatch.rs` (once, idempotent, arrow multi-call, index_paths).
-- Hot-name p95 fixture (low fan-in synthetic understates real `run`/`execute` latency — see eval-query-p95 caveats).
+- ~~Hot-name p95 fixture.~~ **Done:** `gen_fixture.ps1 -HotName` + `bench-query --hot run --cold` (see eval-query-p95).
 
 ## Adversarial review follow-up (this drop — C1/C2/M3–M7)
 

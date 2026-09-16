@@ -129,6 +129,7 @@ impl Store {
                 confidence TEXT NOT NULL DEFAULT 'exact',
                 evidence TEXT,
                 qual_name TEXT,
+                rule_id TEXT,
                 FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
             );
 
@@ -168,6 +169,7 @@ impl Store {
             [],
         );
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qual_name TEXT", []);
+        let _ = conn.execute("ALTER TABLE refs ADD COLUMN rule_id TEXT", []);
         // Backfill: pre-L1 rows are Exact by definition.
         let _ = conn.execute(
             "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
@@ -187,7 +189,8 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
              CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);
              CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);
-             CREATE INDEX IF NOT EXISTS idx_refs_qual_name ON refs(qual_name);",
+             CREATE INDEX IF NOT EXISTS idx_refs_qual_name ON refs(qual_name);
+             CREATE INDEX IF NOT EXISTS idx_refs_rule_id ON refs(rule_id);",
         )?;
         Ok(Self {
             conn,
@@ -441,14 +444,15 @@ impl Store {
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             for r in &extracted.references {
                 let evidence_json = r
                     .evidence
                     .as_ref()
                     .and_then(|e| serde_json::to_string(e).ok());
+                let rule_id = r.evidence.as_ref().map(|e| e.rule_id.clone());
                 let qual_name = match (&r.qualifier, &r.name) {
                     (Some(q), n) if !q.is_empty() => Some(format!("{q}.{n}")),
                     _ => None,
@@ -465,6 +469,7 @@ impl Store {
                     r.confidence.as_str(),
                     evidence_json,
                     qual_name,
+                    rule_id,
                 ])?;
             }
         }
@@ -776,7 +781,7 @@ impl Store {
     pub fn link_event_dispatch(&mut self) -> Result<usize> {
         // Drop previous dispatch edges (full rebuild — emit sites are cheap to re-pair).
         self.conn.execute(
-            "DELETE FROM refs WHERE evidence LIKE '%ts.event.dispatch%'",
+            "DELETE FROM refs WHERE rule_id = 'ts.event.dispatch' OR evidence LIKE '%ts.event.dispatch%'",
             [],
         )?;
         self.cache.borrow_mut().clear();
@@ -786,7 +791,7 @@ impl Store {
             let mut stmt = self.conn.prepare(
                 "SELECT COALESCE(enclosing,''), path, line, module FROM refs
                  WHERE module IS NOT NULL AND module != ''
-                   AND evidence LIKE '%ts.event.emit%'",
+                   AND rule_id = 'ts.event.emit'",
             )?;
             let rows = stmt.query_map([], |r| {
                 Ok((
@@ -804,7 +809,7 @@ impl Store {
             let mut stmt = self.conn.prepare(
                 "SELECT name, module FROM refs
                  WHERE module IS NOT NULL AND module != ''
-                   AND evidence LIKE '%ts.event.subscribe%'",
+                   AND rule_id = 'ts.event.subscribe'",
             )?;
             let rows =
                 stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
@@ -819,8 +824,8 @@ impl Store {
 
         let mut created = 0usize;
         let mut stmt = self.conn.prepare_cached(
-            "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name)
-             VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL)",
+            "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
+             VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL, 'ts.event.dispatch')",
         )?;
         self.conn.execute_batch("BEGIN")?;
         for (enclosing, path, line, evt) in emits {
@@ -847,7 +852,7 @@ impl Store {
     /// How many `ts.event.dispatch` rows exist (tests / idempotency).
     pub fn event_dispatch_count(&self) -> Result<usize> {
         let n: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM refs WHERE evidence LIKE '%ts.event.dispatch%'",
+            "SELECT COUNT(*) FROM refs WHERE rule_id = 'ts.event.dispatch'",
             [],
             |r| r.get(0),
         )?;
@@ -904,6 +909,15 @@ impl Store {
                 self.conn.execute(
                     "UPDATE refs SET resolved_symbol_id = NULL WHERE resolved_symbol_id = ?1",
                     params![id],
+                )?;
+            }
+            // Also re-prefer: refs whose bare name matches a symbol **now** on a
+            // dirty path (new symbols may steal inbound links from same-name elsewhere).
+            for p in dirty_paths {
+                self.conn.execute(
+                    "UPDATE refs SET resolved_symbol_id = NULL
+                     WHERE name IN (SELECT name FROM symbols WHERE path = ?1)",
+                    params![p],
                 )?;
             }
         }

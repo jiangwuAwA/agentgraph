@@ -44,6 +44,14 @@ struct FailedFile {
     reason: String,
 }
 
+fn trust_mtime() -> bool {
+    // AGENTGRAPH_TRUST_MTIME=0 → always content-hash (mtime is only a hint).
+    !matches!(
+        std::env::var("AGENTGRAPH_TRUST_MTIME").as_deref(),
+        Ok("0") | Ok("false") | Ok("FALSE")
+    )
+}
+
 fn trace_enabled() -> bool {
     matches!(
         std::env::var("AGENTGRAPH_TRACE").as_deref(),
@@ -106,7 +114,7 @@ impl Indexer {
             let Some(lang) = Language::from_path(&f.rel) else {
                 continue;
             };
-            if !force {
+            if !force && trust_mtime() {
                 if let Ok(Some(prev)) = store.file_meta(&f.rel) {
                     if prev.mtime_ns == f.mtime_ns && prev.size == f.size && f.mtime_ns != 0 {
                         skipped += 1;
@@ -378,6 +386,14 @@ impl Indexer {
                 .map(|d| d.as_nanos() as i64)
                 .unwrap_or(0);
             let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+            // mtime short-circuit (same as full index); AGENTGRAPH_TRUST_MTIME=0 forces hash.
+            if trust_mtime() {
+                if let Ok(Some(prev)) = store.file_meta(&rel) {
+                    if prev.mtime_ns == mtime_ns && prev.size == size && mtime_ns != 0 {
+                        continue;
+                    }
+                }
+            }
             let bytes = match std::fs::read(path) {
                 Ok(b) => b,
                 Err(e) => {

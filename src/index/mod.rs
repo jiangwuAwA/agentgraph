@@ -185,6 +185,14 @@ impl Indexer {
         }
         let hash_ms = t_hash.elapsed().as_millis();
 
+        // R13 M3: oversized / minified sources mint S violations (not silent).
+        for p in &collected.oversized_paths {
+            let _ = store.record_parse_error(p, "oversized source (>1.5MiB) not certified in S");
+        }
+        for p in &collected.minified_paths {
+            let _ = store.record_parse_error(p, "minified bundle (.min.) not certified in S");
+        }
+
         // Deleted paths (for early-out and prune).
         let db_paths = store.list_paths()?;
         let deleted: Vec<String> = db_paths.difference(&known).cloned().collect();
@@ -416,6 +424,7 @@ impl Indexer {
                 Err(e) => {
                     eprintln!("skip {rel}: read error: {e}");
                     failed_read += 1;
+                    let _ = store.record_parse_error(&rel, &format!("read error: {e}"));
                     continue;
                 }
             };

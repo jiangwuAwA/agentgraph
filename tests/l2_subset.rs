@@ -334,6 +334,55 @@ fn go_cgo_comment_alias_forms_leave_s() {
 }
 
 #[test]
+fn js_eval_bind_apply_leaves_s() {
+    for src in [
+        "const F = Function.bind(null);\nF('return 1')();\n",
+        "eval.call(null, 'return 1');\n",
+        "eval.apply(null, ['return 1']);\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/b.js");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
+fn js_eval_ts_wrapper_leaves_s() {
+    for src in [
+        "const e = eval as any;\ne('x');\n",
+        "const e = eval!;\ne('x');\n",
+        "const e = true ? eval : null;\n",
+    ] {
+        let r = scan_subset(src, Language::TypeScript, "src/w.ts");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
+fn js_return_constructor_leaves_s() {
+    let src = "function g() { return ({}).constructor.constructor; }\n";
+    let r = scan_subset(src, Language::JavaScript, "src/r.js");
+    assert!(!r.in_subset, "return constructor: {:?}", r.violations);
+}
+
+#[test]
+fn js_obj_k_load_leaves_s() {
+    let src = "const f = obj[k];\nf('x')();\n";
+    let r = scan_subset(src, Language::JavaScript, "src/k.js");
+    assert!(!r.in_subset, "obj[k] load: {:?}", r.violations);
+}
+
+#[test]
+fn go_import_unsafe_reflect_leave_s() {
+    for src in [
+        "package main\nimport \"unsafe\"\n",
+        "package main\nimport r \"reflect\"\n",
+    ] {
+        let r = scan_subset(src, Language::Go, "main.go");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

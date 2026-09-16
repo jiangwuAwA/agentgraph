@@ -208,7 +208,8 @@ fn tool_error(code: i64, message: &str) -> Value {
 }
 
 /// Shared promise strings (CLI + MCP must not drift — R4 M3).
-pub const SOUND_PROMISE_OK: &str = "S satisfied. Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP.";
+/// R13 M5: S_py/S_go are lexical v1 — not a frozen soundness contract.
+pub const SOUND_PROMISE_OK: &str = "S satisfied. Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP. S_py/S_go scanners are conservative lexical v1 (not frozen).";
 pub const SOUND_PROMISE_DISABLED: &str =
     "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only.";
 

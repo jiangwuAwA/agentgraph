@@ -23,6 +23,10 @@ pub struct CollectResult {
     pub oversized_skipped: usize,
     /// Supported source files skipped by the noise-dir filter (testdata, …).
     pub noise_skipped: usize,
+    /// Paths skipped as oversized (mint S violations — R13 M3).
+    pub oversized_paths: Vec<String>,
+    /// Paths skipped as `.min.` bundles (mint S violations — R13 M3).
+    pub minified_paths: Vec<String>,
 }
 
 /// Walk the repo, respecting .gitignore, collecting supported source files.
@@ -47,6 +51,8 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
     let mut out = Vec::new();
     let mut oversized_skipped = 0usize;
     let mut noise_skipped = 0usize;
+    let mut oversized_paths = Vec::new();
+    let mut minified_paths = Vec::new();
     let walker = WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(true)
@@ -68,10 +74,16 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
         let rel = p_n.strip_prefix(&root_n).unwrap_or(path);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
 
-        if rel_str.starts_with(".agentgraph") || rel_str.contains(".min.") {
+        if rel_str.starts_with(".agentgraph") {
             continue;
         }
         let is_source = Language::from_path(&rel_str).is_some();
+        if rel_str.contains(".min.") {
+            if is_source {
+                minified_paths.push(rel_str);
+            }
+            continue;
+        }
         // Skip if any path segment is a noise dir — **count** source skips (R4 m).
         let noisy = rel_str.split('/').any(|seg| {
             matches!(
@@ -100,6 +112,7 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
             if meta.len() > 1_500_000 {
                 if is_source {
                     oversized_skipped += 1;
+                    oversized_paths.push(rel_str);
                 }
                 continue;
             }
@@ -123,5 +136,7 @@ pub fn collect_source_files_with_stats(root: &Path) -> Result<CollectResult> {
         files: out,
         oversized_skipped,
         noise_skipped,
+        oversized_paths,
+        minified_paths,
     })
 }

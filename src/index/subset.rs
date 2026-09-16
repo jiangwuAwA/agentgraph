@@ -178,6 +178,17 @@ fn scan_js(source: &str, lang: Language, path: &str, violations: &mut Vec<Subset
         );
         return;
     };
+    // R13 M2: ERROR recovery still yields a tree — fail-closed on has_error.
+    if tree.root_node().has_error() {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter ERROR nodes — cannot certify S",
+        );
+        return;
+    }
     walk_js(tree.root_node(), source, path, violations);
 }
 
@@ -372,6 +383,12 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 if last == "Function" || (is_ident && text == "Function") {
                     push_v(violations, path, line, "Function", &snippet);
                 }
+                // R13 C1: eval.call / Function.bind on the callee text.
+                if (last == "call" || last == "apply" || last == "bind")
+                    && (text.contains("eval") || text.contains("Function"))
+                {
+                    push_v(violations, path, line, "eval", &snippet);
+                }
                 if last == "Proxy" && kind == "new_expression" {
                     push_v(violations, path, line, "Proxy", &snippet);
                 }
@@ -549,7 +566,11 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 }
             }
         }
-        "assignment_expression" | "augmented_assignment_expression" | "variable_declarator" => {
+        "assignment_expression"
+        | "augmented_assignment_expression"
+        | "variable_declarator"
+        | "return_statement"
+        | "subscript_expression" => {
             // Monkey-patching / eval-Function aliasing (C1 R4).
             let t = snippet_at(source, node);
             if t.contains("prototype")
@@ -580,6 +601,19 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
             // R12 C2/C3: const P = Proxy; const R = Reflect;
             if looks_like_proxy_or_reflect_alias(&t) {
                 push_v(violations, path, line, "Proxy", &t.replace('\n', " "));
+            }
+            // R13 C4: const f = obj[k] — non-literal load of a call target.
+            if t.contains('[') && !t.contains("[\"") && !t.contains("['") {
+                let c: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+                if c.contains("=obj[") || c.contains("=this[") || c.contains("=globalThis[") {
+                    push_v(
+                        violations,
+                        path,
+                        line,
+                        "nonliteral_computed_key",
+                        &t.replace('\n', " "),
+                    );
+                }
             }
         }
         _ => {}
@@ -629,8 +663,19 @@ fn looks_like_proxy_or_reflect_alias(t: &str) -> bool {
 }
 
 /// Conservative: any binding that aliases eval/Function leaves S (R5 M6).
+/// R13: also .call/.apply/.bind wrappers and TS `as`/`!`/ternary passthrough.
 fn looks_like_eval_alias(t: &str) -> bool {
     let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    // Call-family: eval.call / Function.bind anywhere on the line.
+    if compact.contains("eval.call")
+        || compact.contains("eval.apply")
+        || compact.contains("eval.bind")
+        || compact.contains("Function.call")
+        || compact.contains("Function.apply")
+        || compact.contains("Function.bind")
+    {
+        return true;
+    }
     let Some((_, rhs)) = compact.split_once('=') else {
         return false;
     };
@@ -647,6 +692,10 @@ fn looks_like_eval_alias(t: &str) -> bool {
     if last == "eval" || last == "Function" {
         return true;
     }
+    // R13 C2: TS wrappers / ternary / await — any eval|Function token in RHS.
+    if js_rhs_mentions_eval_or_function(rhs) {
+        return true;
+    }
     // window.eval / globalThis["Function"] / window['eval']
     let tail = last.rsplit('.').next().unwrap_or(last);
     matches!(
@@ -656,6 +705,31 @@ fn looks_like_eval_alias(t: &str) -> bool {
         || tail.ends_with("[\"eval\"]")
         || tail.ends_with("['Function']")
         || tail.ends_with("[\"Function\"]")
+}
+
+/// True when RHS text contains eval/Function as an identifier token (wrappers OK).
+fn js_rhs_mentions_eval_or_function(rhs: &str) -> bool {
+    // Re-insert spaces around TS wrappers so tokens split (`evalasany` → `eval as any`).
+    let expanded = rhs
+        .replace("asany", " as any ")
+        .replace("satisfies", " satisfies ")
+        .replace("asunknown", " as unknown ")
+        .replace("asnever", " as never ");
+    let mut in_tok = false;
+    let mut tok = String::new();
+    for ch in expanded.chars() {
+        if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+            tok.push(ch);
+            in_tok = true;
+        } else {
+            if in_tok && (tok == "eval" || tok == "Function") {
+                return true;
+            }
+            tok.clear();
+            in_tok = false;
+        }
+    }
+    in_tok && (tok == "eval" || tok == "Function")
 }
 
 /// Drop whitespace that sits immediately before `(` so `eval (` matches `eval(`.
@@ -789,7 +863,11 @@ fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
             || no_comment.contains("import \"C\"")
             || no_comment.contains("import(`C`)")
             || no_comment.contains("\"C\"")
-            || no_comment.contains("`C`");
+            || no_comment.contains("`C`")
+            // R13 M4: import "unsafe" / aliased reflect.
+            || (no_comment.contains("import") && no_comment.contains("\"unsafe\""))
+            || (no_comment.contains("import") && no_comment.contains("\"reflect\""))
+            || (no_comment.contains("import") && no_comment.contains("`reflect`"));
         if cgo {
             push_v(violations, path, line_no, "go_cgo_linkname", t);
         }

@@ -377,7 +377,8 @@ ref {
 4. ~~启动 L1 规则引擎骨架 + 一条 TS DI 规则（TDD）。~~ **完成（M2/M3 规则面）**  
 5. ~~L2：`docs/sound-subset.md` 已起草；实现 `impact --sound` + 差分 harness（M4）。~~ **实验性落地**（含属性测试、多文件 ESM；S_py/S_go 为 v1 保守词法扫描）  
 6. ~~L3：TLA+ 增量模型（不挡发版）。~~ **收尾完成**：TLC 无错 + I1–I3 不变量 + **I4** 可执行小语言 containment（非 Lean）  
-7. ~~验收缺口：Py `__init_subclass__`、Go 接口/路由、框架向 corpus、Go 差分、版本 tag。~~ **完成**（见 eval-l1-real / l2_go_diff；Lean I4 仍在 formal/TODO.md）
+7. ~~验收缺口：Py `__init_subclass__`、Go 接口/路由、框架向 corpus、Go 差分、版本 tag。~~ **完成**（见 eval-l1-real / l2_go_diff；Lean I4 仍在 formal/TODO.md）  
+8. ~~大仓评测。~~ **完成（私有量化仓）**：`stock-trading-app` ~995 源文件 / 20k 符号 / 167k refs，full index ~39s；`order` callers L0 7→L1 24。见 [docs/eval-large-repo.md](docs/eval-large-repo.md)（源码不入库）
 
 ---
 

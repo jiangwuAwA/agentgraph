@@ -22,6 +22,7 @@ cargo test --test l1_eval -- --nocapture
 - Primary golden set in `fixtures/eval-l1` is **fixture-scale** (DI/event/getattr shapes).
 - Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
 - L1 edges remain **candidates** — never sound.
+- **Large private multi-language repo** (`stock-trading-app`) measured separately: [eval-large-repo.md](eval-large-repo.md).
 
 ## Results (this commit)
 

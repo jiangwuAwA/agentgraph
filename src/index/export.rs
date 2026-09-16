@@ -389,8 +389,17 @@ fn ensure_doc(
 /// First line is always `metaData`. resultSets are keyed by qualified symbol
 /// (path + qualified name), so `A.save` and `B.save` do not share a resultSet.
 pub fn export_lsif(store: &Store, root: &Path, out: &Path) -> Result<()> {
+    export_lsif_filtered(store, root, out, ConfidenceFilter::Default)
+}
+
+pub fn export_lsif_filtered(
+    store: &Store,
+    root: &Path,
+    out: &Path,
+    filter: ConfidenceFilter,
+) -> Result<()> {
     let symbols = store.all_symbols_for_export()?;
-    let refs = store.all_refs_for_export(ConfidenceFilter::Default)?;
+    let refs = store.all_refs_for_export(filter)?;
     let mut lines: Vec<String> = Vec::new();
     let mut next_id = 1u64;
     let by_bare = index_by_bare(&symbols);

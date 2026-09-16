@@ -532,6 +532,7 @@ impl Store {
         }
         if deleted {
             self.sid_dirty.set(true);
+            self.set_meta("sid_dirty", "1")?;
             // m8: callers/impact cache must not return rows for deleted files.
             self.cache.borrow_mut().clear();
         }
@@ -907,6 +908,7 @@ impl Store {
                 self.set_meta("dispatch_dirty", "0")?;
                 if created > 0 {
                     self.sid_dirty.set(true);
+                    self.set_meta("sid_dirty", "1")?;
                 }
                 Ok(created)
             }
@@ -1298,8 +1300,6 @@ impl Store {
         let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
-        // Raise fetch_cap so high-fan-in frontiers are not starved under small --limit (R4 m).
-        let fetch_cap = limit.saturating_mul(4).max(2000);
         let mut frontier: std::collections::VecDeque<(String, usize)> =
             std::collections::VecDeque::new();
         frontier.push_back((name.to_string(), 0));
@@ -1309,7 +1309,8 @@ impl Store {
             if d >= depth || out.len() >= limit {
                 continue;
             }
-            let refs = self.callers_uncached(&current, fetch_cap, filter)?;
+            // No SQL LIMIT before expansion (R5 M3): output limit ≠ frontier fetch.
+            let refs = self.callers_uncached_opt(&current, None, filter)?;
             for r in refs {
                 if out.len() >= limit {
                     break;

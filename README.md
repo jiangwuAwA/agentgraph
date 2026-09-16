@@ -101,7 +101,7 @@ Concurrent OpenAI-compatible labels; successes are persisted even if the run lat
 agentgraph watch --interval 5
 ```
 
-Polls a fingerprint (mtime nanos + size) and reindexes when sources change.
+Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the watcher fails. Reindexes changed source paths (path-scoped when possible).
 
 ## MCP server
 
@@ -109,7 +109,7 @@ Polls a fingerprint (mtime nanos + size) and reindexes when sources change.
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`.
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

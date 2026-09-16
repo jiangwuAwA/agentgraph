@@ -469,23 +469,34 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
     }
 }
 
-/// Conservative: any binding that aliases eval/Function leaves S.
+/// Conservative: any binding that aliases eval/Function leaves S (R5 M6).
 fn looks_like_eval_alias(t: &str) -> bool {
     let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
-    // e=eval / e=Function / e=globalThis.eval / e=window.Function / e=global.eval
-    let ends = [
-        "=eval",
-        "=Function",
-        "=globalThis.eval",
-        "=globalThis.Function",
-        "=window.eval",
-        "=window.Function",
-        "=global.eval",
-        "=global.Function",
-        "=this.eval",
-        "=this.Function",
-    ];
-    ends.iter().any(|s| compact.ends_with(s))
+    let Some((_, rhs)) = compact.split_once('=') else {
+        return false;
+    };
+    let mut s = rhs;
+    // Unwrap (…), including (0, eval)
+    loop {
+        if s.len() >= 2 && s.starts_with('(') && s.ends_with(')') {
+            s = &s[1..s.len() - 1];
+        } else {
+            break;
+        }
+    }
+    let last = s.rsplit(',').next().unwrap_or(s);
+    if last == "eval" || last == "Function" {
+        return true;
+    }
+    // window.eval / globalThis["Function"] / window['eval']
+    let tail = last.rsplit('.').next().unwrap_or(last);
+    matches!(
+        tail,
+        "eval" | "Function" | "['eval']" | "[\"eval\"]" | "['Function']" | "[\"Function\"]"
+    ) || tail.ends_with("['eval']")
+        || tail.ends_with("[\"eval\"]")
+        || tail.ends_with("['Function']")
+        || tail.ends_with("[\"Function\"]")
 }
 
 /// Drop whitespace that sits immediately before `(` so `eval (` matches `eval(`.
@@ -631,6 +642,21 @@ mod tests {
     fn exact_is_always_sound() {
         assert!(is_sound_eligible(Confidence::Exact, None));
         assert_eq!(SoundClass::of(Confidence::Exact, None), SoundClass::Sound);
+    }
+
+    #[test]
+    fn eval_alias_forms() {
+        for t in [
+            "e = eval",
+            "e = (eval)",
+            "e = (0, eval)",
+            "e = window['eval']",
+            "F = globalThis[\"Function\"]",
+        ] {
+            assert!(looks_like_eval_alias(t), "should flag {t}");
+        }
+        assert!(!looks_like_eval_alias("e = 1"));
+        assert!(!looks_like_eval_alias("eval = e"));
     }
 
     #[test]

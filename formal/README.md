@@ -14,7 +14,7 @@ Research / quality-gate track. **Does not block releases.**
 
 ## Running TLC
 
-Requires Java 17+ and `tla2tools.jar` (not committed; ~4.5 MB):
+Requires Java 17+ and `tla2tools.jar` (downloaded locally under `formal/tools/`; gitignored — not a shipped proof artifact).
 
 ```bash
 # download once

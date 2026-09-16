@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::index::{llm, Indexer};
 use crate::model::ConfidenceFilter;
-use crate::query::{parse_confidence_flags, parse_query_flags, Query};
+use crate::query::{parse_query_flags, Query};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -116,6 +116,9 @@ pub enum Commands {
         /// Also export DynamicCandidate edges (default excludes them)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
+        /// Prefer recall: same as --include-dynamic (怕漏时导出更宽窗口)
+        #[arg(long, default_value_t = false)]
+        recall: bool,
     },
     /// Run as an MCP server over stdio
     Mcp,
@@ -332,12 +335,13 @@ pub fn run(cli: Cli) -> Result<()> {
             out,
             exact_only,
             include_dynamic,
+            recall,
         } => {
             let mut store = indexer.open_store()?;
             store.ensure_indexed()?;
             // perf-plan P0-4: never export stale sid links.
             store.ensure_sids_for_export()?;
-            let filter = parse_confidence_flags(exact_only, include_dynamic);
+            let filter = parse_query_flags(exact_only, include_dynamic, recall);
             match format.as_str() {
                 "scip" => {
                     crate::index::export::export_scip_filtered(&store, &indexer.root, &out, filter)?
@@ -348,7 +352,9 @@ pub fn run(cli: Cli) -> Result<()> {
                     &out,
                     filter,
                 )?,
-                "lsif" => crate::index::export::export_lsif(&store, &indexer.root, &out)?,
+                "lsif" => {
+                    crate::index::export::export_lsif_filtered(&store, &indexer.root, &out, filter)?
+                }
                 other => bail!("unknown export format: {other}"),
             }
             println!("wrote {format} → {}", out.display());

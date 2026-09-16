@@ -108,6 +108,19 @@ fn s_js_eval_alias_leaves_s() {
 }
 
 #[test]
+fn s_js_eval_alias_paren_and_subscript_leave_s() {
+    for src in [
+        "const e = (eval);\n",
+        "const e = (0, eval);\n",
+        "const e = window['eval'];\n",
+        "const F = globalThis[\"Function\"];\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/a.js");
+        assert!(!r.in_subset, "must leave S: {src:?} → {:?}", r.violations);
+    }
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

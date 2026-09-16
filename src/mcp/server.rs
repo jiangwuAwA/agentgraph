@@ -362,9 +362,9 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         "mode": "sound",
                         "subset_ok": subset_ok,
                         "promise": if subset_ok {
-                            "No S violations. Edges are sound-eligible *reference* candidates (Exact calls + allowlisted DI/event registrations + finite-domain string keys). This is NOT a proven runtime call-graph over-approx; registration≠dispatch."
+                            SOUND_PROMISE_OK
                         } else {
-                            "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only."
+                            SOUND_PROMISE_DISABLED
                         },
                         "subset_violations": violations,
                         "callers": mapped,

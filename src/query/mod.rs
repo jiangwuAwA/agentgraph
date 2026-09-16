@@ -78,3 +78,36 @@ pub fn parse_query_flags(
         ConfidenceFilter::Default
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_only_wins_over_recall() {
+        assert_eq!(
+            parse_query_flags(true, true, true),
+            ConfidenceFilter::ExactOnly
+        );
+    }
+
+    #[test]
+    fn recall_aliases_include_dynamic() {
+        assert_eq!(
+            parse_query_flags(false, false, true),
+            ConfidenceFilter::IncludeDynamic
+        );
+        assert_eq!(
+            parse_query_flags(false, true, false),
+            ConfidenceFilter::IncludeDynamic
+        );
+    }
+
+    #[test]
+    fn default_is_exact_plus_heuristic() {
+        assert_eq!(
+            parse_query_flags(false, false, false),
+            ConfidenceFilter::Default
+        );
+    }
+}

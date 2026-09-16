@@ -402,12 +402,11 @@ fn e2e_mcp_callers_sound_flag() {
                         .expect("callers sound payload json");
                 assert_eq!(payload["mode"], "sound");
                 assert_eq!(payload["subset_ok"], true);
-                assert!(
-                    payload["promise"]
-                        .as_str()
-                        .map(|s| s.contains("sound-eligible"))
-                        .unwrap_or(false),
-                    "promise shape must match CLI: {payload}"
+                let promise = payload["promise"].as_str().unwrap_or("");
+                assert_eq!(
+                    promise,
+                    agentgraph::mcp::server::SOUND_PROMISE_OK,
+                    "MCP callers promise must equal shared SOUND_PROMISE_OK: {payload}"
                 );
                 assert!(payload["callers"].is_array());
                 saw_sound = true;

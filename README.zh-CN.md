@@ -97,7 +97,7 @@ agentgraph enrich --limit 50
 agentgraph watch --interval 5
 ```
 
-按指纹（mtime 纳秒 + 文件大小）轮询，源码变化后自动 reindex。
+优先 **fsnotify** + 防抖；失败时回退轮询（mtime 纳秒 + 大小）。尽量路径级增量 reindex。
 
 ## MCP 服务器
 
@@ -105,7 +105,7 @@ agentgraph watch --interval 5
 agentgraph --root /path/to/repo mcp
 ```
 
-工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`。
+工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）。
 
 **安全：** 每次调用的 `root` 默认限制在服务器启动时的根目录内；需显式设置 `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1` 才可越界。
 

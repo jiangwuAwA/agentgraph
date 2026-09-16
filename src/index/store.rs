@@ -1135,25 +1135,31 @@ impl Store {
             std::collections::HashMap::new();
         let mut ambiguous: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
-        // Factory names with >1 function symbol cannot be typed by name alone
-        // (even when only one of them has a return_type annotation).
-        let mut multi_fn_names: std::collections::HashSet<String> =
+        // Factory names with >1 function symbol in the **same package dir** (R10 C4).
+        let mut multi_fn_names: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
         {
-            let mut stmt = self.conn.prepare(
-                "SELECT name FROM symbols
-                 WHERE kind = 'function'
-                 GROUP BY name
-                 HAVING COUNT(*) > 1",
-            )?;
-            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT name, path FROM symbols WHERE kind = 'function'")?;
+            let rows =
+                stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            let mut counts: std::collections::HashMap<(String, String), usize> =
+                std::collections::HashMap::new();
             for n in rows {
-                multi_fn_names.insert(n?);
+                let (name, path) = n?;
+                let dir = package_dir_of(&path);
+                *counts.entry((dir, name)).or_default() += 1;
+            }
+            for ((dir, name), c) in counts {
+                if c > 1 {
+                    multi_fn_names.insert((dir, name));
+                }
             }
         }
         {
             let mut stmt = self.conn.prepare(
-                "SELECT r.path, r.name, s.return_type, r.module
+                "SELECT r.path, r.name, s.return_type, r.module, s.path
                  FROM refs r
                  JOIN symbols s ON s.name = r.module AND s.kind = 'function'
                  WHERE r.kind = 'define' AND r.module IS NOT NULL
@@ -1165,12 +1171,17 @@ impl Store {
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
                 ))
             })?;
             for row in rows {
-                let (path, var, ty, module) = row?;
+                let (path, var, ty, module, sym_path) = row?;
+                // R10 C4: only same-package (directory) factories may type a define.
+                if package_dir_of(&path) != package_dir_of(&sym_path) {
+                    continue;
+                }
                 let key = (path, var);
-                if multi_fn_names.contains(&module) {
+                if multi_fn_names.contains(&(package_dir_of(&sym_path), module.clone())) {
                     map.remove(&key);
                     ambiguous.insert(key);
                     continue;
@@ -1235,11 +1246,20 @@ impl Store {
                     Some(ty) if !ambiguous.contains(&key) => {
                         if ty != &cur {
                             reup.execute(params![ty, id])?;
+                            // R10 M3: qualifier change invalidates sid links.
+                            self.conn.execute(
+                                "UPDATE refs SET resolved_symbol_id = NULL WHERE id = ?1",
+                                params![id],
+                            )?;
                             revoked += 1;
                         }
                     }
                     _ => {
                         restore.execute(params![pre, id])?;
+                        self.conn.execute(
+                            "UPDATE refs SET resolved_symbol_id = NULL WHERE id = ?1",
+                            params![id],
+                        )?;
                         revoked += 1;
                     }
                 }
@@ -1280,6 +1300,12 @@ impl Store {
                     }
                 }
             }
+        }
+        if revoked > 0 || updated > 0 {
+            // R10 M3/M4: sid links and query cache must follow qualifier rewrites.
+            self.sid_dirty.set(true);
+            self.set_meta("sid_dirty", "1")?;
+            self.cache.borrow_mut().clear();
         }
         Ok(updated + revoked)
     }
@@ -1655,6 +1681,14 @@ impl Store {
 
 fn last_segment(s: &str) -> String {
     s.rsplit(['.', ':']).next().unwrap_or(s).to_string()
+}
+
+/// Directory of a repo-relative path (Go package approximation). Root files → "".
+fn package_dir_of(path: &str) -> String {
+    match path.rsplit_once('/') {
+        Some((dir, _)) => dir.to_string(),
+        None => String::new(),
+    }
 }
 
 /// Minimal identifier quoting for SAVEPOINT names (alphanumeric + underscore only).

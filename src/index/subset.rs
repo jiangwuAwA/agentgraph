@@ -316,7 +316,8 @@ fn line_getattr_is_s_safe(compact_line: &str) -> bool {
 }
 
 /// True when the call's single argument is a plain `string` node (static module specifier).
-fn static_module_specifier(args: Option<Node>) -> bool {
+/// data:/blob: URLs are **not** static — body is not indexed (R10 C3).
+fn static_module_specifier(args: Option<Node>, source: &str) -> bool {
     let Some(args) = args else {
         return false;
     };
@@ -328,7 +329,12 @@ fn static_module_specifier(args: Option<Node>) -> bool {
     if named.next().is_some() {
         return false;
     }
-    first.kind() == "string"
+    if first.kind() != "string" {
+        return false;
+    }
+    let text = source.get(first.byte_range()).unwrap_or("");
+    let low = text.to_ascii_lowercase();
+    !(low.contains("data:") || low.contains("blob:"))
 }
 
 fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
@@ -369,6 +375,14 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 if last == "Proxy" && kind == "new_expression" {
                     push_v(violations, path, line, "Proxy", &snippet);
                 }
+                // Proxy.revocable(...) — same metaprogramming escape (R10 M2).
+                if last == "revocable" && text.contains("Proxy") {
+                    push_v(violations, path, line, "Proxy", &snippet);
+                }
+                // constructor.constructor === Function (R10 C2).
+                if text.contains("constructor.constructor") {
+                    push_v(violations, path, line, "Function", &snippet);
+                }
                 // Reflect.* — left S.
                 if text == "Reflect" || text.starts_with("Reflect.") || last == "Reflect" {
                     push_v(violations, path, line, "Reflect", &snippet);
@@ -380,7 +394,7 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 let is_dyn_import = unwrapped.kind() == "import";
                 if is_require || is_dyn_import {
                     let args = node.child_by_field_name("arguments");
-                    if !static_module_specifier(args) {
+                    if !static_module_specifier(args, source) {
                         let kind_s = if is_require {
                             "require_dynamic"
                         } else {
@@ -555,6 +569,10 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
             if looks_like_eval_alias(&t) {
                 push_v(violations, path, line, "eval_alias", &t.replace('\n', " "));
             }
+            // R10 C2: constructor.constructor === Function
+            if t.contains("constructor.constructor") {
+                push_v(violations, path, line, "Function", &t.replace('\n', " "));
+            }
         }
         _ => {}
     }
@@ -648,8 +666,23 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
             || compact.contains("attrgetter(")
             || compact.contains("attrgetter")
             || compact.contains("__getattribute__")
+            || compact.contains("methodcaller")
+            || compact.contains("FunctionType")
+            || compact.contains("__dict__[")
+            || compact.contains("compile(")
         {
             push_v(violations, path, line_no, "py_dynamic_attr", t);
+        }
+        // R10 C1: eval/exec/__import__ bare-identifier alias (no call paren).
+        if compact.contains("=eval")
+            || compact.contains("=exec")
+            || compact.contains("=__import__")
+            || compact.contains("importeval")
+            || t.split_whitespace().any(|w| {
+                matches!(w, "eval" | "exec" | "__import__") && !t.contains(&format!("{w}("))
+            })
+        {
+            push_v(violations, path, line_no, "py_eval_alias", t);
         }
         if (compact.contains("vars(")
             || compact.contains("globals(")
@@ -693,6 +726,10 @@ fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
     for (idx, raw_line) in source.lines().enumerate() {
         let line_no = idx + 1;
         let t = raw_line.trim();
+        // R10 M5: cgo and //go:linkname invent edges (check before // skip).
+        if t.contains("import \"C\"") || t.contains("go:linkname") {
+            push_v(violations, path, line_no, "go_cgo_linkname", t);
+        }
         if t.starts_with("//") {
             continue;
         }

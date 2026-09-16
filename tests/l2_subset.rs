@@ -233,6 +233,34 @@ fn py_literal_import_module_stays_in_s() {
 }
 
 #[test]
+fn js_constructor_constructor_leaves_s() {
+    let src = "const F = ({}).constructor.constructor;\nF('return 1')();\n";
+    let r = scan_subset(src, Language::JavaScript, "src/cc.js");
+    assert!(!r.in_subset, "constructor.constructor: {:?}", r.violations);
+}
+
+#[test]
+fn js_data_url_import_leaves_s() {
+    let src = "await import('data:text/javascript,export const x=1');\n";
+    let r = scan_subset(src, Language::JavaScript, "src/data.js");
+    assert!(!r.in_subset, "data: import: {:?}", r.violations);
+}
+
+#[test]
+fn py_eval_alias_bare_leaves_s() {
+    let src = "e = eval\ne('pass')\n";
+    let r = scan_subset(src, Language::Python, "src/e.py");
+    assert!(!r.in_subset, "eval alias: {:?}", r.violations);
+}
+
+#[test]
+fn go_cgo_linkname_leaves_s() {
+    let src = "package main\n//go:linkname f runtime.f\nfunc f()\n";
+    let r = scan_subset(src, Language::Go, "main.go");
+    assert!(!r.in_subset, "linkname: {:?}", r.violations);
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

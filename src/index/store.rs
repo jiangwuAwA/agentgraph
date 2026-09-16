@@ -415,7 +415,7 @@ impl Store {
     ) -> Result<()> {
         self.cache.borrow_mut().clear();
         self.sid_dirty.set(true);
-        // Derived dispatch edges may be stale until link_event_dispatch runs.
+        self.set_meta("sid_dirty", "1")?;
         self.set_meta("dispatch_dirty", "1")?;
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
         let mut old_desc: HashMap<String, String> = HashMap::new();
@@ -812,11 +812,13 @@ impl Store {
         Ok(n)
     }
 
-    /// Load process-local sid_dirty from meta (restart safety).
+    /// Merge process-local flag with persisted meta (never clear an in-memory dirty).
     pub fn load_sid_dirty(&self) -> Result<bool> {
-        let v = self.get_meta("sid_dirty")?.as_deref() == Some("1");
-        self.sid_dirty.set(v);
-        Ok(v)
+        let persisted = self.get_meta("sid_dirty")?.as_deref() == Some("1");
+        if persisted {
+            self.sid_dirty.set(true);
+        }
+        Ok(self.sid_dirty.get())
     }
 
     /// L2 production S-sound: pair `emit(evt)` sites with `on(evt, handler)`

@@ -261,6 +261,42 @@ fn go_cgo_linkname_leaves_s() {
 }
 
 #[test]
+fn js_constructor_subscript_chain_leaves_s() {
+    for src in [
+        "const F = {}['constructor']['constructor'];\n",
+        "const F = {}.constructor['constructor'];\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/c.js");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
+fn js_proxy_revocable_alias_leaves_s() {
+    let src = "const { revocable } = Proxy;\nrevocable({}, {});\n";
+    let r = scan_subset(src, Language::JavaScript, "src/pr.js");
+    assert!(!r.in_subset, "revocable alias: {:?}", r.violations);
+}
+
+#[test]
+fn py_paren_eval_and_builtins_getattr_leave_s() {
+    for src in [
+        "e = (eval)\n",
+        "import builtins\ne = getattr(builtins, 'eval')\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "src/e.py");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
+fn go_cgo_import_block_leaves_s() {
+    let src = "package main\nimport (\n\t\"C\"\n)\nfunc main() {}\n";
+    let r = scan_subset(src, Language::Go, "main.go");
+    assert!(!r.in_subset, "cgo block: {:?}", r.violations);
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

@@ -375,12 +375,12 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 if last == "Proxy" && kind == "new_expression" {
                     push_v(violations, path, line, "Proxy", &snippet);
                 }
-                // Proxy.revocable(...) — same metaprogramming escape (R10 M2).
-                if last == "revocable" && text.contains("Proxy") {
+                // Proxy.revocable / bare revocable aliases (R11 M2).
+                if last == "revocable" || text.contains("revocable") {
                     push_v(violations, path, line, "Proxy", &snippet);
                 }
-                // constructor.constructor === Function (R10 C2).
-                if text.contains("constructor.constructor") {
+                // constructor ×2 or ['constructor'] === Function (R10 C2 + R11).
+                if js_text_is_constructor_chain(&text) {
                     push_v(violations, path, line, "Function", &snippet);
                 }
                 // Reflect.* — left S.
@@ -570,8 +570,12 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 push_v(violations, path, line, "eval_alias", &t.replace('\n', " "));
             }
             // R10 C2: constructor.constructor === Function
-            if t.contains("constructor.constructor") {
+            if js_text_is_constructor_chain(&t) {
                 push_v(violations, path, line, "Function", &t.replace('\n', " "));
+            }
+            // R11 M2: Proxy.revocable alias
+            if t.contains("revocable") {
+                push_v(violations, path, line, "Proxy", &t.replace('\n', " "));
             }
         }
         _ => {}
@@ -580,6 +584,20 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
     for child in node.children(&mut cursor) {
         walk_js(child, source, path, violations);
     }
+}
+
+/// True when text encodes a Function-via-constructor chain (dotted or subscript).
+fn js_text_is_constructor_chain(text: &str) -> bool {
+    let compact: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let hits = compact.matches("constructor").count();
+    if hits >= 2 {
+        return true;
+    }
+    compact.contains("['constructor']") || compact.contains("[\"constructor\"]")
 }
 
 /// Conservative: any binding that aliases eval/Function leaves S (R5 M6).
@@ -674,11 +692,21 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
             push_v(violations, path, line_no, "py_dynamic_attr", t);
         }
         // R10 C1: eval/exec/__import__ bare-identifier alias (no call paren).
-        if compact.contains("=eval")
-            || compact.contains("=exec")
-            || compact.contains("=__import__")
-            || compact.contains("importeval")
+        // R11: also `e = (eval)` after stripping parens; builtins getattr('eval').
+        let evalish = compact
+            .chars()
+            .filter(|c| *c != '(' && *c != ')')
+            .collect::<String>();
+        if evalish.contains("=eval")
+            || evalish.contains("=exec")
+            || evalish.contains("=__import__")
+            || (compact.contains("getattr(")
+                && (compact.contains("'eval'")
+                    || compact.contains("\"eval\"")
+                    || compact.contains("'exec'")
+                    || compact.contains("\"exec\"")))
             || t.split_whitespace().any(|w| {
+                let w = w.trim_matches(|c| c == '(' || c == ')' || c == ',');
                 matches!(w, "eval" | "exec" | "__import__") && !t.contains(&format!("{w}("))
             })
         {
@@ -727,7 +755,13 @@ fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         let line_no = idx + 1;
         let t = raw_line.trim();
         // R10 M5: cgo and //go:linkname invent edges (check before // skip).
-        if t.contains("import \"C\"") || t.contains("go:linkname") {
+        // R11: also import ( "C" ) block form — a line that is only "C".
+        let cgo_line = t.trim();
+        if t.contains("import \"C\"")
+            || t.contains("go:linkname")
+            || cgo_line == "\"C\""
+            || cgo_line == "`C`"
+        {
             push_v(violations, path, line_no, "go_cgo_linkname", t);
         }
         if t.starts_with("//") {

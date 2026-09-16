@@ -279,6 +279,8 @@ impl Indexer {
                 }
                 Err(f) => {
                     eprintln!("parse fail {}: {}", f.rel, f.reason);
+                    // R12 M3: failed parse must not leave stale empty violations.
+                    store.record_parse_error(&f.rel, &f.reason)?;
                     failed_parse += 1;
                 }
             }

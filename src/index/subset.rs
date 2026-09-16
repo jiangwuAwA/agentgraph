@@ -577,6 +577,10 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
             if t.contains("revocable") {
                 push_v(violations, path, line, "Proxy", &t.replace('\n', " "));
             }
+            // R12 C2/C3: const P = Proxy; const R = Reflect;
+            if looks_like_proxy_or_reflect_alias(&t) {
+                push_v(violations, path, line, "Proxy", &t.replace('\n', " "));
+            }
         }
         _ => {}
     }
@@ -586,18 +590,42 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
     }
 }
 
-/// True when text encodes a Function-via-constructor chain (dotted or subscript).
+/// True when text encodes a Function-via-constructor access (any hop — R12 C1).
+/// Over-flags `this.constructor` on purpose: S purity > recall.
 fn js_text_is_constructor_chain(text: &str) -> bool {
     let compact: String = text
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>()
         .to_ascii_lowercase();
-    let hits = compact.matches("constructor").count();
-    if hits >= 2 {
-        return true;
+    compact.contains(".constructor")
+        || compact.contains("['constructor']")
+        || compact.contains("[\"constructor\"]")
+        || compact.contains("constructor.constructor")
+}
+
+/// Proxy / Reflect identity aliases leave S (R12 C2/C3).
+fn looks_like_proxy_or_reflect_alias(t: &str) -> bool {
+    let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    let Some((_, rhs)) = compact.split_once('=') else {
+        return false;
+    };
+    let mut s = rhs;
+    loop {
+        if s.len() >= 2 && s.starts_with('(') && s.ends_with(')') {
+            s = &s[1..s.len() - 1];
+        } else {
+            break;
+        }
     }
-    compact.contains("['constructor']") || compact.contains("[\"constructor\"]")
+    let last = s.rsplit(',').next().unwrap_or(s);
+    let tail = last.rsplit('.').next().unwrap_or(last);
+    matches!(last, "Proxy" | "Reflect")
+        || matches!(tail, "Proxy" | "Reflect")
+        || tail.ends_with("['Proxy']")
+        || tail.ends_with("[\"Proxy\"]")
+        || tail.ends_with("['Reflect']")
+        || tail.ends_with("[\"Reflect\"]")
 }
 
 /// Conservative: any binding that aliases eval/Function leaves S (R5 M6).
@@ -691,24 +719,25 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
         {
             push_v(violations, path, line_no, "py_dynamic_attr", t);
         }
-        // R10 C1: eval/exec/__import__ bare-identifier alias (no call paren).
-        // R11: also `e = (eval)` after stripping parens; builtins getattr('eval').
+        // R10 C1 / R12 C4: eval/exec/__import__ aliases and wrappers.
         let evalish = compact
             .chars()
-            .filter(|c| *c != '(' && *c != ')')
+            .filter(|c| !matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | ',' | '\'' | '"'))
             .collect::<String>();
+        let has_bare_eval = t
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .any(|w| matches!(w, "eval" | "exec" | "__import__"));
         if evalish.contains("=eval")
             || evalish.contains("=exec")
             || evalish.contains("=__import__")
+            || compact.contains(".eval")
+            || compact.contains(".exec")
             || (compact.contains("getattr(")
                 && (compact.contains("'eval'")
                     || compact.contains("\"eval\"")
                     || compact.contains("'exec'")
                     || compact.contains("\"exec\"")))
-            || t.split_whitespace().any(|w| {
-                let w = w.trim_matches(|c| c == '(' || c == ')' || c == ',');
-                matches!(w, "eval" | "exec" | "__import__") && !t.contains(&format!("{w}("))
-            })
+            || has_bare_eval && !t.contains("eval(") && !t.contains("exec(")
         {
             push_v(violations, path, line_no, "py_eval_alias", t);
         }
@@ -754,14 +783,14 @@ fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
     for (idx, raw_line) in source.lines().enumerate() {
         let line_no = idx + 1;
         let t = raw_line.trim();
-        // R10 M5: cgo and //go:linkname invent edges (check before // skip).
-        // R11: also import ( "C" ) block form — a line that is only "C".
-        let cgo_line = t.trim();
-        if t.contains("import \"C\"")
-            || t.contains("go:linkname")
-            || cgo_line == "\"C\""
-            || cgo_line == "`C`"
-        {
+        // R10 M5 / R12 C5: cgo and //go:linkname (strip comments; any "C" import form).
+        let no_comment = t.split("//").next().unwrap_or(t).trim();
+        let cgo = t.contains("go:linkname")
+            || no_comment.contains("import \"C\"")
+            || no_comment.contains("import(`C`)")
+            || no_comment.contains("\"C\"")
+            || no_comment.contains("`C`");
+        if cgo {
             push_v(violations, path, line_no, "go_cgo_linkname", t);
         }
         if t.starts_with("//") {

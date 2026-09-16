@@ -1310,6 +1310,32 @@ impl Store {
         Ok(updated + revoked)
     }
 
+    /// Parse/extract failed: keep path with a parse_error S violation (R12 M3).
+    pub fn record_parse_error(&mut self, path: &str, reason: &str) -> Result<()> {
+        self.cache.borrow_mut().clear();
+        self.sid_dirty.set(true);
+        self.set_meta("sid_dirty", "1")?;
+        self.set_meta("dispatch_dirty", "1")?;
+        self.conn
+            .execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM refs WHERE path = ?1", params![path])?;
+        self.conn.execute(
+            "DELETE FROM subset_violations WHERE path = ?1",
+            params![path],
+        )?;
+        self.conn.execute(
+            "INSERT INTO files(path, hash, language, mtime_ns, size) VALUES(?1, 'parse-error', 'unknown', 0, 0)
+             ON CONFLICT(path) DO UPDATE SET hash = 'parse-error'",
+            params![path],
+        )?;
+        self.conn.execute(
+            "INSERT INTO subset_violations(path, kind, line, snippet) VALUES(?1, 'parse_error', 1, ?2)",
+            params![path, reason.chars().take(200).collect::<String>()],
+        )?;
+        Ok(())
+    }
+
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence

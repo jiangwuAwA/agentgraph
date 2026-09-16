@@ -297,6 +297,43 @@ fn go_cgo_import_block_leaves_s() {
 }
 
 #[test]
+fn js_object_constructor_single_hop_leaves_s() {
+    let src = "const F = Object.constructor;\nF('return 1')();\n";
+    let r = scan_subset(src, Language::JavaScript, "src/oc.js");
+    assert!(!r.in_subset, "Object.constructor: {:?}", r.violations);
+}
+
+#[test]
+fn js_proxy_reflect_alias_leaves_s() {
+    for src in [
+        "const P = Proxy;\nnew P({}, {});\n",
+        "const R = Reflect;\nR.construct(Function, []);\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/a.js");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
+fn py_builtins_eval_member_leaves_s() {
+    let src = "import builtins\ne = builtins.eval\n";
+    let r = scan_subset(src, Language::Python, "src/b.py");
+    assert!(!r.in_subset, "builtins.eval: {:?}", r.violations);
+}
+
+#[test]
+fn go_cgo_comment_alias_forms_leave_s() {
+    for src in [
+        "package main\nimport (\n\t\"C\" // cgo\n)\n",
+        "package main\nimport (\n\t_ \"C\"\n)\n",
+        "package main\nimport  \"C\"\n",
+    ] {
+        let r = scan_subset(src, Language::Go, "main.go");
+        assert!(!r.in_subset, "must leave S: {src:?} {:?}", r.violations);
+    }
+}
+
+#[test]
 fn s_js_eval_is_violation() {
     let src = r#"export function evil(x) { return eval(x); }"#;
     let report = scan_subset(src, Language::TypeScript, "src/evil.ts");

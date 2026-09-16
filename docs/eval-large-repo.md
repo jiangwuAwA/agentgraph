@@ -47,4 +47,4 @@ Not fully golden-labeled on the private tree. Spot-check: clean Rust modules wit
 ## Follow-ups
 
 - Wire a CI job only if a **public** slice can be published.
-- Incremental index ~21 s on ~1k files is a perf smell (mtime walk + full hash); profile before claiming &lt;50 ms query SLO on this size.
+- Incremental index ~21 s on ~1k files is a perf smell — **plan:** [perf-plan.md](perf-plan.md) (P0: mtime short-circuit, early-out, incremental sid, batch qualifiers).

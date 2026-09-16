@@ -300,9 +300,7 @@ fn ts_call_rules(
         let mut n = fn_node;
         while n.kind() == "parenthesized_expression" {
             let mut c = n.walk();
-            let Some(inner) = n.children(&mut c).find(|x| !matches!(x.kind(), "(" | ")")) else {
-                return None;
-            };
+            let inner = n.children(&mut c).find(|x| !matches!(x.kind(), "(" | ")"))?;
             n = inner;
         }
         if n.kind() == "subscript_expression" {

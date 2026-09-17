@@ -382,6 +382,13 @@ impl Indexer {
         let mut failed_read = 0usize;
         let mut deleted: Vec<String> = Vec::new();
 
+        // Directory lifecycle (rename / copy-in): event paths may be folders with
+        // no source extension. Scoped index cannot see children by path alone —
+        // fall back to a full reindex so new locations are picked up.
+        if paths.iter().any(|p| p.is_dir()) {
+            return self.index(false);
+        }
+
         for path in paths {
             // Canonicalize then strip UNC so strip_prefix matches Indexer::new (R6 M2 + R7).
             let cand_canon = path.canonicalize().unwrap_or_else(|_| path.clone());
@@ -651,7 +658,12 @@ impl Indexer {
 }
 
 /// True if the fs event touches a supported source file under `root`.
+///
+/// Also accepts Remove / rename (ModifyKind::Name) of non-source paths under
+/// root: Windows/notify often reports a **directory** path with no extension
+/// when a tree is deleted or renamed. Filtering those out left a stale graph.
 fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
+    use notify::event::ModifyKind;
     use notify::EventKind;
     if !matches!(
         ev.kind,
@@ -659,6 +671,9 @@ fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
     ) {
         return false;
     }
+    // Remove or rename: path may be a directory that still needs prune/full walk.
+    let dir_lifecycle = matches!(ev.kind, EventKind::Remove(_))
+        || matches!(ev.kind, EventKind::Modify(ModifyKind::Name(_)));
     ev.paths.iter().any(|p| {
         // Normalize UNC prefixes so `\\?\C:\...` event paths still match root.
         let p_n = parser::normalize_root(p);
@@ -671,6 +686,12 @@ fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
         if s.contains("/.agentgraph/") || s.contains("/.agentgraph") {
             return false;
         }
-        Language::from_path(&s).is_some()
+        if Language::from_path(&s).is_some() {
+            return true;
+        }
+        // Extensionless Remove/rename under root is likely a directory (or a
+        // rename of one). Source files with other extensions already matched
+        // above; non-source files (README.md, images) stay filtered.
+        dir_lifecycle && std::path::Path::new(&*s).extension().is_none()
     })
 }

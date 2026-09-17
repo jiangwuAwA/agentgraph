@@ -1009,6 +1009,11 @@ fn walk_go(
                 }
             }
         }
+        "type_case" => {
+            // `case Cat:` / `case *Cat:` / `case pkg.Cat:` — type names used by a
+            // type switch are real impact sites for those types.
+            go_type_case_refs(node, source, local_parent.clone(), references, ctx);
+        }
         "import_declaration" => {
             let line = ctx.lines.line_of(node.start_byte());
             go_collect_imports(node, source, ctx, local_parent.clone(), references, line);
@@ -1050,6 +1055,94 @@ fn go_receiver_type(node: Node, source: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Go builtins — type-switch cases like `case string:` must not mint noise refs.
+fn is_go_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "string"
+            | "bool"
+            | "byte"
+            | "rune"
+            | "error"
+            | "any"
+            | "int"
+            | "int8"
+            | "int16"
+            | "int32"
+            | "int64"
+            | "uint"
+            | "uint8"
+            | "uint16"
+            | "uint32"
+            | "uint64"
+            | "uintptr"
+            | "float32"
+            | "float64"
+            | "complex64"
+            | "complex128"
+            | "comparable"
+    )
+}
+
+/// Collect type names from a `type_case` (before the `:`).
+fn go_type_case_refs(
+    node: Node,
+    source: &str,
+    parent: Option<String>,
+    references: &mut Vec<ExtractedRef>,
+    ctx: &ExtractContext,
+) {
+    let line = ctx.lines.line_of(node.start_byte());
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        let k = child.kind();
+        if k == ":" {
+            break;
+        }
+        if k == "case" {
+            continue;
+        }
+        match k {
+            "type_identifier" => {
+                let name = node_text(child, source).to_string();
+                if !name.is_empty() && !is_go_builtin_type(&name) {
+                    push_call_q(references, name, None, line, parent.clone());
+                }
+            }
+            "qualified_type" => {
+                let mut q = child.walk();
+                let mut name = None;
+                let mut pkg = None;
+                for c in child.children(&mut q) {
+                    match c.kind() {
+                        "type_identifier" => name = Some(node_text(c, source).to_string()),
+                        "package_identifier" => pkg = Some(node_text(c, source).to_string()),
+                        _ => {}
+                    }
+                }
+                if let Some(n) = name {
+                    if !n.is_empty() && !is_go_builtin_type(&n) {
+                        push_call_q(references, n, pkg, line, parent.clone());
+                    }
+                }
+            }
+            _ if k.ends_with("_type") => {
+                // pointer_type / slice_type / array_type / map_type
+                let mut inner = child.walk();
+                for c in child.children(&mut inner) {
+                    if c.kind() == "type_identifier" {
+                        let name = node_text(c, source).to_string();
+                        if !name.is_empty() && !is_go_builtin_type(&name) {
+                            push_call_q(references, name, None, line, parent.clone());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn go_type_decl_name(node: Node, source: &str) -> Option<(String, SymbolKind)> {

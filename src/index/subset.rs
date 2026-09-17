@@ -129,6 +129,12 @@ const SOUND_HEURISTIC_RULES: &[&str] = &[
     "ts.di.bind",
     "ts.di.to",
     "ts.di.decorator",
+    // Nest finite-domain registration: identifiers written in @Module metadata
+    // / constructor type annotations (registration ≠ HTTP ServeHTTP).
+    "ts.nest.module_providers",
+    "ts.nest.module_controllers",
+    "ts.nest.module_imports",
+    "ts.nest.ctor_inject",
     "ts.event.subscribe",
     "ts.event.dispatch",
     "py.di.depends",

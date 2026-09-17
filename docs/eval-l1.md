@@ -20,10 +20,10 @@ cargo test --test l1_eval -- --nocapture
 ## Honest limits
 
 - Primary golden set in `fixtures/eval-l1` is **fixture-scale** (DI/event/getattr shapes).
-- Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
+- Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, **real Nest `@Module` shape**, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
 - L1 edges remain **candidates** — never sound.
 - **Large private multi-language repo** (`stock-trading-app`) measured separately: [eval-large-repo.md](eval-large-repo.md).
-- **Real-tree L1 sampling** (stock-trading-app + public `nestjs-starter`) lives in [eval-large-repo.md](eval-large-repo.md) § “L1 sampling (this commit)”. Headline: fixture L1 lift does **not** transfer to the Nest starter — real Nest bare decorators / `@Module` metadata produced **0 Heuristic edges**; Rust monorepo lift is almost entirely `rs.di.impl_trait` implementor edges. Noise proxy there is manual sampling, not golden labels.
+- **Real-tree L1 sampling** (stock-trading-app + public `nestjs-starter`) lives in [eval-large-repo.md](eval-large-repo.md) § “L1 sampling (this commit)”. Historical: fixture L1 lift did **not** transfer to the Nest starter (0 Heuristic) until `ts.nest.module_*` / `ts.nest.ctor_inject` landed; Rust monorepo lift is almost entirely `rs.di.impl_trait` implementor edges. Noise proxy there is manual sampling, not golden labels.
 
 ## Results (this commit)
 
@@ -41,12 +41,15 @@ cargo test --test l1_eval -- --nocapture
 
 | corpus | golden | L0 | L1 | heur | matched |
 |---|---:|---:|---:|---:|---:|
-| nestjs-inversify | 7 | 2 | **7** | 6 | 6 |
+| nestjs-inversify | 7 | 2 | **7** | 8 | 8 |
+| nestjs-module | 5 | 0 | **5** | 6 | 6 |
 | fastapi-app | 3 | 2 | **3** | 1 | 1 |
 | ginlike-go | 3 | 1 | **3** | 3 | 3 |
-| **total** | **13** | **5 (38%)** | **13 (100%)** | **10** | **10 (0% unmatched)** |
+| **total** | **18** | **5 (28%)** | **18 (100%)** | **18** | **18 (0% unmatched)** |
 
 Relative lift on nestjs-inversify: 28% → 100% (**+250%** ≥15% M2).
+`nestjs-module` is the real-Nest `@Module({ imports, controllers, providers })`
++ constructor-DI shape (mirrors nestjs-starter); L0=0 → L1=100%.
 
 ### M2 acceptance (PLAN §10)
 
@@ -64,6 +67,10 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 | TS/JS | `ts.di.register` | `c.register(X)` | Heuristic |
 | TS/JS | `ts.di.bind` / `ts.di.to` | `c.bind(X).to(Y)` | Heuristic |
 | TS/JS | `ts.di.decorator` | `@Inject(X)` / `@Injectable(X)` | Heuristic |
+| TS/JS | `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass }] })` | Heuristic |
+| TS/JS | `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Heuristic |
+| TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot()] })` | Heuristic |
+| TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` | Heuristic |
 | TS/JS | `ts.event.subscribe` | `emitter.on(evt, handler)` | Heuristic |
 | TS/JS | `ts.dynamic.computed` | `obj['m']()` / `new (reg['X'])()` | DynamicCandidate |
 | Python | `py.di.depends` | FastAPI `Depends(fn\|Class)` | Heuristic |
@@ -72,6 +79,10 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 | Python | `py.dynamic.import_module` | `importlib.import_module("pkg.mod")` | DynamicCandidate |
 | Go | `go.di.handler_map` | `map[string]Handler{ "p": H }` | Heuristic |
 | Rust | `rs.di.impl_trait` | `impl Trait for Type { fn m }` | Heuristic |
+
+Bare `@Injectable()` / `@Controller()` (no args) intentionally produce **no**
+edges — do not invent fake callee names. Module metadata arrays are the
+product value for real Nest.
 
 ## Query windows
 

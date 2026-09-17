@@ -9,6 +9,9 @@
 > 3. Event dispatch `emit`/`once`/`on` with **string-literal** keys and
 >    identifier / fn-expr / string-subscript handlers → `ts.event.dispatch`  
 > 4. DI / route registration (impact candidates; registration ≠ HTTP ServeHTTP)  
+>    including Nest `@Module({ providers, controllers, imports })` and
+>    constructor type-injection (`ts.nest.*`) — finite-domain identifiers
+>    written in source metadata / type annotations  
 >
 > **Explicitly outside the claim:** unmodeled bus aliases, non-ident handlers
 > (leave S), RxJS `next`, custom frameworks, anything with S violations.
@@ -122,6 +125,10 @@ engineering S gate — **not** ecosystem sound.
 - `obj['on']` / `obj['emit']` on **any** receiver is treated as the event API
   (e.g. a state machine `states['on']`). Over-approx is soundness-safe; L1 noise possible.
 - Event **names** as DynamicCandidate callees (`emit('trade')` → name `trade`).
+- Nest `@Module` arrays / ctor type annotations are treated as finite-domain
+  registration (same class as `bind`/`register`). Registration ≠ runtime HTTP
+  ServeHTTP; Nest internals that resolve the provider graph are outside the
+  indexed program.
 
 ## Non-goals
 

@@ -119,12 +119,10 @@ fn walk_ts(
             | "method_definition"
             | "function_expression"
             | "arrow_function"
+            | "class_declaration"
+            | "class"
     ) {
-        if let Some(n) = node
-            .child_by_field_name("name")
-            .map(|n| node_text(n, source).to_string())
-            .filter(|s| !s.is_empty())
-        {
+        if let Some(n) = ts_scope_name(node, source).filter(|s| !s.is_empty()) {
             local_enclosing = Some(n);
         }
     }
@@ -136,12 +134,82 @@ fn walk_ts(
         "decorator" => {
             ts_decorator_rule(node, source, ctx, references, local_enclosing.clone());
         }
+        "method_definition" => {
+            ts_nest_ctor_inject(node, source, ctx, references);
+        }
         _ => {}
     }
 
     for child in node.children(&mut cursor) {
         walk_ts(child, source, ctx, references, local_enclosing.clone());
     }
+}
+
+/// Scope display name: class uses `name` field (type_identifier), functions use
+/// `name` (identifier / property_identifier).
+fn ts_scope_name(node: Node, source: &str) -> Option<String> {
+    if let Some(n) = node.child_by_field_name("name") {
+        let t = node_text(n, source).to_string();
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+    // Fallback for nodes without a name field (shouldn't hit classes).
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        if matches!(
+            ch.kind(),
+            "identifier" | "type_identifier" | "property_identifier"
+        ) {
+            let t = node_text(ch, source);
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Nearest enclosing `class_declaration` / `class` name, if any.
+fn enclosing_class_name(node: Node, source: &str) -> Option<String> {
+    let mut n = node.parent();
+    while let Some(p) = n {
+        if matches!(p.kind(), "class_declaration" | "class") {
+            return ts_scope_name(p, source);
+        }
+        n = p.parent();
+    }
+    None
+}
+
+/// Class name a decorator applies to (export sibling or parent class).
+fn decorated_class_name(decorator: Node, source: &str) -> Option<String> {
+    if let Some(parent) = decorator.parent() {
+        if matches!(parent.kind(), "class_declaration" | "class") {
+            return ts_scope_name(parent, source);
+        }
+        if parent.kind() == "export_statement" {
+            let mut c = parent.walk();
+            for ch in parent.children(&mut c) {
+                if matches!(ch.kind(), "class_declaration" | "class") {
+                    return ts_scope_name(ch, source);
+                }
+            }
+        }
+    }
+    // Decorator may sit just before a sibling class_declaration.
+    let mut sib = decorator.next_sibling();
+    while let Some(s) = sib {
+        if matches!(s.kind(), "class_declaration" | "class") {
+            return ts_scope_name(s, source);
+        }
+        if s.kind() == "decorator" {
+            sib = s.next_sibling();
+            continue;
+        }
+        break;
+    }
+    None
 }
 
 fn unwrap_parens(node: Node) -> Node {
@@ -555,6 +623,8 @@ fn ts_decorator_rule(
     references: &mut Vec<ExtractedRef>,
     enclosing: Option<String>,
 ) {
+    // Prefer the decorated class as enclosing for Nest `@Module` metadata.
+    let class_enclosing = decorated_class_name(node, source).or_else(|| enclosing.clone());
     // @Inject(UserService) / @Injectable(UserService) / @Component({...})
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -565,8 +635,22 @@ fn ts_decorator_rule(
         let Some(fn_node) = child.child_by_field_name("function") else {
             continue;
         };
-        let method = last_segment(node_text(fn_node, source));
-        if !matches!(method, "Inject" | "Injectable" | "Optional" | "forwardRef") {
+        let method = last_segment(node_text(fn_node, source)).to_string();
+        // @Module({ providers, controllers, imports }) — real Nest registration.
+        if method == "Module" {
+            ts_nest_module_metadata(
+                child,
+                source,
+                ctx,
+                references,
+                class_enclosing.clone().or_else(|| enclosing.clone()),
+            );
+            continue;
+        }
+        if !matches!(
+            method.as_str(),
+            "Inject" | "Injectable" | "Optional" | "forwardRef"
+        ) {
             continue;
         }
         if let Some(arg) = first_interesting_arg(child, source) {
@@ -586,6 +670,245 @@ fn ts_decorator_rule(
             }
         }
     }
+}
+
+/// Nest `@Module({ providers, controllers, imports })` registration edges.
+/// Enclosing is the module class name when resolvable.
+fn ts_nest_module_metadata(
+    call: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
+) {
+    let line = line_of(ctx, call);
+    let Some(obj) = first_object_arg(call, source) else {
+        return;
+    };
+    let mut cursor = obj.walk();
+    for pair in obj.children(&mut cursor) {
+        if pair.kind() != "pair" {
+            continue;
+        }
+        let Some(key) = pair.child_by_field_name("key") else {
+            continue;
+        };
+        let Some(value) = pair.child_by_field_name("value") else {
+            continue;
+        };
+        let key_t = node_text(key, source);
+        let (array_kind, rule_id) = match key_t {
+            "providers" => ("providers", "ts.nest.module_providers"),
+            "controllers" => ("controllers", "ts.nest.module_controllers"),
+            "imports" => ("imports", "ts.nest.module_imports"),
+            _ => continue,
+        };
+        if value.kind() != "array" {
+            continue;
+        }
+        let snippet = format!(
+            "{array_kind}: {}",
+            node_text(value, source)
+                .chars()
+                .take(80)
+                .collect::<String>()
+                .replace('\n', " ")
+        );
+        ts_nest_array_targets(value, source, rule_id, |name, elem_line| {
+            push_l1(
+                references,
+                L1Edge {
+                    name,
+                    qualifier: None,
+                    line: elem_line.unwrap_or(line),
+                    enclosing: enclosing.clone(),
+                    confidence: Confidence::Heuristic,
+                    rule_id,
+                    snippet: snippet.clone(),
+                },
+            );
+        });
+    }
+}
+
+/// Collect registration target names from a Nest metadata array element list.
+/// - bare identifier → the name
+/// - `{ provide, useClass, useExisting, useFactory }` → each simple ident
+/// - `X.forRoot(...)` → `X` (callee object)
+fn ts_nest_array_targets(
+    array: Node,
+    source: &str,
+    rule_id: &str,
+    mut sink: impl FnMut(String, Option<usize>),
+) {
+    let mut cursor = array.walk();
+    for elem in array.children(&mut cursor) {
+        match elem.kind() {
+            "identifier" | "type_identifier" | "shorthand_property_identifier" => {
+                let t = node_text(elem, source);
+                if !t.is_empty() {
+                    sink(t.to_string(), None);
+                }
+            }
+            "member_expression" => {
+                if let Some(n) = ident_name(elem, source) {
+                    sink(n, None);
+                }
+            }
+            "call_expression" => {
+                // imports: [ObserveModule.forRoot(...)] → ObserveModule
+                if let Some(fn_node) = elem.child_by_field_name("function") {
+                    if fn_node.kind() == "member_expression" {
+                        if let Some(obj) = fn_node.child_by_field_name("object") {
+                            if let Some(n) = ident_name(obj, source) {
+                                sink(n, None);
+                            }
+                        }
+                    } else if let Some(n) = ident_name(fn_node, source) {
+                        sink(n, None);
+                    }
+                }
+            }
+            "object" => {
+                let mut oc = elem.walk();
+                for pair in elem.children(&mut oc) {
+                    if pair.kind() != "pair" {
+                        continue;
+                    }
+                    let Some(key) = pair.child_by_field_name("key") else {
+                        continue;
+                    };
+                    let Some(value) = pair.child_by_field_name("value") else {
+                        continue;
+                    };
+                    let key_t = node_text(key, source);
+                    if !matches!(key_t, "provide" | "useClass" | "useExisting" | "useFactory") {
+                        continue;
+                    }
+                    // Only fire under the providers rule for provider-object keys.
+                    if rule_id != "ts.nest.module_providers" && key_t != "provide" {
+                        // controllers/imports object forms are rare; still capture provide/useClass cheaply.
+                        if !matches!(key_t, "provide" | "useClass") {
+                            continue;
+                        }
+                    }
+                    if let Some(n) = ident_name(value, source) {
+                        sink(n, None);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn first_object_arg<'a>(node: Node<'a>, _source: &str) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    let args = node
+        .children(&mut cursor)
+        .find(|c| c.kind() == "arguments")?;
+    let mut ac = args.walk();
+    for a in args.children(&mut ac) {
+        if a.kind() == "object" || a.kind() == "parenthesized_expression" {
+            let n = unwrap_parens(a);
+            if n.kind() == "object" {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// `constructor(private readonly svc: AppService)` → Heuristic ref to `AppService`
+/// with enclosing = class name (Nest constructor injection).
+fn ts_nest_ctor_inject(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let Some(name_n) = node.child_by_field_name("name") else {
+        return;
+    };
+    if node_text(name_n, source) != "constructor" {
+        return;
+    }
+    let Some(class_name) = enclosing_class_name(node, source) else {
+        return;
+    };
+    let Some(params) = node.child_by_field_name("parameters") else {
+        return;
+    };
+    let line = line_of(ctx, node);
+    let mut cursor = params.walk();
+    for p in params.children(&mut cursor) {
+        if !matches!(p.kind(), "required_parameter" | "optional_parameter") {
+            continue;
+        }
+        let Some(ty) = ts_param_type_name(p, source) else {
+            continue;
+        };
+        push_l1(
+            references,
+            L1Edge {
+                name: ty.clone(),
+                qualifier: None,
+                line,
+                enclosing: Some(class_name.clone()),
+                confidence: Confidence::Heuristic,
+                rule_id: "ts.nest.ctor_inject",
+                snippet: format!("constructor(...: {ty})"),
+            },
+        );
+    }
+}
+
+/// Type name of a formal parameter: bare type_identifier or `Foo<...>`.
+fn ts_param_type_name(param: Node, source: &str) -> Option<String> {
+    let mut cursor = param.walk();
+    for part in param.children(&mut cursor) {
+        if part.kind() != "type_annotation" {
+            continue;
+        }
+        let mut ac = part.walk();
+        for t in part.children(&mut ac) {
+            let name = match t.kind() {
+                "type_identifier" => node_text(t, source).to_string(),
+                "generic_type" => {
+                    let mut gc = t.walk();
+                    let tid = t
+                        .children(&mut gc)
+                        .find(|c| c.kind() == "type_identifier")
+                        .map(|id| node_text(id, source).to_string());
+                    tid?
+                }
+                _ => continue,
+            };
+            if is_nest_di_type_name(&name) {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
+/// Skip primitives / any so ctor inject stays on DI types.
+fn is_nest_di_type_name(name: &str) -> bool {
+    !matches!(
+        name,
+        "string"
+            | "number"
+            | "boolean"
+            | "any"
+            | "unknown"
+            | "void"
+            | "never"
+            | "null"
+            | "undefined"
+            | "object"
+            | "symbol"
+            | "bigint"
+    )
 }
 
 // ── Python ──────────────────────────────────────────────────────────

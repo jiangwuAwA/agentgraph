@@ -492,6 +492,18 @@ fn sound_eligibility_allowlist() {
         Confidence::Heuristic,
         Some("ts.di.register")
     ));
+    // Nest module registration / ctor DI: finite-domain over-approx.
+    for rule in [
+        "ts.nest.module_providers",
+        "ts.nest.module_controllers",
+        "ts.nest.module_imports",
+        "ts.nest.ctor_inject",
+    ] {
+        assert!(
+            is_sound_eligible(Confidence::Heuristic, Some(rule)),
+            "{rule} must be sound-eligible"
+        );
+    }
     assert!(is_sound_eligible(
         Confidence::DynamicCandidate,
         Some("ts.dynamic.computed")

@@ -228,34 +228,42 @@ DynamicCandidate (n=8, census):
 
 ## nestjs-starter subsection (L1 on real Nest)
 
-### Index
-8 TS files, 7 symbols (`AppController`, `AppController.constructor`, `AppController.getHello`, `AppModule`, `AppService`, `AppService.getHello`, `bootstrap`), 64 Exact refs, **0 Heuristic / DynamicCandidate**.
+### Historical note (pre-Nest-module rules)
 
-### L0 vs Default callers (all controller/service-ish symbols)
+Measured **before** `ts.nest.module_*` / `ts.nest.ctor_inject` landed: 8 TS
+files, 7 symbols, **64 Exact / 0 Heuristic**. Bare `@Injectable()` /
+`@Controller()` and `@Module({ providers, controllers, imports })` produced
+**no** L1 lift; L0 already had the import graph. That zero is preserved here
+as the honest baseline.
 
-| symbol | Exact (L0) | Default | IncludeDynamic | Heuristic edges | Δ |
-|---|---:|---:|---:|---:|---|
-| `AppController` | 2 | 2 | 2 | 0 | 0 |
-| `AppService` | 3 | 3 | 3 | 0 | 0 |
-| `getHello` | 2 | 2 | 2 | 0 | 0 |
-| `AppModule` | 2 | 2 | 2 | 0 | 0 |
-| `bootstrap` | 1 | 1 | 1 | 0 | 0 |
-| `Controller` / `Get` / `Injectable` / `Module` | 2 | 2 | 2 | 0 | 0 |
-| `NestFactory` / `listen` / `createObserveModule` | 1–2 | same | same | 0 | 0 |
-| `ObserveModule` | 0 | 0 | 0 | 0 | 0 |
+### After Nest module + ctor DI rules (this commit)
 
-**Did decorators/DI fire?** **No.** Zero Heuristic edges. Why (by reading `src/index/rules.rs` + the Nest sources):
+| op | result |
+|---|---|
+| Full index (`--force`) | 8 files · 7 symbols · **68 refs** |
+| Refs by confidence | exact **64** · **heuristic 4** · dynamic_candidate 0 |
+| Parse failures | 0 |
 
-1. Real Nest uses **bare** `@Injectable()` / `@Controller()` / `@Get()` — `ts.di.decorator` only emits when the decorator is a **call with an ident arg** (`@Inject(X)`, `@Injectable(X)`). Bare decorators are skipped by design (`// bare @Injectable — no target symbol`).
-2. `@Module({ controllers: [AppController], providers: [AppService] })` — module metadata arrays are **not modeled** as registration edges.
-3. Constructor DI `constructor(private readonly appService: AppService)` is a type annotation; L0 records the **import** of `AppService` in the controller file, not an inject edge.
+Heuristic edges (all sound-allowlisted registration over-approx):
 
-So on this real Nest starter, **L1 adds nothing over L0**. L0 already finds the import graph (`AppService` imported in controller/module/spec) and the `this.appService.getHello()` call. The human-interesting Nest edges (`providers: [AppService]`, `controllers: [AppController]`, route `@Get()` → method) are **missing or only partial**.
+| rule_id | name | enclosing | site |
+|---|---|---|---|
+| `ts.nest.module_providers` | `AppService` | `AppModule` | `providers: [AppService]` |
+| `ts.nest.module_controllers` | `AppController` | `AppModule` | `controllers: [AppController]` |
+| `ts.nest.module_imports` | `ObserveModule` | `AppModule` | `imports: [ObserveModule.forRoot(...)]` |
+| `ts.nest.ctor_inject` | `AppService` | `AppController` | `constructor(...: AppService)` |
 
-This is a **honest weak result** for L1 on real NestJS. Fixture DI corpus (`fixtures/eval-l1` `ts-di`, `fixtures/eval-l1-real` `nestjs-inversify`) uses explicit `c.bind(X).to(Y)` / `@Inject(X)` shapes that do fire; production Nest starter does not use those shapes.
+### L0 vs Default callers (after)
 
-### L2 on nest
-Clean tree → `subset_ok: true`, `promise_tier: ast_modeled`. Sound walk is eligible, but the edge set is still small because L1 did not expand it.
+| symbol | Exact (L0) | Default | Heuristic | Δ notes |
+|---|---:|---:|---:|---|
+| `AppService` | 3 | **5** | 2 | + providers (AppModule) + ctor_inject (AppController) |
+| `AppController` | 2 | **3** | 1 | + controllers (AppModule) |
+| `ObserveModule` | 0 | **1** | 1 | + imports forRoot (AppModule) — L0 empty |
+| `getHello` / `AppModule` / `bootstrap` | n | n | 0 | L0 complete (direct calls / imports) |
+
+`impact AppService` BFS expands through Heuristic edges to `AppController`
+and `AppModule` (depth 2). Registration ≠ HTTP ServeHTTP still holds.
 
 ---
 
@@ -264,7 +272,7 @@ Clean tree → `subset_ok: true`, `promise_tier: ast_modeled`. Sound walk is eli
 - Single private monorepo + one public Nest starter; **not** a published multi-repo benchmark.
 - Noise “precision” is a **manual source-line classification of 25 edges**, not golden labels. Do **not** ship as a production precision number.
 - Heuristic `rs.di.impl_trait` edges are *implementor* relationships stored as `kind=call` — useful for impact, over-approximate for callers.
-- Real NestJS starter: **L1 lift = 0%** (see above). Do not generalize fixture L1 recall to production Nest.
+- Real NestJS starter: **L1 lift was 0%** before `ts.nest.module_*` / `ts.nest.ctor_inject`; after those rules, Heuristic **0 → 4** and Default callers for `AppService`/`AppController`/`ObserveModule` grow (see nestjs-starter subsection). Do not generalize fixture L1 recall to production Nest without re-measuring.
 - DynamicCandidate remains excluded from default windows; its sampled precision is poor (loop vars / indices) as expected.
 - Index timings are single-operator wall clock on a laptop CPU; not CI, not multi-trial.
 - No source from either corpus is committed to agentgraph.
@@ -286,6 +294,9 @@ $exe = "target\release\agentgraph.exe"
 # nestjs-starter
 & $exe --root D:\projects\eval-corpus\nestjs-starter index --force
 & $exe --root D:\projects\eval-corpus\nestjs-starter callers AppService
+& $exe --root D:\projects\eval-corpus\nestjs-starter callers AppController
+& $exe --root D:\projects\eval-corpus\nestjs-starter callers ObserveModule
+& $exe --root D:\projects\eval-corpus\nestjs-starter impact AppService
 & $exe --root D:\projects\eval-corpus\nestjs-starter impact getHello --sound
 & $exe --root D:\projects\eval-corpus\nestjs-starter subset
 ```

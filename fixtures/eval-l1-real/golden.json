@@ -19,6 +19,13 @@
       { "symbol": "GetUsers", "site_file": "engine.go", "site_contains": "GET(\"/users\"", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "Healthz", "site_file": "engine.go", "site_contains": "GET(\"/health\"", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "GET", "site_file": "engine.go", "site_contains": "e.GET", "kind": "call", "min_confidence": "exact" }
+    ],
+    "nestjs-module": [
+      { "symbol": "AppService", "site_file": "src/app.module.ts", "site_contains": "providers", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "ConfigService", "site_file": "src/app.module.ts", "site_contains": "useClass: ConfigService", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "AppController", "site_file": "src/app.module.ts", "site_contains": "controllers", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "ObserveModule", "site_file": "src/app.module.ts", "site_contains": "forRoot", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "AppService", "site_file": "src/app.controller.ts", "site_contains": "appService: AppService", "kind": "di", "min_confidence": "heuristic" }
     ]
   }
 }

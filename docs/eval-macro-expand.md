@@ -65,6 +65,38 @@ Selected crate slice (source index.db filters):
 | agentgraph own `src/lib.rs` (tool path proof, not stock) | RUSTC_BOOTSTRAP unpretty | ~1.1 MiB UTF-8 | clap/serde derive expansion; indexes successfully after UTF-8 fix. |
 | stock `event-engine` / `repository` / `model-selection-replay` | blocked | — | deps not resolvable offline. |
 
+#### VPN retry (operator, later session) — real `cargo expand`
+
+Network restored. **`cargo-expand 1.0.126` installed.** `cargo fetch` on stock workspace succeeded (~937 registry crates cached).
+
+| crate | real `cargo expand -p … --lib` | expanded bytes |
+|---|---|---:|
+| `event-engine` | **OK** | 126 549 |
+| `model-selection-replay` | **OK** | 267 399 |
+| `repository` | **FAIL** | compile error in dep `storage`: `rustix::io::Errno::NOENT` missing (workspace/toolchain mismatch, not expand-tool failure) |
+| `auth` | timeout / incomplete this session | — |
+
+**Real source vs expanded index** (2 successful crates; shadow roots `real-source-view` / `real-expanded-view`):
+
+| root | files | symbols | refs | exact | heuristic |
+|---|---:|---:|---:|---:|---:|
+| source (event-engine + model-selection-replay `src/`) | 16 | **408** | **1 258** | 1253 | 5 |
+| expanded (same crates, one `lib.rs` each) | 2 | **693** | **2 086** | 1801 | **285** |
+
+Macro-shaped names after real expand (counts):
+
+| name | source symbols | expanded symbols | source refs | expanded refs |
+|---|---:|---:|---:|---:|
+| `fmt` | 0 | **69** | 1 | **73** |
+| `clone` | 0 | **56** | 16 | **272** |
+| `eq` | 0 | **57** | 0 | **57** |
+| `hash` | 0 | 10 | 15 | 35 |
+| `default` | — | present in expanded top-20 | — | 31 refs |
+
+**Reading:** real rustc expansion confirms the spike story — derive macros mint `Debug::fmt` / `Clone::clone` / `PartialEq::eq` symbols that **do not exist in source**. Heuristic refs inflate on expand (impl-trait-like patterns). Still **not** a sound graph; dual-indexing duplicates paths.
+
+Reproduce operator compare: `scripts/compare_real_expand.py` + `scripts/stock_macro_expand_spike.ps1`.
+
 **Synthetic expand (labeled, not rustc):** `scripts/expand_index_diff.py prepare`
 appends post-expansion-shaped impls derived from source patterns for the four crates
 (`event-engine`, `model-selection-replay`, `repository`, `strategy-plugins`):

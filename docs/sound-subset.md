@@ -129,6 +129,35 @@ engineering S gate — **not** ecosystem sound.
   registration (same class as `bind`/`register`). Registration ≠ runtime HTTP
   ServeHTTP; Nest internals that resolve the provider graph are outside the
   indexed program.
+- **Type-only `typeof Function`** (e.g. `type F = typeof Function`) currently
+  **fail-closes** S — bare `Function` token is treated as an escape hatch even
+  in a pure type position. Over-flag is intentional (fail-closed); pinned by
+  `ts_typeof_function_only_type_annotation_fail_closed` in
+  `tests/r16_adversarial.rs`. Returning / calling `Function` as a value also
+  leaves S (correct).
+
+## Nest `ts.nest.*` (sound-allowlisted Heuristic registration)
+
+Nest DI / dynamic-module edges are **finite-domain registration** over-approx
+(same claim class as `bind`/`register`). They are **not** HTTP ServeHTTP
+call-graph edges.
+
+| Rule id | Source shape | Notes |
+|---|---|---|
+| `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass, useExisting, useFactory, inject }] })` | Also fires for `forRootAsync({ inject, useFactory })` deps |
+| `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Registration of controller class |
+| `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot() / forRootAsync()] })` | `X.forRootAsync({ imports })` → `ts.nest.module_imports` |
+| `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Exports are registration, not a call |
+| `ts.nest.ctor_inject` | `constructor(private x: T)` | Type-annotation finite domain; skips primitives |
+
+Array-element unwrapping (still registration): bare ident / member / string
+token / `new T()` / `X.forRoot()` / `forwardRef(() => M)` (never the
+`forwardRef` helper itself). `useFactory` bodies contribute only simple
+identifiers and call/new targets — not bare property names.
+
+**Registration ≠ ServeHTTP:** these edges answer “who is wired into this
+module graph?”, not “who invokes this handler at runtime?”. Nest’s internal
+provider resolution lives outside the indexed program and is **not** claimed.
 
 ## Non-goals
 

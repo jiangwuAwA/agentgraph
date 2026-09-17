@@ -187,11 +187,11 @@ fn tools_list() -> Value {
             },
             {
                 "name": "enrich",
-                "description": "Optional LLM pass: attach one-line responsibility descriptions to undescribed symbols. Requires OPENAI_API_KEY.",
+                "description": "Optional LLM pass: attach one-line responsibility descriptions to undescribed symbols. Requires OPENAI_API_KEY. Default limit matches CLI (50).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "limit": {"type": "integer", "default": 30}
+                        "limit": {"type": "integer", "default": 50}
                     }
                 }
             }
@@ -478,7 +478,8 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
             "enrich" => {
-                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(30) as usize;
+                // Default must match CLI Enrich --limit (50) — schema drift trap.
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
                 let cfg = crate::index::llm::LlmConfig::from_env()?;
                 let indexer = Indexer::new(&root)?;
                 let mut store = indexer.open_store()?;

@@ -49,11 +49,16 @@
 
 | 项 | 层级 | 备注 |
 |---|---|---|
-| 属性测试扩大到 S_py / S_go | L2 | 现有 generator 主要是 S_js |
 | 多文件 ESM + DI 容器差分加强 | L2 | 注册≠dispatch 已文档化；框架派发边未建模 |
 | `resolve_symbol_ids` 批量 SQL | L0 性能 | 全库审核 Minor m11，非 trivial |
-| S_py/S_go AST 化（替换 lexical v1） | L2 | 承诺已按语言分层；扫描器本身仍可加强 |
-| Rust S 扫描器深度 | L2 | `scan_rust` 仍偏行级；若需可再开诚实性 pass |
+| Rust S 扫描器深度 | L2 | `scan_rust` 为 tree-sitter AST（unsafe/transmute/ptr/asm）；深度规则仍可加强 |
+
+### 已完成（原 backlog，R14–R19）
+
+| 项 | 层级 | 落点 |
+|---|---|---|
+| S_py / S_go AST 化（替换 lexical v1） | L2 | `scan_py` / `scan_go` tree-sitter AST；`docs/sound-subset.md` § S_py/S_go |
+| 属性测试扩大到 S_py / S_go | L2 | `tests/l2_property.rs`（S_js + S_py + S_go 生成器） |
 
 ---
 
@@ -64,3 +69,4 @@
 | 2026-09-16 | 建立 backlog；记录定理级 I4 范围 A 估算与验收（L3 可执行 containment / TLC 已交付） |
 | 2026-09-17 | Lean 范围 A 落地：`formal/lean/` + `runtime_subset_static`；`lake build` 绿 |
 | 2026-09-18 | 夜间 Lean CI：`.github/workflows/lean.yml`（schedule + paths 过滤；不挡主 Rust CI） |
+| 2026-09-18 | R20 honesty：S_py/S_go AST + 属性测试标为已完成；Nest `ts.nest.*` 与 `typeof Function` over-flag 文档化 |

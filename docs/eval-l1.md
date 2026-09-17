@@ -67,10 +67,13 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 | TS/JS | `ts.di.register` | `c.register(X)` | Heuristic |
 | TS/JS | `ts.di.bind` / `ts.di.to` | `c.bind(X).to(Y)` | Heuristic |
 | TS/JS | `ts.di.decorator` | `@Inject(X)` / `@Injectable(X)` | Heuristic |
-| TS/JS | `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass }] })` | Heuristic |
+| TS/JS | `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass, useExisting, useFactory, inject }] })` | Heuristic |
 | TS/JS | `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Heuristic |
-| TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot()] })` | Heuristic |
-| TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` | Heuristic |
+| TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot(), X.forRootAsync()] })` | Heuristic |
+| TS/JS | `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Heuristic |
+| TS/JS | `ts.nest.forRootAsync` | `X.forRootAsync({ imports, inject, useFactory })` → imports / providers rules | Heuristic |
+| TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` (type annotation, not primitives) | Heuristic |
+| TS/JS | `ts.nest.string_token` | `provide: 'CONFIG'` / `exports: ['CONFIG']` bare string tokens | Heuristic |
 | TS/JS | `ts.event.subscribe` | `emitter.on(evt, handler)` | Heuristic |
 | TS/JS | `ts.dynamic.computed` | `obj['m']()` / `new (reg['X'])()` | DynamicCandidate |
 | Python | `py.di.depends` | FastAPI `Depends(fn\|Class)` | Heuristic |
@@ -83,6 +86,12 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 Bare `@Injectable()` / `@Controller()` (no args) intentionally produce **no**
 edges — do not invent fake callee names. Module metadata arrays are the
 product value for real Nest.
+
+Nest unwrapping details (still Heuristic registration, not HTTP ServeHTTP):
+`forwardRef(() => M)` unwraps to `M` (never the helper); `X.forRoot()` /
+`X.forRootAsync()` emit the receiver module name; `useFactory` bodies
+contribute identifiers and call/new targets only; `inject: [Dep, 'TOKEN']`
+is a dependency list. See [sound-subset.md](sound-subset.md) § Nest.
 
 ## Query windows
 

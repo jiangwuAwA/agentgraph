@@ -218,6 +218,22 @@ fn e2e_mcp_initialize_and_tools_call() {
     assert!(text.contains("\"id\":1") || text.contains("\"id\": 1"));
     assert!(text.contains("agentgraph"));
     assert!(text.contains("find_symbol") || text.contains("createUser"));
+
+    // R20 residual: MCP tools/list must not drift from CLI flags.
+    // enrich default limit is 50 (same as `agentgraph enrich --limit`).
+    assert!(
+        text.contains("\"default\": 50") || text.contains("\"default\":50"),
+        "enrich default must be 50 to match CLI; tools/list={text}"
+    );
+    // callers/impact expose the L2 sound + L1 recall flags present on the CLI.
+    assert!(
+        text.contains("\"sound\""),
+        "callers/impact schema must expose sound; tools/list={text}"
+    );
+    assert!(
+        text.contains("\"recall\""),
+        "callers/impact schema must expose recall; tools/list={text}"
+    );
 }
 
 /// MCP query tools on an empty index must return isError=true with 'index' in the message.

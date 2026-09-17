@@ -403,10 +403,15 @@ fn e2e_mcp_callers_sound_flag() {
                 assert_eq!(payload["mode"], "sound");
                 assert_eq!(payload["subset_ok"], true);
                 let promise = payload["promise"].as_str().unwrap_or("");
+                // Pure TS fixture → AST-modeled tier (not lexical v1).
                 assert_eq!(
                     promise,
-                    agentgraph::mcp::server::SOUND_PROMISE_OK,
-                    "MCP callers promise must equal shared SOUND_PROMISE_OK: {payload}"
+                    agentgraph::mcp::server::SOUND_PROMISE_OK_AST,
+                    "MCP callers promise must equal shared SOUND_PROMISE_OK_AST for pure TS corpus: {payload}"
+                );
+                assert_eq!(
+                    payload["promise_tier"], "ast_modeled",
+                    "MCP must report language-aware promise_tier: {payload}"
                 );
                 assert!(payload["callers"].is_array());
                 saw_sound = true;

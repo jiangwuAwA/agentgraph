@@ -3,12 +3,109 @@
 //! Promise (PLAN §4): for programs inside S, every runtime call edge that can
 //! occur is contained in the static over-approximation (`--sound` walk).
 //! Outside S: **no** completeness claim. Violations are reported, not hidden.
+//!
+//! **Language-aware honesty (R-track B):** AST-modeled S (js/ts/rust) and
+//! lexical-v1 scanners (python/go) do **not** carry the same assurance.
+//! CLI/MCP must select the promise string by tier — never emit the AST OK
+//! for a corpus that contains py/go.
 
 use serde::{Deserialize, Serialize};
 use tree_sitter::Node;
 
 use super::parser;
 use crate::model::{Confidence, Language};
+
+// ---------------------------------------------------------------------------
+// Language-aware sound promise (shared by CLI + MCP — single source of truth)
+// ---------------------------------------------------------------------------
+
+/// AST-modeled S (js/ts/tsx/jsx, rust): full S-qualified OK text.
+pub const SOUND_PROMISE_OK_AST: &str = "S satisfied (AST-modeled subset). Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP.";
+
+/// Lexical/scanner v1 (python, go): weaker text — scanner is conservative
+/// lexical v1, not frozen, and is **not** equal assurance to AST S_js.
+pub const SOUND_PROMISE_OK_LEXICAL_V1: &str = "S satisfied (scanner tier: lexical v1). Python/Go S scanners are conservative lexical v1 (not frozen, weaker than AST-modeled S_js/S_rs) — this OK is NOT the same assurance as an AST-modeled subset. Sound walk over-approximates modeled reference edges only; this is NOT a proven runtime call-graph over-approx.";
+
+/// Mixed AST + lexical-v1 corpus: weakest tier governs; name both tiers.
+pub const SOUND_PROMISE_OK_MIXED_LEXICAL_V1: &str = "S satisfied, but the corpus mixes AST-modeled languages with lexical-v1 scanners (python/go). The weakest tier governs: Python/Go S are conservative lexical v1 (not frozen) — NOT the same assurance as AST-modeled S_js/S_rs. Sound walk over-approximates modeled reference edges only.";
+
+/// Violations present → eligibility claim disabled (unchanged behavior).
+pub const SOUND_PROMISE_DISABLED: &str =
+    "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only.";
+
+/// Which assurance tier applies to a sound query on this corpus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SoundPromiseTier {
+    /// AST-modeled S (js/ts/tsx/jsx, rust): full S-qualified OK text.
+    AstModeled,
+    /// Lexical/scanner v1 (python, go) only: weaker text.
+    LexicalV1,
+    /// Mixed AST + lexical-v1: weakest tier governs.
+    MixedLexicalV1,
+    /// Violations present → disabled.
+    Disabled,
+}
+
+impl SoundPromiseTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SoundPromiseTier::AstModeled => "ast_modeled",
+            SoundPromiseTier::LexicalV1 => "lexical_v1",
+            SoundPromiseTier::MixedLexicalV1 => "mixed_lexical_v1",
+            SoundPromiseTier::Disabled => "disabled",
+        }
+    }
+}
+
+/// Language strings use `Language::as_str()` (from the index `files` table).
+pub fn is_lexical_v1_language(lang: &str) -> bool {
+    matches!(lang, "python" | "go")
+}
+
+pub fn is_ast_modeled_language(lang: &str) -> bool {
+    matches!(lang, "typescript" | "tsx" | "javascript" | "jsx" | "rust")
+}
+
+/// Select the promise tier from `subset_ok` + languages in the indexed corpus.
+///
+/// Rules (fail-honest, weakest tier wins):
+/// 1. Any S violation → `Disabled`.
+/// 2. Corpus contains python/go **only** → `LexicalV1`.
+/// 3. Corpus mixes AST languages with python/go → `MixedLexicalV1`.
+/// 4. Corpus is AST-only (or empty) → `AstModeled`.
+pub fn sound_promise_tier(subset_ok: bool, languages: &[String]) -> SoundPromiseTier {
+    if !subset_ok {
+        return SoundPromiseTier::Disabled;
+    }
+    let has_lexical = languages.iter().any(|l| is_lexical_v1_language(l));
+    let has_ast = languages.iter().any(|l| is_ast_modeled_language(l));
+    if has_lexical && has_ast {
+        SoundPromiseTier::MixedLexicalV1
+    } else if has_lexical {
+        SoundPromiseTier::LexicalV1
+    } else {
+        SoundPromiseTier::AstModeled
+    }
+}
+
+/// Promise text for a tier (shared constants — CLI/MCP must not drift).
+pub fn sound_promise_text(tier: SoundPromiseTier) -> &'static str {
+    match tier {
+        SoundPromiseTier::AstModeled => SOUND_PROMISE_OK_AST,
+        SoundPromiseTier::LexicalV1 => SOUND_PROMISE_OK_LEXICAL_V1,
+        SoundPromiseTier::MixedLexicalV1 => SOUND_PROMISE_OK_MIXED_LEXICAL_V1,
+        SoundPromiseTier::Disabled => SOUND_PROMISE_DISABLED,
+    }
+}
+
+/// One-shot selection used by CLI/MCP sound payloads.
+pub fn select_sound_promise(
+    subset_ok: bool,
+    languages: &[String],
+) -> (SoundPromiseTier, &'static str) {
+    let tier = sound_promise_tier(subset_ok, languages);
+    (tier, sound_promise_text(tier))
+}
 
 /// Heuristic / dynamic rule ids treated as finite-domain over-approx (in S).
 /// Keep in sync with `src/index/rules.rs`.

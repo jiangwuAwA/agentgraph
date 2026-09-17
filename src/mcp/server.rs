@@ -208,10 +208,14 @@ fn tool_error(code: i64, message: &str) -> Value {
 }
 
 /// Shared promise strings (CLI + MCP must not drift — R4 M3).
-/// R13 M5: S_py/S_go are lexical v1 — not a frozen soundness contract.
-pub const SOUND_PROMISE_OK: &str = "S satisfied. Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP. S_py/S_go scanners are conservative lexical v1 (not frozen).";
-pub const SOUND_PROMISE_DISABLED: &str =
-    "S violated — eligibility claim disabled; results are best-effort sound-eligible edges only.";
+/// Language-aware (track B): AST-modeled vs lexical-v1 vs mixed — never one
+/// global OK for all languages. Source of truth lives in `index::subset`;
+/// re-exported here so e2e/CLI assert identity against a single module.
+pub use crate::index::subset::{
+    select_sound_promise, sound_promise_text, sound_promise_tier, SoundPromiseTier,
+    SOUND_PROMISE_DISABLED, SOUND_PROMISE_OK_AST, SOUND_PROMISE_OK_LEXICAL_V1,
+    SOUND_PROMISE_OK_MIXED_LEXICAL_V1,
+};
 
 fn ok_text(text: String) -> Value {
     json!({
@@ -349,6 +353,8 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     }
                     let (hits, violations) = store.callers_sound(sym, limit)?;
                     let subset_ok = violations.is_empty();
+                    let languages = store.stats(&root.to_string_lossy())?.languages;
+                    let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
                     let mapped: Vec<Value> = hits
                         .into_iter()
                         .map(|r| {
@@ -362,11 +368,9 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let payload = json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
-                        "promise": if subset_ok {
-                            SOUND_PROMISE_OK
-                        } else {
-                            SOUND_PROMISE_DISABLED
-                        },
+                        "promise_tier": promise_tier.as_str(),
+                        "promise": promise,
+                        "promise_languages": languages,
                         "subset_violations": violations,
                         "callers": mapped,
                     });
@@ -407,14 +411,14 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     }
                     let (hits, violations) = store.impact_sound(sym, depth, limit)?;
                     let subset_ok = violations.is_empty();
+                    let languages = store.stats(&root.to_string_lossy())?.languages;
+                    let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
                     let payload = serde_json::json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
-                        "promise": if subset_ok {
-                            SOUND_PROMISE_OK
-                        } else {
-                            SOUND_PROMISE_DISABLED
-                        },
+                        "promise_tier": promise_tier.as_str(),
+                        "promise": promise,
+                        "promise_languages": languages,
                         "subset_violations": violations,
                         "impact": hits,
                     });
@@ -429,10 +433,16 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
                 let violations = store.subset_violations()?;
+                let languages = store.stats(&root.to_string_lossy())?.languages;
+                let (promise_tier, promise) =
+                    select_sound_promise(violations.is_empty(), &languages);
                 let payload = serde_json::json!({
                     "in_subset": violations.is_empty(),
                     "violation_count": violations.len(),
                     "violations": violations,
+                    "promise_tier": promise_tier.as_str(),
+                    "promise": promise,
+                    "promise_languages": languages,
                 });
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }

@@ -19,6 +19,9 @@ node scripts/diff_trace.cjs fixtures/eval-l2/s-js-auth/src/auth.js main
    - finite-domain DynamicCandidate (`ts.dynamic.computed`, `py.dynamic.getattr`, `py.dynamic.import_module`)
 2. Surfaces **S violations** stored at last index (`eval`, `new Function`, `with`, `Proxy`, `Reflect`, template computed keys, Rust `unsafe`/`transmute`, Python `eval`/`exec`).
 3. Sets `subset_ok: false` and a non-claiming `promise` string when any violation exists.
+4. Selects the OK promise by **language tier** (`promise_tier`):
+   AST-modeled (js/ts/rust) vs lexical-v1 (py/go) vs mixed — weakest wins.
+   See [sound-subset.md](sound-subset.md) promise table.
 
 CLI:
 
@@ -70,7 +73,7 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 ## Explicit non-claims
 
 - No soundness outside S.
-- No completeness for Python/Go S (v1 conservative lexical scanners — **not** frozen soundness contracts).
+- No completeness for Python/Go S (v1 conservative lexical scanners — **not** frozen soundness contracts). Lexical-v1 `promise_tier` OK is **not** equal assurance to AST-modeled S_js.
 - Over-reporting is allowed (over-approx).
 - Do not market `--sound` as “zero missed dynamic calls” on arbitrary repos.
 

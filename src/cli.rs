@@ -199,6 +199,9 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
                 let (hits, violations) = store.callers_sound(&name, limit)?;
                 let subset_ok = violations.is_empty();
+                let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
+                let (promise_tier, promise) =
+                    crate::index::subset::select_sound_promise(subset_ok, &languages);
                 let mapped: Vec<serde_json::Value> = hits
                     .into_iter()
                     .map(|r| {
@@ -213,14 +216,13 @@ pub fn run(cli: Cli) -> Result<()> {
                     })
                     .collect();
                 // S-qualified modeled edges; disabled when S violated.
+                // Promise tier is language-aware (AST vs lexical v1 vs mixed).
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
-                    "promise": if subset_ok {
-                        crate::mcp::server::SOUND_PROMISE_OK
-                    } else {
-                        crate::mcp::server::SOUND_PROMISE_DISABLED
-                    },
+                    "promise_tier": promise_tier.as_str(),
+                    "promise": promise,
+                    "promise_languages": languages,
                     "subset_violations": violations,
                     "callers": mapped,
                 });
@@ -264,14 +266,15 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
                 let (hits, violations) = store.impact_sound(&name, depth, limit)?;
                 let subset_ok = violations.is_empty();
+                let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
+                let (promise_tier, promise) =
+                    crate::index::subset::select_sound_promise(subset_ok, &languages);
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
-                    "promise": if subset_ok {
-                        crate::mcp::server::SOUND_PROMISE_OK
-                    } else {
-                        crate::mcp::server::SOUND_PROMISE_DISABLED
-                    },
+                    "promise_tier": promise_tier.as_str(),
+                    "promise": promise,
+                    "promise_languages": languages,
                     "subset_violations": violations,
                     "impact": hits,
                 });
@@ -363,11 +366,17 @@ pub fn run(cli: Cli) -> Result<()> {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             let violations = store.subset_violations()?;
+            let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
+            let (promise_tier, promise) =
+                crate::index::subset::select_sound_promise(violations.is_empty(), &languages);
             let payload = serde_json::json!({
                 "in_subset": violations.is_empty(),
                 "violation_count": violations.len(),
                 "violations": violations,
-                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound",
+                "promise_tier": promise_tier.as_str(),
+                "promise": promise,
+                "promise_languages": languages,
+                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1)",
             });
             println!("{}", serde_json::to_string_pretty(&payload)?);
             if !violations.is_empty() {

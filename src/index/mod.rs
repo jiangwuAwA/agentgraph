@@ -126,23 +126,62 @@ impl Indexer {
         Ok(Some(store::Store::open(&path)?))
     }
 
-    /// Index an expanded shadow tree into the sidecar DB.
-    /// Does **not** touch `<root>/.agentgraph/index.db`. Not sound — dual-index noise only.
-    pub fn index_macro_expanded(
-        &self,
-        expanded_root: &Path,
-        force: bool,
-    ) -> Result<MacroIndexResult> {
+    /// Reject expanded roots that nest with the main project root (either direction).
+    ///
+    /// Under-root expanded trees are ingested by the main walker (graph pollution +
+    /// possible main `subset_ok` flip). Ancestor expanded roots make the sidecar
+    /// re-index the whole parent with wrong relative paths. Keep the shadow as a
+    /// **sibling** directory — see docs/macro-sidecar.md.
+    pub fn validate_macro_expanded_root(&self, expanded_root: &Path) -> Result<PathBuf> {
         let expanded_raw = expanded_root.canonicalize().map_err(|e| {
             anyhow::anyhow!("macro expanded root '{}': {e}", expanded_root.display())
         })?;
         let expanded = parser::normalize_root(&expanded_raw);
+        let main = parser::normalize_root(&self.root);
         if !expanded.is_dir() {
             anyhow::bail!(
                 "macro expanded root is not a directory: {}",
                 expanded.display()
             );
         }
+        if expanded == main {
+            anyhow::bail!(
+                "macro expanded root equals project root '{}'; \
+                 point --macro-expanded-root at a sibling shadow tree, not --root",
+                main.display()
+            );
+        }
+        if expanded.starts_with(&main) {
+            anyhow::bail!(
+                "macro expanded root '{}' is under project root '{}'; \
+                 the main walker would ingest expanded sources and pollute the source graph \
+                 (keep the expanded shadow tree outside --root, as a sibling directory)",
+                expanded.display(),
+                main.display()
+            );
+        }
+        if main.starts_with(&expanded) {
+            anyhow::bail!(
+                "macro expanded root '{}' contains project root '{}'; \
+                 use a sibling shadow tree, not an ancestor of --root",
+                expanded.display(),
+                main.display()
+            );
+        }
+        Ok(expanded)
+    }
+
+    /// Index an expanded shadow tree into the sidecar DB.
+    /// Does **not** touch `<root>/.agentgraph/index.db`. Not sound — dual-index noise only.
+    ///
+    /// Validates nesting **before** any main-index side effects when called from CLI;
+    /// also re-validates here (defense in depth).
+    pub fn index_macro_expanded(
+        &self,
+        expanded_root: &Path,
+        force: bool,
+    ) -> Result<MacroIndexResult> {
+        let expanded = self.validate_macro_expanded_root(expanded_root)?;
         let db_path = self.macro_sidecar_path();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -183,6 +222,7 @@ impl Indexer {
                 refs: 0,
                 origin: None,
                 expanded_root: None,
+                expanded_root_missing: false,
             });
         }
         let store = store::Store::open(&path)?;
@@ -191,6 +231,11 @@ impl Indexer {
             Some(o) => Some(o),
             None => store.get_meta("sidecar_kind")?,
         };
+        let expanded_root = store.get_meta("expanded_root")?;
+        let expanded_root_missing = expanded_root
+            .as_ref()
+            .map(|p| !Path::new(p).exists())
+            .unwrap_or(false);
         Ok(MacroSidecarStatus {
             exists: true,
             path: path_str,
@@ -198,7 +243,8 @@ impl Indexer {
             symbols: stats.symbols,
             refs: stats.references,
             origin,
-            expanded_root: store.get_meta("expanded_root")?,
+            expanded_root,
+            expanded_root_missing,
         })
     }
 

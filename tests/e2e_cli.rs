@@ -234,6 +234,15 @@ fn e2e_mcp_initialize_and_tools_call() {
         text.contains("\"recall\""),
         "callers/impact schema must expose recall; tools/list={text}"
     );
+    // R26 residual: P2 macro sidecar surface must stay advertised (docs/README).
+    assert!(
+        text.contains("\"with_macro\"") || text.contains("\"with_macro\":"),
+        "callers/impact schema must expose with_macro; tools/list={text}"
+    );
+    assert!(
+        text.contains("macro_status"),
+        "tools/list must include macro_status; tools/list={text}"
+    );
 }
 
 /// MCP query tools on an empty index must return isError=true with 'index' in the message.

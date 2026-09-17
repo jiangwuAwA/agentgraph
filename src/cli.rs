@@ -175,6 +175,9 @@ pub fn run(cli: Cli) -> Result<()> {
             macro_expanded_root,
         } => {
             if let Some(exp) = macro_expanded_root {
+                // Validate nesting BEFORE main index — a nested expanded tree would
+                // otherwise be ingested by the main walker in the same command.
+                indexer.validate_macro_expanded_root(&exp)?;
                 // Main index first (source L0/L1 stays the default product).
                 let main = indexer.index(force)?;
                 let side = indexer.index_macro_expanded(&exp, force)?;

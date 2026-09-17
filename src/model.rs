@@ -283,6 +283,9 @@ pub struct MacroSidecarStatus {
     pub origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expanded_root: Option<String>,
+    /// True when a recorded `expanded_root` no longer exists on disk (stale sidecar).
+    #[serde(default)]
+    pub expanded_root_missing: bool,
 }
 
 /// Result of `index --macro-expanded-root` (sidecar build; does not replace main).

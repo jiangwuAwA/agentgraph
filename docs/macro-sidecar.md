@@ -59,7 +59,9 @@ With `--macro-expanded-root`, the CLI still indexes the **main** source tree fir
 }
 ```
 
-**Keep the expanded tree outside the indexed project root** (sibling directory). If it lives under `--root`, the main walker may ingest expanded sources and pollute the source index.
+**Keep the expanded tree outside the indexed project root** (sibling directory).
+
+**Hard reject (R26):** `index --macro-expanded-root` fails closed when the expanded root equals `--root`, is **under** `--root`, or **contains** `--root`. Nested expanded trees are ingested by the main walker (graph pollution + possible main `subset_ok` flip from expanded `unsafe`/parse errors). Validation runs **before** the main reindex so a rejected command cannot dirty `index.db`. Use a sibling path (e.g. `/tmp/app` + `/tmp/app-expanded`).
 
 ### Status
 
@@ -75,9 +77,12 @@ agentgraph macro status
   "symbols": 5,
   "refs": 4,
   "origin": "macro_expanded",
-  "expanded_root": "/path/to/expanded-shadow"
+  "expanded_root": "/path/to/expanded-shadow",
+  "expanded_root_missing": false
 }
 ```
+
+**Staleness:** sidecar rows are a snapshot. If the expanded tree is deleted or moved after build, `--with-macro` still unions the old rows (dual-index noise; no crash). `macro status` sets `expanded_root_missing: true` when the recorded `expanded_root` path no longer exists — rebuild or delete `<root>/.agentgraph/index.macro.db` to clear.
 
 ### Query union (default OFF)
 
@@ -111,6 +116,8 @@ Main-index rows are **not** tagged with `origin`. Expect **dual-index noise**: t
 | `--sound --with-macro` | **Rejected** (mutually exclusive) |
 | Main `subset` / `--sound` | Operates only on main index; expanded S-violations stay in the sidecar |
 | Expanded-only symbols | May appear under `--with-macro` as ordinary array rows with `origin`; **never** as `subset_ok: true` |
+| Expanded root nested with `--root` | **Rejected** (equal / under / contains) before main reindex |
+| Deleted expanded tree | Sidecar rows still union; `macro status.expanded_root_missing=true` |
 
 ---
 
@@ -156,5 +163,7 @@ Merging would require a **sound path map + de-dup + subset story** that we do no
 3. `macro status` after build reports path + counts + `origin`.
 4. Main `index.db` ref/symbol counts unchanged after sidecar build.
 5. No `subset_ok` claim from expanded-only content; `--sound --with-macro` fails closed.
+
+`tests/r26_adversarial.rs` also locks: nested expanded-root reject (no main pollution), spaces in sibling paths, inventory path allowlist, stale `expanded_root_missing`, MCP `with_macro`/`macro_status` schema.
 
 Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

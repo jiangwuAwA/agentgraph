@@ -1841,13 +1841,22 @@ fn rust_inventory_submit_rule(
 }
 
 /// Path is the inventory crate's `submit!` macro.
+///
+/// Match the final two segments exactly (`…::inventory::submit`). A loose
+/// `contains("inventory")` minted false sound-eligible edges from unrelated
+/// paths such as `myinventory::submit` / `inventory_backup::submit`.
 fn is_inventory_submit_path(path: &str) -> bool {
-    let p = path.trim();
+    let p = path.trim().trim_start_matches("::");
     if p.is_empty() {
         return false;
     }
+    let parts: Vec<&str> = p.split("::").map(|s| s.trim()).collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    let n = parts.len();
     // inventory::submit / ::inventory::submit / crate::inventory::submit
-    p.ends_with("::submit") && p.contains("inventory")
+    parts[n - 1] == "submit" && parts[n - 2] == "inventory"
 }
 
 /// UpperCamel identifier at the top level of the macro token_tree that is

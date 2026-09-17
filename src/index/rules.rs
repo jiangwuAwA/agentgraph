@@ -616,6 +616,18 @@ fn string_literal_content(node: Node, source: &str) -> Option<String> {
     Some(inner.to_string())
 }
 
+/// Nest DI token: identifier/member OR plain string literal
+/// (`provide: 'AppService'`, `@Inject('AppService')`).
+fn nest_token_name(node: Node, source: &str) -> Option<String> {
+    if matches!(
+        node.kind(),
+        "string" | "string_fragment" | "template_string"
+    ) {
+        return string_literal_content(node, source);
+    }
+    ident_name(node, source)
+}
+
 fn ts_decorator_rule(
     node: Node,
     source: &str,
@@ -654,7 +666,7 @@ fn ts_decorator_rule(
             continue;
         }
         if let Some(arg) = first_interesting_arg(child, source) {
-            if let Some(name) = ident_name(arg, source) {
+            if let Some(name) = nest_token_name(arg, source) {
                 push_l1(
                     references,
                     L1Edge {
@@ -768,8 +780,10 @@ fn ts_nest_sink_elem(
                 sink(name, None);
             }
         }
-        "call_expression" => {
-            let fn_node = n.child_by_field_name("function");
+        "call_expression" | "new_expression" => {
+            let fn_node = n
+                .child_by_field_name("function")
+                .or_else(|| n.child_by_field_name("constructor"));
             let fn_last = fn_node
                 .map(|f| last_segment(node_text(f, source)).to_string())
                 .unwrap_or_default();
@@ -788,9 +802,15 @@ fn ts_nest_sink_elem(
                 }
                 return;
             }
-            // imports: [ObserveModule.forRoot(...)] → ObserveModule
             if let Some(fn_node) = fn_node {
-                if fn_node.kind() == "member_expression" {
+                if n.kind() == "new_expression" {
+                    // `new ConfigService()` / `new TYPES.ConfigService()` → ConfigService
+                    // (the constructed type, not a namespace object).
+                    if let Some(name) = ident_name(fn_node, source) {
+                        sink(name, None);
+                    }
+                } else if fn_node.kind() == "member_expression" {
+                    // imports: [ObserveModule.forRoot(...)] → ObserveModule
                     if let Some(obj) = fn_node.child_by_field_name("object") {
                         if let Some(name) = ident_name(obj, source) {
                             sink(name, None);
@@ -820,7 +840,10 @@ fn ts_nest_sink_elem(
                     continue;
                 };
                 let key_t = node_text(key, source);
-                if !matches!(key_t, "provide" | "useClass" | "useExisting" | "useFactory") {
+                if !matches!(
+                    key_t,
+                    "provide" | "useClass" | "useExisting" | "useFactory" | "inject"
+                ) {
                     continue;
                 }
                 // Only fire under the providers rule for provider-object keys.
@@ -830,7 +853,32 @@ fn ts_nest_sink_elem(
                         continue;
                     }
                 }
-                if let Some(name) = ident_name(value, source) {
+                // `inject: [Dep, 'TOKEN']` — dependency list of a custom provider.
+                if key_t == "inject" {
+                    if value.kind() == "array" {
+                        let mut ic = value.walk();
+                        for item in value.children(&mut ic) {
+                            ts_nest_sink_elem(item, source, rule_id, sink);
+                        }
+                    } else {
+                        ts_nest_sink_elem(value, source, rule_id, sink);
+                    }
+                    continue;
+                }
+                // `useFactory: () => X` / `() => { return create(); }` — unwrap body.
+                // Conservative: only identifiers and call/new targets, never bare
+                // member property names (`config.default` is not a service).
+                if key_t == "useFactory" {
+                    let fv = unwrap_parens(value);
+                    if matches!(fv.kind(), "arrow_function" | "function_expression") {
+                        if let Some(body) = fv.child_by_field_name("body") {
+                            ts_nest_factory_body(body, source, sink);
+                        }
+                        continue;
+                    }
+                }
+                // Tokens may be idents or string literals (`provide: 'APP'`).
+                if let Some(name) = nest_token_name(value, source) {
                     sink(name, None);
                 }
             }
@@ -864,6 +912,59 @@ fn ts_nest_sink_body(
             ts_nest_sink_elem(rch, source, rule_id, sink);
             return;
         }
+    }
+}
+
+/// Factory body: only emit real type/call targets.
+/// `() => ConfigService`, `() => new ConfigService()`, `() => create()`.
+/// Skip bare member property names (`config.default` is not a registration).
+fn ts_nest_factory_body(body: Node, source: &str, sink: &mut impl FnMut(String, Option<usize>)) {
+    let b = unwrap_parens(body);
+    if b.kind() == "statement_block" {
+        let mut c = b.walk();
+        for ch in b.children(&mut c) {
+            if ch.kind() != "return_statement" {
+                continue;
+            }
+            let mut rc = ch.walk();
+            for rch in ch.children(&mut rc) {
+                if matches!(rch.kind(), "return" | ";") {
+                    continue;
+                }
+                ts_nest_factory_body(rch, source, sink);
+                return;
+            }
+        }
+        return;
+    }
+    match b.kind() {
+        "identifier" | "type_identifier" => {
+            let t = node_text(b, source);
+            if !t.is_empty() {
+                sink(t.to_string(), None);
+            }
+        }
+        "new_expression" | "call_expression" => {
+            let fn_node = b
+                .child_by_field_name("function")
+                .or_else(|| b.child_by_field_name("constructor"));
+            if let Some(f) = fn_node {
+                if b.kind() == "new_expression" {
+                    // `new TYPES.ConfigService()` → ConfigService
+                    if let Some(name) = ident_name(f, source) {
+                        sink(name, None);
+                    }
+                } else if let Some(name) = ident_name(f, source) {
+                    sink(name, None);
+                }
+            }
+        }
+        "arrow_function" | "function_expression" => {
+            if let Some(inner) = b.child_by_field_name("body") {
+                ts_nest_factory_body(inner, source, sink);
+            }
+        }
+        _ => {}
     }
 }
 

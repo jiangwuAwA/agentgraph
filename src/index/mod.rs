@@ -512,8 +512,11 @@ impl Indexer {
                 Err(e) => eprintln!("parse fail {}: {e:#}", fw.rel),
             }
         }
-        if !deleted.is_empty() {
-            // Drop deleted paths from DB via prune of remaining tree.
+        // Always prune against the live tree walk, not only when the event
+        // listed a vanished path. File rename A→B may deliver only the To
+        // path; From is then absent from `deleted` and would leave a stale
+        // duplicate under A (same content, new path).
+        {
             let keep: Vec<String> = known.into_iter().collect();
             store.prune_missing(&keep)?;
         }

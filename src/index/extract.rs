@@ -1086,6 +1086,49 @@ fn is_go_builtin_type(name: &str) -> bool {
     )
 }
 
+/// Recurse a Go type expression (`*T`, `[]T`, `pkg.T`, `*pkg.T`, `map[K]V`)
+/// and mint refs for every non-builtin named type.
+fn go_type_name_refs(
+    node: Node,
+    source: &str,
+    line: usize,
+    parent: Option<String>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "type_identifier" => {
+                let name = node_text(child, source).to_string();
+                if !name.is_empty() && !is_go_builtin_type(&name) {
+                    push_call_q(references, name, None, line, parent.clone());
+                }
+            }
+            "qualified_type" => {
+                let mut q = child.walk();
+                let mut name = None;
+                let mut pkg = None;
+                for c in child.children(&mut q) {
+                    match c.kind() {
+                        "type_identifier" => name = Some(node_text(c, source).to_string()),
+                        "package_identifier" => pkg = Some(node_text(c, source).to_string()),
+                        _ => {}
+                    }
+                }
+                if let Some(n) = name {
+                    if !n.is_empty() && !is_go_builtin_type(&n) {
+                        push_call_q(references, n, pkg, line, parent.clone());
+                    }
+                }
+            }
+            k if k.ends_with("_type") => {
+                go_type_name_refs(child, source, line, parent.clone(), references);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Collect type names from a `type_case` (before the `:`).
 fn go_type_case_refs(
     node: Node,
@@ -1129,16 +1172,10 @@ fn go_type_case_refs(
                 }
             }
             _ if k.ends_with("_type") => {
-                // pointer_type / slice_type / array_type / map_type
-                let mut inner = child.walk();
-                for c in child.children(&mut inner) {
-                    if c.kind() == "type_identifier" {
-                        let name = node_text(c, source).to_string();
-                        if !name.is_empty() && !is_go_builtin_type(&name) {
-                            push_call_q(references, name, None, line, parent.clone());
-                        }
-                    }
-                }
+                // pointer_type / slice_type / array_type / map_type.
+                // Inner may be type_identifier OR qualified_type (`*pkg.Cat`,
+                // `[]pkg.Cat`) — recurse so qualified names are not dropped.
+                go_type_name_refs(child, source, line, parent.clone(), references);
             }
             _ => {}
         }

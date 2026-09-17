@@ -53,6 +53,33 @@ Payload fields on `impact/callers --sound` and `subset`:
 `promise`, `promise_tier`, `promise_languages` (plus `subset_ok` /
 `in_subset`).
 
+## Uncertified sources → `parse_error` (keep-set S rule)
+
+A source file that the walker can see (known extension) but that **cannot be
+certified** must not silently look in-S. Both full `index()` and watch
+`index_paths()` mint a `parse_error` subset violation for:
+
+| Skip path | Full index | Watch (`index_paths`) |
+|---|---|---|
+| Oversized source (>1.5 MiB) | ✅ mint | ✅ mint (event path + walker siblings) |
+| Minified bundle (`*.min.*`) | ✅ mint | ✅ mint (event path + walker siblings) |
+| Read I/O error | ✅ mint | ✅ mint |
+| Non-UTF-8 bytes | ✅ mint | ✅ mint |
+| Extract / parse failure | ✅ mint | ✅ mint |
+
+These paths stay in the **keep-set** so `prune_missing` does not cascade-delete
+the violation on the next pass. Recovering files (readable again, under the
+size cap) replace the `parse_error` with a normal index on the next force/hash
+mismatch.
+
+**Intentionally outside the corpus** (no mint, not claimed in S):
+noise dirs (`node_modules`, `testdata`, `target`, …), unsupported extensions,
+and paths outside the repo root. `--sound` only claims the **indexed** program.
+
+Regression: `tests/r25_adversarial.rs` (`skip_path_completeness_matrix`,
+`parse_error_cleared_when_file_recovers`); R24 keep-set tests in
+`tests/r24_adversarial.rs`.
+
 ## S_js (TypeScript / JavaScript)
 
 A program is in S_js when **all** of the following hold:
@@ -150,6 +177,18 @@ call-graph edges.
 | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot() / forRootAsync()] })` | `X.forRootAsync({ imports })` → `ts.nest.module_imports` |
 | `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Exports are registration, not a call |
 | `ts.nest.ctor_inject` | `constructor(private x: T)` | Type-annotation finite domain; skips primitives |
+
+These five ids are exactly the `ts.nest.*` entries in
+`SOUND_HEURISTIC_RULES` (`src/index/subset.rs`). Shapes such as
+`X.forRootAsync({ inject, useFactory })` and bare string tokens
+(`provide: 'CONFIG'`) are **not** separate rule ids — they emit under
+`ts.nest.module_*` / `ts.di.*`. Do not invent `ts.nest.forRootAsync` /
+`ts.nest.string_token` as rule ids.
+
+Non-`ts.nest.*` sound-allowlisted heuristics live in the same constant:
+`ts.di.register|bind|to|decorator`, `ts.event.subscribe|dispatch`,
+`py.di.depends|inject`, `py.framework.init_subclass`, `go.di.handler_map|
+interface_impl|interface_assert|route_register`, `rs.di.impl_trait`.
 
 Array-element unwrapping (still registration): bare ident / member / string
 token / `new T()` / `X.forRoot()` / `forwardRef(() => M)` (never the

@@ -71,9 +71,14 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 | TS/JS | `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Heuristic |
 | TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot(), X.forRootAsync()] })` | Heuristic |
 | TS/JS | `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Heuristic |
-| TS/JS | `ts.nest.forRootAsync` | `X.forRootAsync({ imports, inject, useFactory })` → imports / providers rules | Heuristic |
 | TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` (type annotation, not primitives) | Heuristic |
-| TS/JS | `ts.nest.string_token` | `provide: 'CONFIG'` / `exports: ['CONFIG']` bare string tokens | Heuristic |
+
+**Shapes, not separate rule ids:** `X.forRootAsync({ imports, inject, useFactory })`
+emits under `ts.nest.module_imports` / `ts.nest.module_providers` (and
+`ts.di.bind`/`ts.di.to` for bind chains). Bare string tokens
+(`provide: 'CONFIG'` / `exports: ['CONFIG']`) emit under
+`ts.nest.module_providers` / `ts.nest.module_exports`. There are no
+`ts.nest.forRootAsync` or `ts.nest.string_token` rule ids.
 | TS/JS | `ts.event.subscribe` | `emitter.on(evt, handler)` | Heuristic |
 | TS/JS | `ts.dynamic.computed` | `obj['m']()` / `new (reg['X'])()` | DynamicCandidate |
 | Python | `py.di.depends` | FastAPI `Depends(fn\|Class)` | Heuristic |

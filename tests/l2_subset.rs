@@ -497,6 +497,7 @@ fn sound_eligibility_allowlist() {
         "ts.nest.module_providers",
         "ts.nest.module_controllers",
         "ts.nest.module_imports",
+        "ts.nest.module_exports",
         "ts.nest.ctor_inject",
     ] {
         assert!(

@@ -467,17 +467,15 @@ impl Indexer {
             return Ok(stats);
         }
 
-        let known: std::collections::HashSet<String> = walker::collect_source_files(&self.root)?
-            .iter()
-            .map(|p| {
-                let p_n = parser::normalize_root(p);
-                let base = parser::normalize_root(&self.root);
-                p_n.strip_prefix(&base)
-                    .unwrap_or(p)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            })
-            .collect();
+        // Use walker's already-resolved rel paths (same rule as full index).
+        // Re-stripping with naive strip_prefix + unwrap_or(abs) would put
+        // absolute paths into the keep set and prune every store row.
+        let known: std::collections::HashSet<String> =
+            walker::collect_source_files_with_stats(&self.root)?
+                .files
+                .into_iter()
+                .map(|f| f.rel)
+                .collect();
 
         let mut dirty_paths: Vec<String> = Vec::new();
         store.begin_batch()?;
@@ -662,6 +660,12 @@ impl Indexer {
 /// Also accepts Remove / rename (ModifyKind::Name) of non-source paths under
 /// root: Windows/notify often reports a **directory** path with no extension
 /// when a tree is deleted or renamed. Filtering those out left a stale graph.
+///
+/// Path form must match `rel_path_under_root` (both-sides canonicalize):
+/// macOS notify reports `/var/...` while Indexer root is `/private/var/...`,
+/// Windows may report `RUNNER~1` short names or `\\?\` UNC. One-sided
+/// `starts_with` dropped those events *before* `index_paths` could recover
+/// them — recreating the stale-graph class of bugs R21 fixed downstream.
 fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
     use notify::event::ModifyKind;
     use notify::EventKind;
@@ -675,10 +679,9 @@ fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
     let dir_lifecycle = matches!(ev.kind, EventKind::Remove(_))
         || matches!(ev.kind, EventKind::Modify(ModifyKind::Name(_)));
     ev.paths.iter().any(|p| {
-        // Normalize UNC prefixes so `\\?\C:\...` event paths still match root.
-        let p_n = parser::normalize_root(p);
-        let r_n = parser::normalize_root(root);
-        if !p_n.starts_with(&r_n) && !p.starts_with(root) {
+        // Both-sides resolve (parent-canonicalize for deleted leaves) — same
+        // rule as index_paths / walker. Reject outside-root before any filter.
+        if parser::rel_path_under_root(p, root).is_none() {
             return false;
         }
         // Ignore our own index db and junk.
@@ -694,4 +697,163 @@ fn is_source_event(ev: &notify::Event, root: &Path) -> bool {
         // above; non-source files (README.md, images) stay filtered.
         dir_lifecycle && std::path::Path::new(&*s).extension().is_none()
     })
+}
+
+#[cfg(test)]
+mod path_event_tests {
+    use super::is_source_event;
+    use crate::index::parser;
+    use notify::event::{ModifyKind, RenameMode};
+    use notify::{Event, EventKind};
+    use std::path::{Path, PathBuf};
+
+    fn temp_base(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("agentgraph-r22-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("real").join("src")).unwrap();
+        dir
+    }
+
+    /// Create a directory alias (`mklink /J` on Windows, symlink on Unix) so
+    /// event paths can differ lexically from the canonical root — the same
+    /// class as macOS `/var` → `/private/var`.
+    fn make_alias(target: &Path, alias: &Path) {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, alias).expect("symlink alias");
+        }
+        #[cfg(windows)]
+        {
+            let ok = std::process::Command::new("cmd")
+                .args([
+                    "/C",
+                    "mklink",
+                    "/J",
+                    alias.to_str().expect("utf8 alias"),
+                    target.to_str().expect("utf8 target"),
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !ok {
+                std::os::windows::fs::symlink_dir(target, alias).expect("junction/symlink alias");
+            }
+        }
+        // Alias must actually resolve; otherwise the scenario is invalid.
+        assert!(
+            alias.join("src").is_dir(),
+            "alias {} must resolve to target {}",
+            alias.display(),
+            target.display()
+        );
+    }
+
+    fn modify_rename(path: PathBuf) -> Event {
+        Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(path)
+    }
+
+    fn remove(path: PathBuf) -> Event {
+        Event::new(EventKind::Remove(notify::event::RemoveKind::Any)).add_path(path)
+    }
+
+    /// Lexical mismatch (symlink/junction alias) must still accept source
+    /// events — otherwise watch never calls index_paths and the graph goes stale.
+    #[test]
+    fn is_source_event_accepts_alias_form_under_root() {
+        let base = temp_base("alias");
+        let real = base.join("real");
+        let alias = base.join("link");
+        make_alias(&real, &alias);
+
+        // Canonicalize the way Indexer::new does (normalize strips `\\?\`).
+        let root = parser::normalize_root(&real.canonicalize().expect("canonicalize real"));
+        let event_path = alias.join("src").join("a.ts");
+        // Sanity: event path must NOT lexically start with root.
+        assert!(
+            !event_path.starts_with(&root),
+            "test setup broken: {} unexpectedly starts with {}",
+            event_path.display(),
+            root.display()
+        );
+
+        assert!(
+            is_source_event(&modify_rename(event_path.clone()), &root),
+            "alias-form source rename must be accepted (root={}, event={})",
+            root.display(),
+            event_path.display()
+        );
+        assert!(
+            is_source_event(&remove(event_path.clone()), &root),
+            "alias-form source remove must be accepted (root={}, event={})",
+            root.display(),
+            event_path.display()
+        );
+    }
+
+    /// Deleted leaf under an alias-form parent: parent still exists via the
+    /// real path, so parent-canonicalize + re-join must classify it under root.
+    #[test]
+    fn is_source_event_accepts_deleted_leaf_via_alias_parent() {
+        let base = temp_base("alias-del");
+        let real = base.join("real");
+        let alias = base.join("link");
+        make_alias(&real, &alias);
+
+        let root = parser::normalize_root(&real.canonicalize().expect("canonicalize real"));
+        let leaf = alias.join("src").join("gone.ts");
+        // File never created (or already gone) — Remove of a vanished path.
+        assert!(!leaf.exists());
+        assert!(
+            is_source_event(&remove(leaf.clone()), &root),
+            "deleted leaf under live alias parent must be accepted (root={}, event={})",
+            root.display(),
+            leaf.display()
+        );
+    }
+
+    /// Directory Remove with no extension under an alias form (Windows notify
+    /// reports dir paths on tree delete) must still enter the reindex path.
+    #[test]
+    fn is_source_event_accepts_alias_directory_remove() {
+        let base = temp_base("alias-dir");
+        let real = base.join("real");
+        let alias = base.join("link");
+        make_alias(&real, &alias);
+
+        let root = parser::normalize_root(&real.canonicalize().expect("canonicalize real"));
+        let dir = alias.join("src");
+        assert!(
+            is_source_event(&remove(dir.clone()), &root),
+            "alias-form directory remove must be accepted (root={}, event={})",
+            root.display(),
+            dir.display()
+        );
+    }
+
+    /// Outside-root paths must stay rejected even with the stronger check.
+    #[test]
+    fn is_source_event_rejects_outside_root() {
+        let base = temp_base("outside");
+        let real = base.join("real");
+        std::fs::create_dir_all(base.join("other")).unwrap();
+        std::fs::write(base.join("other/b.ts"), "x").unwrap();
+        let root = parser::normalize_root(&real.canonicalize().expect("canonicalize real"));
+        let outside = base.join("other").join("b.ts");
+        assert!(
+            !is_source_event(&modify_rename(outside.clone()), &root),
+            "outside-root event must be rejected: {}",
+            outside.display()
+        );
+    }
+
+    /// Lexical match still works (fast path) — no regression for same-form paths.
+    #[test]
+    fn is_source_event_accepts_lexical_match() {
+        let base = temp_base("lexical");
+        let real = base.join("real");
+        std::fs::write(real.join("src/a.ts"), "export function helper() {}\n").unwrap();
+        let root = parser::normalize_root(&real.canonicalize().expect("canonicalize real"));
+        let p = root.join("src").join("a.ts");
+        assert!(is_source_event(&modify_rename(p.clone()), &root));
+    }
 }

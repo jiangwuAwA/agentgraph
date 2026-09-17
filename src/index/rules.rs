@@ -23,7 +23,10 @@ pub fn apply(
         }
         Language::Python => walk_py(root, source, ctx, references, None),
         Language::Go => walk_go(root, source, ctx, references),
-        Language::Rust => walk_rust(root, source, ctx, references),
+        Language::Rust => {
+            let inv_submit_aliases = collect_inventory_submit_aliases(root, source);
+            walk_rust(root, source, ctx, references, &inv_submit_aliases);
+        }
     }
 }
 
@@ -1746,6 +1749,7 @@ fn walk_rust(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    inv_submit_aliases: &std::collections::HashSet<String>,
 ) {
     let mut cursor = node.walk();
 
@@ -1753,12 +1757,203 @@ fn walk_rust(
         rust_impl_trait_rule(node, source, ctx, references);
     }
     if node.kind() == "macro_invocation" {
-        rust_inventory_submit_rule(node, source, ctx, references);
+        rust_inventory_submit_rule(node, source, ctx, references, inv_submit_aliases);
     }
 
     for child in node.children(&mut cursor) {
-        walk_rust(child, source, ctx, references);
+        walk_rust(child, source, ctx, references, inv_submit_aliases);
     }
+}
+
+/// Local identifiers that refer to `inventory::submit` via `use` (including
+/// `use inventory::submit as alias` and `use inventory::{submit}`). Bare
+/// `submit!` is only treated as inventory when the file imports that name.
+fn collect_inventory_submit_aliases(root: Node, source: &str) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    walk_rust_use_decls(root, source, &mut out);
+    out
+}
+
+fn walk_rust_use_decls(node: Node, source: &str, out: &mut std::collections::HashSet<String>) {
+    if node.kind() == "use_declaration" {
+        let mut c = node.walk();
+        for ch in node.children(&mut c) {
+            collect_from_use_item(ch, source, Vec::new(), out);
+        }
+    }
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        walk_rust_use_decls(ch, source, out);
+    }
+}
+
+/// Flatten `scoped_identifier` / path segments into `["crate","inventory","submit"]`.
+fn path_segments_from_scoped(node: Node, source: &str) -> Option<Vec<String>> {
+    match node.kind() {
+        "identifier" | "crate" | "self" | "super" => {
+            Some(vec![node_text(node, source).to_string()])
+        }
+        "scoped_identifier" => {
+            let mut segs = Vec::new();
+            let mut c = node.walk();
+            for ch in node.children(&mut c) {
+                if matches!(
+                    ch.kind(),
+                    "scoped_identifier" | "identifier" | "crate" | "self" | "super"
+                ) {
+                    segs.extend(path_segments_from_scoped(ch, source)?);
+                }
+            }
+            if segs.is_empty() {
+                None
+            } else {
+                Some(segs)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn collect_from_use_item(
+    node: Node,
+    source: &str,
+    prefix: Vec<String>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    match node.kind() {
+        "scoped_identifier" => {
+            if let Some(segs) = path_segments_from_scoped(node, source) {
+                if is_inventory_submit_full_path(&segs) {
+                    if let Some(local) = segs.last() {
+                        out.insert(local.clone());
+                    }
+                }
+            }
+        }
+        "use_as_clause" => {
+            // `use inventory::submit as inv_submit` → scoped_identifier + alias ident.
+            let mut segs: Vec<String> = prefix.clone();
+            let mut alias: Option<String> = None;
+            let mut seen_as = false;
+            let mut c = node.walk();
+            for ch in node.children(&mut c) {
+                if ch.kind() == "as" {
+                    seen_as = true;
+                    continue;
+                }
+                if seen_as && ch.kind() == "identifier" {
+                    alias = Some(node_text(ch, source).to_string());
+                    continue;
+                }
+                if !seen_as {
+                    if ch.kind() == "scoped_identifier" {
+                        segs = path_segments_from_scoped(ch, source).unwrap_or(segs);
+                    } else if matches!(ch.kind(), "identifier" | "crate" | "self" | "super") {
+                        segs.push(node_text(ch, source).to_string());
+                    }
+                }
+            }
+            if let Some(alias) = alias {
+                if is_inventory_submit_full_path(&segs) {
+                    out.insert(alias);
+                }
+            }
+        }
+        "scoped_use_list" => {
+            // `use inventory::{...}` / `use crate::inventory::{...}`
+            let mut path_segs = prefix.clone();
+            let mut list: Option<Node> = None;
+            let mut c = node.walk();
+            for ch in node.children(&mut c) {
+                match ch.kind() {
+                    "scoped_identifier" => {
+                        path_segs = path_segments_from_scoped(ch, source).unwrap_or(path_segs);
+                    }
+                    "identifier" | "crate" | "self" | "super" => {
+                        path_segs.push(node_text(ch, source).to_string());
+                    }
+                    "use_list" => list = Some(ch),
+                    _ => {}
+                }
+            }
+            if let Some(list) = list {
+                collect_from_use_list(list, source, path_segs, out);
+            }
+        }
+        "use_list" => {
+            collect_from_use_list(node, source, prefix, out);
+        }
+        "use_wildcard" | "scoped_use_list_wildcard" => {
+            if prefix.last().map(|s| s == "inventory").unwrap_or(false)
+                && is_inventory_crate_prefix(&prefix)
+            {
+                out.insert("submit".to_string());
+            }
+        }
+        "identifier" => {
+            let mut segs = prefix;
+            segs.push(node_text(node, source).to_string());
+            if is_inventory_submit_full_path(&segs) {
+                if let Some(local) = segs.last() {
+                    out.insert(local.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_from_use_list(
+    node: Node,
+    source: &str,
+    prefix: Vec<String>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        match ch.kind() {
+            "identifier" => {
+                let mut segs = prefix.clone();
+                segs.push(node_text(ch, source).to_string());
+                if is_inventory_submit_full_path(&segs) {
+                    out.insert(node_text(ch, source).to_string());
+                }
+            }
+            "use_as_clause" => {
+                collect_from_use_item(ch, source, prefix.clone(), out);
+            }
+            "use_wildcard" => {
+                if prefix.last().map(|s| s == "inventory").unwrap_or(false)
+                    && is_inventory_crate_prefix(&prefix)
+                {
+                    out.insert("submit".to_string());
+                }
+            }
+            "scoped_identifier" | "use_list" | "scoped_use_list" => {
+                collect_from_use_item(ch, source, prefix.clone(), out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// True when path segments are exactly `…::inventory::submit` and the prefix
+/// before `inventory` is crate-relative (empty / crate / self / super*), not an
+/// unrelated crate that happens to contain a module named `inventory`.
+fn is_inventory_submit_full_path(path: &[String]) -> bool {
+    let n = path.len();
+    if n < 2 {
+        return false;
+    }
+    path[n - 1] == "submit"
+        && path[n - 2] == "inventory"
+        && is_inventory_crate_prefix(&path[..n - 2])
+}
+
+fn is_inventory_crate_prefix(prefix: &[String]) -> bool {
+    prefix
+        .iter()
+        .all(|s| matches!(s.as_str(), "crate" | "self" | "super" | "inventory"))
 }
 
 /// `inventory::submit! { RegistrationType { factory: || Box::new(Concrete::new(..)), .. } }`
@@ -1771,6 +1966,7 @@ fn rust_inventory_submit_rule(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    inv_submit_aliases: &std::collections::HashSet<String>,
 ) {
     // tree-sitter-rust leaves the macro path unlabeled; take first path-ish child.
     let mut c = node.walk();
@@ -1786,7 +1982,7 @@ fn rust_inventory_submit_rule(
         .unwrap_or_default();
     drop(c);
 
-    if !is_inventory_submit_path(&path_text) {
+    if !is_inventory_submit_invocation(&path_text, inv_submit_aliases) {
         return;
     }
 
@@ -1840,23 +2036,40 @@ fn rust_inventory_submit_rule(
     }
 }
 
-/// Path is the inventory crate's `submit!` macro.
+/// Path is the inventory crate's `submit!` macro, or a file-local alias of it.
 ///
-/// Match the final two segments exactly (`…::inventory::submit`). A loose
-/// `contains("inventory")` minted false sound-eligible edges from unrelated
-/// paths such as `myinventory::submit` / `inventory_backup::submit`.
+/// Accept:
+/// - `inventory::submit` / `::inventory::submit` / `crate::inventory::submit`
+/// - identifiers imported via `use inventory::submit` / `use inventory::submit as X`
+///
+/// Reject unrelated crate paths that merely contain a module named `inventory`
+/// (`evil::inventory::submit`) and bare `submit!` with no inventory import.
+fn is_inventory_submit_invocation(
+    path: &str,
+    inv_submit_aliases: &std::collections::HashSet<String>,
+) -> bool {
+    let raw = path.trim();
+    if raw.is_empty() {
+        return false;
+    }
+    // Local alias / imported name (`submit!`, `inv_submit!`).
+    if !raw.contains("::") && inv_submit_aliases.contains(raw) {
+        return true;
+    }
+    is_inventory_submit_path(raw)
+}
+
 fn is_inventory_submit_path(path: &str) -> bool {
     let p = path.trim().trim_start_matches("::");
     if p.is_empty() {
         return false;
     }
-    let parts: Vec<&str> = p.split("::").map(|s| s.trim()).collect();
-    if parts.len() < 2 {
-        return false;
-    }
-    let n = parts.len();
-    // inventory::submit / ::inventory::submit / crate::inventory::submit
-    parts[n - 1] == "submit" && parts[n - 2] == "inventory"
+    let parts: Vec<String> = p
+        .split("::")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    is_inventory_submit_full_path(&parts)
 }
 
 /// UpperCamel identifier at the top level of the macro token_tree that is

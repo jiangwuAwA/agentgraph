@@ -51,7 +51,7 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
-| `macro status` | Optional macro-expanded sidecar (P2, default OFF) — path + counts |
+| `macro status` | Optional macro-expanded sidecar (P2, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / sidecar `subset_violation_count` |
 
 Confidence windows on `callers` / `impact` (and MCP tools):
 

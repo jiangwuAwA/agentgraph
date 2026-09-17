@@ -78,11 +78,19 @@ agentgraph macro status
   "refs": 4,
   "origin": "macro_expanded",
   "expanded_root": "/path/to/expanded-shadow",
-  "expanded_root_missing": false
+  "expanded_root_missing": false,
+  "expanded_root_nested": false,
+  "subset_violation_count": 2
 }
 ```
 
 **Staleness:** sidecar rows are a snapshot. If the expanded tree is deleted or moved after build, `--with-macro` still unions the old rows (dual-index noise; no crash). `macro status` sets `expanded_root_missing: true` when the recorded `expanded_root` path no longer exists — rebuild or delete `<root>/.agentgraph/index.macro.db` to clear.
+
+**Nesting re-validation (R27):** `macro status` re-checks nesting on every call. If the recorded `expanded_root` still exists but now canonicalizes equal / under / containing `--root` (dir move + junction, or equivalent), status sets `expanded_root_nested: true`. That is a **main-walker pollution hazard** — do not run a plain `index --force` until the shadow is outside `--root` again. Index-time validation of `--macro-expanded-root` remains the hard reject.
+
+**Relative expanded roots (R27):** non-absolute `--macro-expanded-root` values are resolved against **`--root`**, not the process cwd. `expand-shadow` means `<root>/expand-shadow` (nested → rejected); use an absolute sibling path (or `../app-expanded` relative to `--root`) for dual-index targets.
+
+**Sidecar S honesty (R27):** `subset_violation_count` is the S-violation count **inside the sidecar store only** (expanded `unsafe` / `eval` / parse_error, …). It does **not** claim or flip main `subset_ok`. Main `subset` continues to operate only on `index.db`. There is still no sidecar-only `subset` walk command.
 
 ### Query union (default OFF)
 
@@ -117,7 +125,10 @@ Main-index rows are **not** tagged with `origin`. Expect **dual-index noise**: t
 | Main `subset` / `--sound` | Operates only on main index; expanded S-violations stay in the sidecar |
 | Expanded-only symbols | May appear under `--with-macro` as ordinary array rows with `origin`; **never** as `subset_ok: true` |
 | Expanded root nested with `--root` | **Rejected** (equal / under / contains) before main reindex |
+| Relative `--macro-expanded-root` | Resolved against `--root` (not cwd); nested relatives reject |
 | Deleted expanded tree | Sidecar rows still union; `macro status.expanded_root_missing=true` |
+| Expanded root later nested (move/junction) | `macro status.expanded_root_nested=true` (re-validated on status) |
+| Expanded tree has S violations | `macro status.subset_violation_count` (sidecar only; main subset unchanged) |
 
 ---
 
@@ -165,5 +176,7 @@ Merging would require a **sound path map + de-dup + subset story** that we do no
 5. No `subset_ok` claim from expanded-only content; `--sound --with-macro` fails closed.
 
 `tests/r26_adversarial.rs` also locks: nested expanded-root reject (no main pollution), spaces in sibling paths, inventory path allowlist, stale `expanded_root_missing`, MCP `with_macro`/`macro_status` schema.
+
+`tests/r27_adversarial.rs` locks: project-relative expanded roots (cwd decoy reject), `expanded_root_nested` after junction, sidecar `subset_violation_count`, index without `--force` still validates+writes sidecar, impact `--with-macro` sidecar-only independent BFS, delete-sidecar no-resurrect, MCP callers `at` schema stability with/without `with_macro`.
 
 Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

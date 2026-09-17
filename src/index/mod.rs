@@ -133,9 +133,17 @@ impl Indexer {
     /// re-index the whole parent with wrong relative paths. Keep the shadow as a
     /// **sibling** directory — see docs/macro-sidecar.md.
     pub fn validate_macro_expanded_root(&self, expanded_root: &Path) -> Result<PathBuf> {
-        let expanded_raw = expanded_root.canonicalize().map_err(|e| {
-            anyhow::anyhow!("macro expanded root '{}': {e}", expanded_root.display())
-        })?;
+        // Relative expanded roots resolve against **--root**, not the process cwd.
+        // Otherwise `index --macro-expanded-root expand-shadow` can silently
+        // dual-index an unrelated cwd-relative tree (or bypass nesting checks).
+        let joined = if expanded_root.is_absolute() {
+            expanded_root.to_path_buf()
+        } else {
+            self.root.join(expanded_root)
+        };
+        let expanded_raw = joined
+            .canonicalize()
+            .map_err(|e| anyhow::anyhow!("macro expanded root '{}': {e}", joined.display()))?;
         let expanded = parser::normalize_root(&expanded_raw);
         let main = parser::normalize_root(&self.root);
         if !expanded.is_dir() {
@@ -223,6 +231,8 @@ impl Indexer {
                 origin: None,
                 expanded_root: None,
                 expanded_root_missing: false,
+                expanded_root_nested: false,
+                subset_violation_count: 0,
             });
         }
         let store = store::Store::open(&path)?;
@@ -236,6 +246,17 @@ impl Indexer {
             .as_ref()
             .map(|p| !Path::new(p).exists())
             .unwrap_or(false);
+        // Re-validate nesting on every status: a sibling expanded tree that was
+        // later moved/junctioned under --root is a main-walker pollution hazard
+        // even though the sidecar file itself still exists.
+        let expanded_root_nested = expanded_root
+            .as_ref()
+            .filter(|_| !expanded_root_missing)
+            .map(|p| self.expanded_root_nests_with_main(Path::new(p)))
+            .unwrap_or(false);
+        // Sidecar-only S honesty (unsafe/eval in the expanded tree). Does not
+        // claim or flip main subset_ok.
+        let subset_violation_count = store.subset_violations()?.len();
         Ok(MacroSidecarStatus {
             exists: true,
             path: path_str,
@@ -245,7 +266,19 @@ impl Indexer {
             origin,
             expanded_root,
             expanded_root_missing,
+            expanded_root_nested,
+            subset_violation_count,
         })
+    }
+
+    /// True when `expanded` (after canonicalize) equals / is under / contains main root.
+    fn expanded_root_nests_with_main(&self, expanded: &Path) -> bool {
+        let Ok(raw) = expanded.canonicalize() else {
+            return false;
+        };
+        let exp = parser::normalize_root(&raw);
+        let main = parser::normalize_root(&self.root);
+        exp == main || exp.starts_with(&main) || main.starts_with(&exp)
     }
 
     /// Full or incremental index. Unchanged files (same content hash) are skipped.

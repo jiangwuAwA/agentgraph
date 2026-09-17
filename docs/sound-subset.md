@@ -123,6 +123,14 @@ claim. The S scanner still flags those files (`unsafe` violation →
 over-approx Heuristic edges. Registration ≠ runtime call; runtime
 `inventory::iter` fan-out is **not** modeled.
 
+Inventory path matching (R27): qualified forms are accepted only for
+crate-relative inventory paths (`inventory::submit`, `::inventory::submit`,
+`crate::inventory::submit`, `self`/`super` prefixes). Unrelated
+`evil::inventory::submit` does **not** mint sound-eligible edges. File-local
+imports are honored: `use inventory::submit; submit!(…)`,
+`use inventory::submit as X; X!(…)`, and `use inventory::{submit}` mint the
+same rule; bare `submit!` **without** an inventory import is rejected.
+
 ## S_py / S_go (AST scanners — tree-sitter)
 
 See `scan_py` / `scan_go` in `src/index/subset.rs`. Both are **tree-sitter

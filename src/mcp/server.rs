@@ -398,25 +398,26 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 }
                 let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
+                // Always emit CLI-stable `at` on callers rows (with or without
+                // with_macro) so e2e consumers do not see schema flip on the flag.
+                let mut mapped: Vec<Value> = hits
+                    .into_iter()
+                    .map(|r| {
+                        let mut v = serde_json::to_value(&r).unwrap_or_default();
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
+                        }
+                        v
+                    })
+                    .collect();
                 if with_macro {
-                    let mut mapped: Vec<Value> = hits
-                        .into_iter()
-                        .map(|r| {
-                            let mut v = serde_json::to_value(&r).unwrap_or_default();
-                            if let Some(obj) = v.as_object_mut() {
-                                obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
-                            }
-                            v
-                        })
-                        .collect();
                     if let Some(side) = indexer.open_macro_store()? {
                         for r in side.callers_filtered(sym, limit, filter)? {
                             mapped.push(tag_macro_ref_json(&r));
                         }
                     }
-                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
                 }
-                Ok(ok_text(serde_json::to_string_pretty(&hits)?))
+                Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
             }
             "impact" => {
                 let sym = args

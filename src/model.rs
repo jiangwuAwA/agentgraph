@@ -286,6 +286,14 @@ pub struct MacroSidecarStatus {
     /// True when a recorded `expanded_root` no longer exists on disk (stale sidecar).
     #[serde(default)]
     pub expanded_root_missing: bool,
+    /// True when the recorded `expanded_root` currently nests with `--root`
+    /// (equal / under / contains) after a move or junction — main-walker hazard.
+    #[serde(default)]
+    pub expanded_root_nested: bool,
+    /// S-violation count **inside the sidecar store only**. Does **not** claim
+    /// main `subset_ok`; see docs/macro-sidecar.md.
+    #[serde(default)]
+    pub subset_violation_count: usize,
 }
 
 /// Result of `index --macro-expanded-root` (sidecar build; does not replace main).

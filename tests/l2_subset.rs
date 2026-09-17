@@ -662,3 +662,56 @@ export function dyn(obj) {
         "literal computed key is finite-domain Sound: {classes:?}"
     );
 }
+
+/// R14: bare eval passed as a value (callback / array element) must leave S.
+/// Python already flags bare dangerous names; JS did not.
+#[test]
+fn s_js_bare_eval_identifier_reference_leaves_s() {
+    for src in [
+        "export function wrap(cb) { return cb; }\nexport const run = wrap(eval);\n",
+        "export function main() { setTimeout(eval, 0, '1+1'); }\n",
+        "export const runners = [eval];\n",
+        "export function pick() { return { fn: eval }; }\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/bare.js");
+        assert!(
+            !r.in_subset,
+            "bare eval identifier must leave S: {src:?} → {:?}",
+            r.violations
+        );
+    }
+}
+
+/// R14: object-destructure rename of eval/Function — local name is not
+/// `eval`, so call-site detection never fires. Pattern key must leave S.
+#[test]
+fn s_js_destructure_rename_eval_leaves_s() {
+    for src in [
+        "const { eval: e } = globalThis;\ne('1+1');\n",
+        "const { Function: Fn } = window;\nnew Fn('return 1');\n",
+        "let e;\n({ eval: e } = globalThis);\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/des.js");
+        assert!(
+            !r.in_subset,
+            "destructuring rename of eval/Function must leave S: {src:?} → {:?}",
+            r.violations
+        );
+    }
+}
+
+/// Property access must stay in S (false-positive guard for the bare-ident scan).
+#[test]
+fn s_js_eval_property_name_stays_in_s() {
+    for src in [
+        "export function f(obj) { return obj.eval; }\n",
+        "export function g(o) { o.Function = null; return o; }\n",
+    ] {
+        let r = scan_subset(src, Language::JavaScript, "src/prop.js");
+        assert!(
+            r.in_subset,
+            "eval as property access must stay in S: {src:?} → {:?}",
+            r.violations
+        );
+    }
+}

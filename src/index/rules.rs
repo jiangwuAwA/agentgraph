@@ -735,6 +735,7 @@ fn ts_nest_module_metadata(
 /// - bare identifier → the name
 /// - `{ provide, useClass, useExisting, useFactory }` → each simple ident
 /// - `X.forRoot(...)` → `X` (callee object)
+/// - `forwardRef(() => M)` / `forwardRef(M)` → `M` (never the `forwardRef` helper)
 fn ts_nest_array_targets(
     array: Node,
     source: &str,
@@ -743,61 +744,125 @@ fn ts_nest_array_targets(
 ) {
     let mut cursor = array.walk();
     for elem in array.children(&mut cursor) {
-        match elem.kind() {
-            "identifier" | "type_identifier" | "shorthand_property_identifier" => {
-                let t = node_text(elem, source);
-                if !t.is_empty() {
-                    sink(t.to_string(), None);
-                }
+        ts_nest_sink_elem(elem, source, rule_id, &mut sink);
+    }
+}
+
+/// Recursively resolve one Nest metadata array element to registration target name(s).
+fn ts_nest_sink_elem(
+    elem: Node,
+    source: &str,
+    rule_id: &str,
+    sink: &mut impl FnMut(String, Option<usize>),
+) {
+    let n = unwrap_parens(elem);
+    match n.kind() {
+        "identifier" | "type_identifier" | "shorthand_property_identifier" => {
+            let t = node_text(n, source);
+            if !t.is_empty() {
+                sink(t.to_string(), None);
             }
-            "member_expression" => {
-                if let Some(n) = ident_name(elem, source) {
-                    sink(n, None);
-                }
+        }
+        "member_expression" => {
+            if let Some(name) = ident_name(n, source) {
+                sink(name, None);
             }
-            "call_expression" => {
-                // imports: [ObserveModule.forRoot(...)] → ObserveModule
-                if let Some(fn_node) = elem.child_by_field_name("function") {
-                    if fn_node.kind() == "member_expression" {
-                        if let Some(obj) = fn_node.child_by_field_name("object") {
-                            if let Some(n) = ident_name(obj, source) {
-                                sink(n, None);
-                            }
-                        }
-                    } else if let Some(n) = ident_name(fn_node, source) {
-                        sink(n, None);
-                    }
-                }
-            }
-            "object" => {
-                let mut oc = elem.walk();
-                for pair in elem.children(&mut oc) {
-                    if pair.kind() != "pair" {
-                        continue;
-                    }
-                    let Some(key) = pair.child_by_field_name("key") else {
-                        continue;
-                    };
-                    let Some(value) = pair.child_by_field_name("value") else {
-                        continue;
-                    };
-                    let key_t = node_text(key, source);
-                    if !matches!(key_t, "provide" | "useClass" | "useExisting" | "useFactory") {
-                        continue;
-                    }
-                    // Only fire under the providers rule for provider-object keys.
-                    if rule_id != "ts.nest.module_providers" && key_t != "provide" {
-                        // controllers/imports object forms are rare; still capture provide/useClass cheaply.
-                        if !matches!(key_t, "provide" | "useClass") {
+        }
+        "call_expression" => {
+            let fn_node = n.child_by_field_name("function");
+            let fn_last = fn_node
+                .map(|f| last_segment(node_text(f, source)).to_string())
+                .unwrap_or_default();
+            // Nest circular DI: forwardRef(() => M) — unwrap the real module.
+            // Never emit an edge to the `forwardRef` helper itself.
+            if fn_last == "forwardRef" {
+                if let Some(args) = n.child_by_field_name("arguments") {
+                    let mut ac = args.walk();
+                    for a in args.children(&mut ac) {
+                        if matches!(a.kind(), "(" | ")" | ",") {
                             continue;
                         }
-                    }
-                    if let Some(n) = ident_name(value, source) {
-                        sink(n, None);
+                        ts_nest_sink_elem(a, source, rule_id, sink);
+                        break;
                     }
                 }
+                return;
             }
-            _ => {}
+            // imports: [ObserveModule.forRoot(...)] → ObserveModule
+            if let Some(fn_node) = fn_node {
+                if fn_node.kind() == "member_expression" {
+                    if let Some(obj) = fn_node.child_by_field_name("object") {
+                        if let Some(name) = ident_name(obj, source) {
+                            sink(name, None);
+                        }
+                    }
+                } else if let Some(name) = ident_name(fn_node, source) {
+                    sink(name, None);
+                }
+            }
+        }
+        "arrow_function" | "function_expression" => {
+            // forwardRef(() => AuthModule) / forwardRef(() => { return AuthModule; })
+            if let Some(body) = n.child_by_field_name("body") {
+                ts_nest_sink_body(body, source, rule_id, sink);
+            }
+        }
+        "object" => {
+            let mut oc = n.walk();
+            for pair in n.children(&mut oc) {
+                if pair.kind() != "pair" {
+                    continue;
+                }
+                let Some(key) = pair.child_by_field_name("key") else {
+                    continue;
+                };
+                let Some(value) = pair.child_by_field_name("value") else {
+                    continue;
+                };
+                let key_t = node_text(key, source);
+                if !matches!(key_t, "provide" | "useClass" | "useExisting" | "useFactory") {
+                    continue;
+                }
+                // Only fire under the providers rule for provider-object keys.
+                if rule_id != "ts.nest.module_providers" && key_t != "provide" {
+                    // controllers/imports object forms are rare; still capture provide/useClass cheaply.
+                    if !matches!(key_t, "provide" | "useClass") {
+                        continue;
+                    }
+                }
+                if let Some(name) = ident_name(value, source) {
+                    sink(name, None);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Arrow/function body: expression, or a block whose first `return` holds the target.
+fn ts_nest_sink_body(
+    body: Node,
+    source: &str,
+    rule_id: &str,
+    sink: &mut impl FnMut(String, Option<usize>),
+) {
+    let b = unwrap_parens(body);
+    if b.kind() != "statement_block" {
+        ts_nest_sink_elem(b, source, rule_id, sink);
+        return;
+    }
+    let mut c = b.walk();
+    for ch in b.children(&mut c) {
+        if ch.kind() != "return_statement" {
+            continue;
+        }
+        let mut rc = ch.walk();
+        for rch in ch.children(&mut rc) {
+            if matches!(rch.kind(), "return" | ";") {
+                continue;
+            }
+            ts_nest_sink_elem(rch, source, rule_id, sink);
+            return;
         }
     }
 }

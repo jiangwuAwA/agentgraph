@@ -587,6 +587,30 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
                 }
             }
         }
+        // Bare eval / Function used as a *value* (callback arg, array element,
+        // returned binding). Property access is `property_identifier` and is
+        // intentionally not matched — `obj.eval` stays in S.
+        "identifier" => {
+            let t = snippet_at(source, node);
+            if t == "eval" {
+                push_v(violations, path, line, "eval", &t);
+            } else if t == "Function" {
+                push_v(violations, path, line, "Function", &t);
+            }
+        }
+        // Destructuring rename: `const { eval: e } = globalThis` — the local
+        // name is `e`, so call-site detection never fires. Catch the pattern key.
+        "pair_pattern" => {
+            if let Some(key) = node.child_by_field_name("key") {
+                let kt = snippet_at(source, key);
+                let snip = snippet_at(source, node).replace('\n', " ");
+                if kt == "eval" {
+                    push_v(violations, path, line, "eval", &snip);
+                } else if kt == "Function" {
+                    push_v(violations, path, line, "Function", &snip);
+                }
+            }
+        }
         "assignment_expression"
         | "augmented_assignment_expression"
         | "variable_declarator"

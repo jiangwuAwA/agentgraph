@@ -353,3 +353,75 @@ export class AppController {
     );
     assert_eq!(hits[0].enclosing.as_deref(), Some("AppController"));
 }
+
+/// R14: Nest circular DI — `forwardRef` must unwrap to the real module,
+/// never invent an edge to the `forwardRef` helper itself.
+#[test]
+fn nest_imports_forward_ref_resolves_inner_module() {
+    let src = r#"
+import { Module, forwardRef } from '@nestjs/common';
+import { AuthModule } from './auth.module';
+
+@Module({
+  imports: [forwardRef(() => AuthModule)],
+})
+export class AppModule {}
+"#;
+    let out = extract(src, "src/app.module.ts");
+    let inner = nest_hits(&out, "AuthModule", "ts.nest.module_imports");
+    assert!(
+        !inner.is_empty(),
+        "forwardRef(() => AuthModule) must yield AuthModule; refs={}",
+        dump_refs(&out)
+    );
+    assert_eq!(inner[0].enclosing.as_deref(), Some("AppModule"));
+    let bogus = nest_hits(&out, "forwardRef", "ts.nest.module_imports");
+    assert!(
+        bogus.is_empty(),
+        "must NOT invent edge to forwardRef itself; refs={}",
+        dump_refs(&out)
+    );
+}
+
+#[test]
+fn nest_imports_forward_ref_bare_ident() {
+    let src = r#"
+import { Module, forwardRef } from '@nestjs/common';
+import { AuthModule } from './auth.module';
+
+@Module({
+  imports: [forwardRef(AuthModule)],
+})
+export class AppModule {}
+"#;
+    let out = extract(src, "src/app.module.ts");
+    assert!(
+        !nest_hits(&out, "AuthModule", "ts.nest.module_imports").is_empty(),
+        "forwardRef(AuthModule) must yield AuthModule; refs={}",
+        dump_refs(&out)
+    );
+    assert!(
+        nest_hits(&out, "forwardRef", "ts.nest.module_imports").is_empty(),
+        "must NOT invent forwardRef edge; refs={}",
+        dump_refs(&out)
+    );
+}
+
+#[test]
+fn nest_providers_use_factory_still_emits_token() {
+    let src = r#"
+import { Module } from '@nestjs/common';
+export const CONFIG = 'CONFIG';
+
+@Module({
+  providers: [{ provide: CONFIG, useFactory: () => ({}) }],
+})
+export class AppModule {}
+"#;
+    let out = extract(src, "src/app.module.ts");
+    assert!(
+        !nest_hits(&out, "CONFIG", "ts.nest.module_providers").is_empty(),
+        "useFactory provider must still emit provide token; refs={}",
+        dump_refs(&out)
+    );
+}

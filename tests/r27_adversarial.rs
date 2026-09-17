@@ -172,6 +172,9 @@ fn relative_expanded_root_resolves_against_project_root() {
     );
 
     // Project-relative sibling form `../app-expanded` resolved against --root.
+    // Use OS-native separator so Linux/macOS see a parent component, not `..\`.
+    let rel_sibling = Path::new("..").join("app-expanded");
+    let rel_sibling_s = rel_sibling.to_string_lossy().into_owned();
     let idx4 = run_in(
         &other,
         &root,
@@ -179,12 +182,12 @@ fn relative_expanded_root_resolves_against_project_root() {
             "index",
             "--force",
             "--macro-expanded-root",
-            "..\\app-expanded",
+            &rel_sibling_s,
         ],
     );
     assert!(
         idx4.status.success(),
-        "project-relative sibling ../app-expanded must work: {}",
+        "project-relative sibling {rel_sibling_s} must work: {}",
         stderr(&idx4)
     );
 }
@@ -217,25 +220,36 @@ fn macro_status_flags_expanded_root_now_nested() {
     let built = run(&root, &["index", "--force", "--macro-expanded-root", &exp]);
     assert!(built.status.success(), "{}", stderr(&built));
 
-    // Move content under --root, then recreate the recorded path as a junction
-    // so `expanded_root` still "exists" but canonicalizes under main root.
+    // Move content under --root, then recreate the recorded path as a
+    // junction/symlink so `expanded_root` still "exists" but canonicalizes
+    // under main root.
     let moved = root.join("expand-shadow");
     std::fs::rename(&expanded, &moved).expect("move expanded under root");
-    let junction = Command::new("cmd")
-        .args([
-            "/c",
-            "mklink",
-            "/J",
-            &expanded.to_string_lossy(),
-            &moved.to_string_lossy(),
-        ])
-        .output()
-        .expect("mklink junction");
-    if !junction.status.success() {
-        eprintln!(
-            "skip nested-junction assertion (mklink failed): {}",
-            String::from_utf8_lossy(&junction.stderr)
-        );
+    let link_ok = if cfg!(windows) {
+        Command::new("cmd")
+            .args([
+                "/c",
+                "mklink",
+                "/J",
+                &expanded.to_string_lossy(),
+                &moved.to_string_lossy(),
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&moved, &expanded).is_ok()
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (&moved, &expanded);
+            false
+        }
+    };
+    if !link_ok {
+        eprintln!("skip nested-junction assertion (link create failed)");
         // Deleted-path honesty still applies when junction cannot be created.
         let st = parse_json(&run(&root, &["macro", "status"]));
         assert_eq!(st["expanded_root_missing"], true, "{st}");

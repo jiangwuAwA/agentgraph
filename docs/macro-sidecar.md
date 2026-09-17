@@ -1,21 +1,13 @@
-# Macro-expanded sidecar index (P2, optional — CLI default OFF)
+# Macro-expanded sidecar index (P2 / Track M1)
 
-**Status:** shipped as an **opt-in dual-index**. Not a sound expand-graph.  
+**Status:** productized **opt-in** dual-index path (Track M1): path map + de-dup + fingerprint/stale + rebuild.  
+**Not** a sound expand-graph. Origin stays **`macro_expanded`** (non-sound).  
 **Default product path remains source L0/L1** (and L2 `--sound` on the main index only).  
-Related spike: [eval-macro-expand.md](eval-macro-expand.md). Soundness: [sound-subset.md](sound-subset.md).
+Related: [product-boundary-migration.md](product-boundary-migration.md) §Track M1, [eval-macro-expand.md](eval-macro-expand.md), [sound-subset.md](sound-subset.md).
 
 ---
 
-## Non-goals
-
-- **No sound expand-graph.** Expanded-only symbols never receive `subset_ok=true` claims.
-- **No required CI expand.** Sidecar build is operator-driven; tests only lock the optional UX.
-- **No path-rewrite magic.** Sidecar rows are unioned with `"origin": "macro_expanded"` — no silent path mapping back to source crates.
-- **Do not edit operator corpora** (e.g. `eval-corpus/stock-trading-app`) from this feature.
-
----
-
-## What it is
+## What it is (M1 product path)
 
 A **second SQLite store** at:
 
@@ -23,13 +15,35 @@ A **second SQLite store** at:
 <root>/.agentgraph/index.macro.db
 ```
 
-Built by indexing an **expanded shadow tree** (e.g. `cargo expand` / `rustc -Zunpretty=expanded` output written to a sibling directory). Schema matches the main store (`files` / `symbols` / `refs` / `meta`); `meta.origin = 'macro_expanded'` marks the sidecar kind.
+Built by indexing an **already-produced** expanded shadow tree (operator-supplied). Schema matches the main store; `meta.origin = 'macro_expanded'` marks the sidecar kind.
+
+M1 productization (no more manual dual-root diff as the only UX):
+
+| Capability | Behavior |
+|---|---|
+| **Path map** | Sidecar paths mapped back to source (`src/…`, `crates/<crate>/src/…`) via explicit pairs + crate-root heuristics. Unmappable rows stay `mapped=false`. |
+| **De-dup** | `--with-macro` union de-dups on `name + enclosing + mapped_path`. Main Exact/Heuristic wins; `dedup_stats` counted. Default **ON**. |
+| **Fingerprint / stale** | Sidecar build writes `meta.source_fingerprint` (main files mtime+size aggregate). Status exposes `stale`. Stale + `--with-macro` → **warn + still union** + `stale:true` in payload. |
+| **Rebuild** | `agentgraph macro rebuild` re-indexes the recorded `expanded_root` into the sidecar (idempotent). Does **not** call `cargo expand`. |
+| **Exact-only** | `--exact-only --with-macro` **ignores** the sidecar (exact-only semantics). |
+| **Debug** | `--no-macro-dedup` keeps duplicate sidecar rows (default dedup on). |
 
 When the sidecar file is **absent**:
 
-- All default queries behave **exactly** as before.
+- All default queries behave **exactly** as before (plain JSON arrays).
 - `--with-macro` treats the sidecar as **empty** (graceful union; no error; file is not created).
 - `macro status` reports `exists: false` without creating the DB.
+
+---
+
+## Non-goals
+
+- **No sound expand-graph.** Expanded-only symbols never receive `subset_ok=true` claims.
+- **`--sound && --with-macro` remain mutually exclusive.**
+- **No required CI expand.** Sidecar build is operator-driven; we never auto-run `cargo expand` at index time.
+- **No arbitrary proc-macro completeness.** Failed-to-compile crates stay skipped.
+- **Do not commit** operator corpora or expand products into this repo.
+- Origin tag stays **`macro_expanded`** (documented choice for M1); rows may also carry `mapped` / `mapped_path` / `expanded_path`.
 
 ---
 
@@ -42,26 +56,11 @@ agentgraph index --force
 agentgraph index --force --macro-expanded-root /path/to/expanded-shadow
 ```
 
-With `--macro-expanded-root`, the CLI still indexes the **main** source tree first, then indexes the expanded tree into the sidecar. JSON shape:
+Keep the expanded tree **outside** the indexed project root (sibling directory).
 
-```json
-{
-  "main": { "files": 1, "symbols": 3, "references": 2, "...": "IndexStats" },
-  "macro_sidecar": {
-    "files": 1,
-    "symbols": 5,
-    "references": 4,
-    "path": "<root>/.agentgraph/index.macro.db",
-    "expanded_root": "/path/to/expanded-shadow",
-    "origin": "macro_expanded"
-  },
-  "note": "sidecar is optional dual-index (not sound); default callers/impact ignore it unless --with-macro"
-}
-```
+**Hard reject (R26/R27, unchanged):** equal / under / contains `--root` fails closed **before** main reindex. Relative `--macro-expanded-root` resolves against `--root`, not cwd.
 
-**Keep the expanded tree outside the indexed project root** (sibling directory).
-
-**Hard reject (R26):** `index --macro-expanded-root` fails closed when the expanded root equals `--root`, is **under** `--root`, or **contains** `--root`. Nested expanded trees are ingested by the main walker (graph pollution + possible main `subset_ok` flip from expanded `unsafe`/parse errors). Validation runs **before** the main reindex so a rejected command cannot dirty `index.db`. Use a sibling path (e.g. `/tmp/app` + `/tmp/app-expanded`).
+Index payload includes `macro_sidecar` with `source_fingerprint`, `path_map_present`, `stale`.
 
 ### Status
 
@@ -80,71 +79,141 @@ agentgraph macro status
   "expanded_root": "/path/to/expanded-shadow",
   "expanded_root_missing": false,
   "expanded_root_nested": false,
-  "subset_violation_count": 2
+  "subset_violation_count": 0,
+  "stale": false,
+  "source_fingerprint": "…",
+  "path_map_present": true,
+  "path_map": [["src/core.rs:exact", "src/core.rs"]],
+  "dedup_stats": {
+    "merged_exact": 0,
+    "merged_heuristic": 0,
+    "kept_sidecar": 0,
+    "unmapped": 0,
+    "main_rows": 0,
+    "sidecar_rows": 0
+  },
+  "rebuild_policy": "manual"
 }
 ```
 
-**Staleness:** sidecar rows are a snapshot. If the expanded tree is deleted or moved after build, `--with-macro` still unions the old rows (dual-index noise; no crash). `macro status` sets `expanded_root_missing: true` when the recorded `expanded_root` path no longer exists — rebuild or delete `<root>/.agentgraph/index.macro.db` to clear.
+New fields are serde-default (old sidecar JSON still loads).
 
-**Nesting re-validation (R27):** `macro status` re-checks nesting on every call. If the recorded `expanded_root` still exists but now canonicalizes equal / under / containing `--root` (dir move + junction, or equivalent), status sets `expanded_root_nested: true`. That is a **main-walker pollution hazard** — do not run a plain `index --force` until the shadow is outside `--root` again. Index-time validation of `--macro-expanded-root` remains the hard reject.
+- `stale`: main source fingerprint ≠ fingerprint recorded at sidecar build.
+- `expanded_root_missing` / `expanded_root_nested`: existing honesty flags (R26/R27).
+- `subset_violation_count`: S noise **inside the sidecar only** — never flips main `subset_ok`.
+- `dedup_stats`: last `--with-macro` union counters (zeros until a union runs).
 
-**Relative expanded roots (R27):** non-absolute `--macro-expanded-root` values are resolved against **`--root`**, not the process cwd. `expand-shadow` means `<root>/expand-shadow` (nested → rejected); use an absolute sibling path (or `../app-expanded` relative to `--root`) for dual-index targets.
+### Rebuild
 
-**Sidecar S honesty (R27):** `subset_violation_count` is the S-violation count **inside the sidecar store only** (expanded `unsafe` / `eval` / parse_error, …). It does **not** claim or flip main `subset_ok`. Main `subset` continues to operate only on `index.db`. There is still no sidecar-only `subset` walk command.
+```bash
+agentgraph macro rebuild
+```
 
-### Query union (default OFF)
+Re-indexes the **recorded** `expanded_root` into the sidecar (idempotent). Fails when:
+
+- no sidecar / no recorded `expanded_root`
+- `expanded_root` missing on disk
+- `expanded_root` currently nests with `--root` (R27)
+
+Does **not** invoke `cargo expand` (non-hermetic toolchain stays out of the product path).
+
+### Query union (default OFF; de-dup ON when ON)
 
 ```bash
 agentgraph callers helper                 # source L0/L1 only — unchanged
-agentgraph callers helper --with-macro    # main ∪ sidecar; sidecar rows tagged
+agentgraph callers helper --with-macro    # main ∪ sidecar; mapped + de-duped
+agentgraph callers helper --with-macro --no-macro-dedup   # debug: keep dups
+agentgraph callers helper --with-macro --exact-only        # sidecar ignored
 agentgraph impact helper --with-macro --depth 2
+agentgraph graph helper --with-macro                      # HTML: MACRO badge + mapped path
 ```
 
-`--limit` / tool `limit` applies **per store**. The union may return up to **~2N** rows (main ≤ N + sidecar ≤ N). Budget agent context accordingly.
+When the sidecar is present, `--with-macro` returns a **wrapped object**:
 
-Sidecar hit tagging (callers):
+```json
+{
+  "callers": [ /* main rows + kept sidecar rows */ ],
+  "sidecar_present": true,
+  "stale": false,
+  "origin": "macro_expanded",
+  "path_map_present": true,
+  "dedup_stats": { "merged_exact": 1, "kept_sidecar": 2, "...": "..." },
+  "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup"
+}
+```
+
+Absent sidecar → plain array (schema-stable with pre-M1).
+
+Sidecar hit tagging:
 
 ```json
 {
   "name": "helper",
   "enclosing": "fmt",
   "path": "src/core.rs",
+  "mapped_path": "src/core.rs",
+  "expanded_path": "src/core.rs",
   "origin": "macro_expanded",
-  "at": "src/core.rs:15",
-  "...": "other ReferenceRecord fields"
+  "mapped": true,
+  "at": "src/core.rs:15"
 }
 ```
 
-Sidecar hit tagging (impact): `origin=macro_expanded` **and** `at=path:line` (same location field as callers). MCP `impact` rows always carry `at` (with or without `with_macro`) so schema does not flip on the flag — mirrors callers.
+Unmappable rows keep the expanded `path`, `mapped=false`, `origin=macro_expanded`.
 
-Main-index rows are **not** tagged with `origin`. Expect **dual-index noise**: the same logical call can appear twice (once from source, once from expanded) with different paths/lines.
+`--limit` / tool `limit` applies **per store**. Without de-dup the union may return up to **~2N** rows; with de-dup, duplicate logical edges are dropped.
+
+### De-dup table (locked in tests/macro_dedup.rs)
+
+| Scenario | Expectation |
+|---|---|
+| Sidecar mapped path + name + enclosing = main Exact | Keep main only; `merged_exact += 1` |
+| Sidecar path unmappable | Keep sidecar; `origin=macro_expanded`; `mapped=false` |
+| Sidecar-only symbols (`fmt`/`clone`/…) | Kept as candidates (not noise-dropped) |
+| `--exact-only --with-macro` | **Ignore sidecar** |
+| Main Heuristic + sidecar same logical key | Main Heuristic wins; merge counted |
+| Stale fingerprint + `--with-macro` | Warn + still union + `stale:true` |
+| Nested expanded root | Hard-reject (R26/R27) |
+
+### Path map
+
+Heuristics + explicit pairs (sidecar `meta.path_map`):
+
+- Strip expand-dir prefixes (`expanded-view/`, `real-expanded/`, `expand-shadow/`, …)
+- Identity when the relative path exists under the source root
+- Rust crate-root align: `event-engine/lib.rs` → `crates/event-engine/src/lib.rs`
+- Explicit pairs override heuristics (longest prefix wins)
+- Absolute paths under `expanded_root` and `../` sibling forms
+- Crate align is accepted only when the source crate dir/file exists (no invented paths)
 
 ### Concurrent watch + sidecar index
 
-SQLite opens both stores with `journal_mode=WAL` + `busy_timeout=5000`. A live `watch` on the main index and a concurrent `index --macro-expanded-root` (main write + sidecar write) serialize on locks; the main store remains queryable. If a writer holds the DB longer than 5s, the other process fails closed with a busy error — retry — it does not corrupt `index.db`. `tests/r28_adversarial.rs` locks this contract.
+Unchanged: WAL + `busy_timeout`; `tests/r28_adversarial.rs` locks no-corruption.
 
 ### Honesty gates
 
 | Rule | Behavior |
 |---|---|
-| Default callers/impact | Never read the sidecar |
-| `--with-macro` + missing sidecar | Empty union, success |
+| Default callers/impact | Never read the sidecar; JSON stays plain array |
+| `--with-macro` + missing sidecar | Empty union, success, plain array |
 | `--sound --with-macro` | **Rejected** (mutually exclusive) |
-| Main `subset` / `--sound` | Operates only on main index; expanded S-violations stay in the sidecar |
-| Expanded-only symbols | May appear under `--with-macro` as ordinary array rows with `origin`; **never** as `subset_ok: true` |
-| Expanded root nested with `--root` | **Rejected** (equal / under / contains) before main reindex |
-| Relative `--macro-expanded-root` | Resolved against `--root` (not cwd); nested relatives reject |
-| Deleted expanded tree | Sidecar rows still union; `macro status.expanded_root_missing=true` |
-| Expanded root later nested (move/junction) | `macro status.expanded_root_nested=true` (re-validated on status) |
-| Expanded tree has S violations | `macro status.subset_violation_count` (sidecar only; main subset unchanged) |
+| `--exact-only --with-macro` | Sidecar **ignored** |
+| Origin | Always `macro_expanded` (M1 choice) + `mapped` flag; **not sound** |
+| Main `subset` / `--sound` | Operate only on main index |
+| Expanded-only symbols | May appear under `--with-macro`; **never** `subset_ok: true` |
+| Nested expanded root | **Rejected** (R26/R27) |
+| Stale sidecar | Warn + union + `stale:true`; `macro rebuild` repairs |
+| Fingerprint missing (pre-M1 sidecar) | `stale=false`; rebuild upgrades meta |
 
 ---
 
-## MCP (optional, same defaults)
+## MCP
 
-Tools `callers` / `impact` accept `with_macro: boolean` (default `false`).  
-Tool `macro_status` reports sidecar existence + counts.  
-Same mutual exclusion: `sound` + `with_macro` is an error.
+Tools `callers` / `impact` accept `with_macro` (default `false`) and `no_macro_dedup` (default `false`).  
+Tool `macro_status` returns the full M1 status JSON.  
+Tool `macro rebuild` counterpart: `macro_rebuild`.  
+Same mutual exclusion: `sound` + `with_macro` is an error.  
+Wrapped payload when sidecar present (same shape as CLI).
 
 ---
 
@@ -156,37 +225,28 @@ agentgraph --root /tmp/app index --force
 agentgraph --root /tmp/app index --force --macro-expanded-root /tmp/app-expanded
 agentgraph --root /tmp/app macro status
 agentgraph --root /tmp/app callers helper              # no fmt/clone
-agentgraph --root /tmp/app callers helper --with-macro # fmt/clone tagged origin=macro_expanded
+agentgraph --root /tmp/app callers helper --with-macro # fmt/clone tagged; dups merged
+agentgraph --root /tmp/app macro rebuild               # after main source edits
 ```
+
+Operator stock expand trees live outside this repo (e.g. `eval-corpus/.../real-expanded/`). **Never commit them.** Product tests use synthetic fixtures only.
 
 ---
 
-## Why dual-index (not merge)
+## Why dual-index (not merge into main)
 
-The spike ([eval-macro-expand.md](eval-macro-expand.md)) showed:
-
-- Expanded trees mint symbols that **do not exist in source** (`Debug::fmt`, derive `Clone`, …).
-- Heuristic ref counts inflate on expand; paths diverge from source crates.
-- Expanded output can inject `unsafe impl` → S violations even when the source crate is clean.
-
-Merging would require a **sound path map + de-dup + subset story** that we do not have. The sidecar keeps that uncertainty **visible** (`origin=macro_expanded`) instead of laundering it into the main graph.
+The spike ([eval-macro-expand.md](eval-macro-expand.md)) showed expanded trees mint symbols that **do not exist in source** (`Debug::fmt`, derive `Clone`, …), inflate Heuristic counts, and can inject `unsafe impl` → S violations. M1 maps + de-dups for **query UX**, but keeps uncertainty visible (`origin=macro_expanded`, `stale`, non-sound) instead of laundering expand edges into the main graph or `--sound`.
 
 ---
 
 ## Tests
 
-`tests/macro_sidecar.rs` locks:
-
-1. Default index/callers: no sidecar file; `--with-macro` graceful when absent.
-2. Expanded-only `fmt`/`clone` appear only under `--with-macro`, tagged.
-3. `macro status` after build reports path + counts + `origin`.
-4. Main `index.db` ref/symbol counts unchanged after sidecar build.
-5. No `subset_ok` claim from expanded-only content; `--sound --with-macro` fails closed.
-
-`tests/r26_adversarial.rs` also locks: nested expanded-root reject (no main pollution), spaces in sibling paths, inventory path allowlist, stale `expanded_root_missing`, MCP `with_macro`/`macro_status` schema.
-
-`tests/r27_adversarial.rs` locks: project-relative expanded roots (cwd decoy reject), `expanded_root_nested` after junction, sidecar `subset_violation_count`, index without `--force` still validates+writes sidecar, impact `--with-macro` sidecar-only independent BFS, delete-sidecar no-resurrect, MCP callers `at` schema stability with/without `with_macro`.
-
-`tests/r28_adversarial.rs` locks: inventory alias grammar (rename/`s!`, brace rename, `pub use`, nested `mod`, cfg_attr, wildcard, foreign use-list fail-closed), CLI `--with-macro` ~2N help text, MCP impact `origin`+`at` symmetry, rust-only `ast_modeled` promise, concurrent watch+sidecar index no-corruption, SCIP lint on inventory+nest fixture.
+- `tests/macro_pathmap.rs` — map table (prefix, crate align, Windows abs, `../`, explicit pairs, unmappable)
+- `tests/macro_dedup.rs` — full §1.4 table + `--no-macro-dedup` + status fields
+- `tests/macro_rebuild.rs` — fingerprint/stale/rebuild idempotence + nested still rejects
+- `tests/macro_sidecar.rs` — absent-sidecar grace; union tagging; no subset_ok
+- `tests/r26_adversarial.rs` / `r27` / `r28` — nesting, relative roots, MCP schema, help text
+- `tests/graph_html.rs` — MACRO badge + mapped source path
+- `tests/e2e_cli.rs` — flag matrix; sound+with_macro still fails
 
 Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

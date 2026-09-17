@@ -22,6 +22,14 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets
       - run: cargo test
+      - name: Docs claims check (M5 credibility gate)
+        shell: bash
+        run: |
+          if command -v python3 >/dev/null 2>&1; then
+            PYTHONUTF8=1 python3 scripts/check_docs_claims.py
+          else
+            PYTHONUTF8=1 python scripts/check_docs_claims.py
+          fi
       - name: CLI end-to-end
         run: cargo test --test e2e_cli -- --nocapture
       - name: Official scip CLI lint (linux)

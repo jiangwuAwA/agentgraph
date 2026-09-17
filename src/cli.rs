@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use crate::index::{llm, tag_macro_impact_json, tag_macro_ref_json, Indexer};
+use crate::index::{llm, macro_map, union_callers, union_impact, Indexer, UnionOptions};
 use crate::model::ConfidenceFilter;
 use crate::query::{parse_query_flags, Query};
 use crate::viz::{
@@ -25,11 +25,18 @@ pub struct Cli {
     pub command: Commands,
 }
 
-/// Optional P2 macro-expanded sidecar (CLI default OFF).
+/// Optional P2 macro-expanded sidecar (CLI default OFF). Track M1: path map,
+/// de-dup, fingerprint/stale, rebuild.
 #[derive(Subcommand, Debug)]
 pub enum MacroCmd {
-    /// Print whether the macro-expanded sidecar exists (path + file/symbol/ref counts)
+    /// Print sidecar status (path, counts, stale, path_map, dedup_stats, …)
     Status,
+    /// Re-index the recorded expanded_root into the sidecar (idempotent)
+    Rebuild {
+        /// Force full re-parse of the expanded tree (default true for rebuild)
+        #[arg(long, default_value_t = true)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -60,7 +67,8 @@ pub enum Commands {
         name: String,
         #[arg(long, default_value_t = 50)]
         limit: usize,
-        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate
+        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate.
+        /// Combined with --with-macro: sidecar is **ignored** (exact-only semantics).
         #[arg(long, default_value_t = false)]
         exact_only: bool,
         /// Also include DynamicCandidate edges (higher noise)
@@ -72,11 +80,16 @@ pub enum Commands {
         /// L2: only sound-eligible edges + S-violation report
         #[arg(long, default_value_t = false)]
         sound: bool,
-        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
-        /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
-        /// `--limit` applies per store; the union may return up to ~2N rows.
+        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded,
+        /// paths mapped back to source when possible). Default OFF; absent sidecar
+        /// is treated as empty. De-dup ON by default (see --no-macro-dedup).
+        /// Not sound — see docs/macro-sidecar.md. `--limit` applies per store;
+        /// without de-dup the union may return up to ~2N rows.
         #[arg(long, default_value_t = false)]
         with_macro: bool,
+        /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
+        #[arg(long, default_value_t = false)]
+        no_macro_dedup: bool,
     },
     /// Blast radius: who transitively depends on this symbol
     Impact {
@@ -85,7 +98,8 @@ pub enum Commands {
         depth: usize,
         #[arg(long, default_value_t = 100)]
         limit: usize,
-        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate
+        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate.
+        /// Combined with --with-macro: sidecar is **ignored** (exact-only semantics).
         #[arg(long, default_value_t = false)]
         exact_only: bool,
         /// Also include DynamicCandidate edges (higher noise)
@@ -97,11 +111,15 @@ pub enum Commands {
         /// L2: walk only sound-eligible edges; report S-violations; never claims sound outside S
         #[arg(long, default_value_t = false)]
         sound: bool,
-        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
-        /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
-        /// `--limit` applies per store; the union may return up to ~2N rows.
+        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded,
+        /// paths mapped when possible). Default OFF; absent sidecar is empty.
+        /// De-dup ON by default (see --no-macro-dedup). Not sound.
+        /// `--limit` applies per store; without de-dup union may return ~2N rows.
         #[arg(long, default_value_t = false)]
         with_macro: bool,
+        /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
+        #[arg(long, default_value_t = false)]
+        no_macro_dedup: bool,
     },
     /// Files most related to a symbol (for retrieval scoping)
     Related {
@@ -192,9 +210,12 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
-        /// Union optional macro-expanded sidecar hits (badge origin=macro_expanded)
+        /// Union optional macro-expanded sidecar hits (MACRO badge + mapped path)
         #[arg(long, default_value_t = false)]
         with_macro: bool,
+        /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
+        #[arg(long, default_value_t = false)]
+        no_macro_dedup: bool,
     },
 }
 
@@ -216,6 +237,52 @@ impl From<GraphDirArg> for GraphDirection {
             GraphDirArg::Callers => GraphDirection::Callers,
             GraphDirArg::Both => GraphDirection::Both,
         }
+    }
+}
+
+/// Build main callers rows as JSON (`at=path:line`, no origin tag).
+fn main_callers_json(hits: &[crate::model::ReferenceRecord]) -> Vec<serde_json::Value> {
+    hits.iter()
+        .map(|r| {
+            let mut v = serde_json::to_value(r).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "at".into(),
+                    serde_json::json!(format!("{}:{}", r.path, r.line)),
+                );
+            }
+            v
+        })
+        .collect()
+}
+
+/// Build main impact rows as JSON (`at=path:line`).
+fn main_impact_json(hits: &[crate::model::ImpactNode]) -> Vec<serde_json::Value> {
+    hits.iter()
+        .map(|n| {
+            let mut v = serde_json::to_value(n).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "at".into(),
+                    serde_json::json!(format!("{}:{}", n.path, r_line(n))),
+                );
+            }
+            v
+        })
+        .collect()
+}
+
+fn r_line(n: &crate::model::ImpactNode) -> usize {
+    n.line
+}
+
+/// Extract sidecar union rows from a with-macro payload (array or wrapped object).
+#[allow(dead_code)]
+pub fn union_rows_payload(v: &serde_json::Value) -> Option<&serde_json::Value> {
+    if v.is_array() {
+        Some(v)
+    } else {
+        v.get("callers").or_else(|| v.get("impact"))
     }
 }
 
@@ -241,7 +308,9 @@ pub fn run(cli: Cli) -> Result<()> {
                 let payload = serde_json::json!({
                     "main": main,
                     "macro_sidecar": side,
-                    "note": "sidecar is optional dual-index (not sound); default callers/impact ignore it unless --with-macro",
+                    "note": "sidecar is optional dual-index candidates (not sound); \
+                             callers/impact ignore it unless --with-macro; \
+                             de-dup ON by default; origin=macro_expanded",
                 });
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             } else {
@@ -287,6 +356,7 @@ pub fn run(cli: Cli) -> Result<()> {
             recall,
             sound,
             with_macro,
+            no_macro_dedup,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
@@ -338,29 +408,60 @@ pub fn run(cli: Cli) -> Result<()> {
             let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.callers_filtered(&name, limit, filter)?;
-            let mut mapped: Vec<serde_json::Value> = hits
-                .into_iter()
-                .map(|r| {
-                    let mut v = serde_json::to_value(&r).unwrap_or_default();
-                    if let Some(obj) = v.as_object_mut() {
-                        obj.insert(
-                            "at".into(),
-                            serde_json::json!(format!("{}:{}", r.path, r.line)),
+            let main_rows = main_callers_json(&hits);
+
+            // M1: --exact-only --with-macro → ignore sidecar (spec §1.4).
+            let ignore_sidecar = exact_only;
+            if with_macro && ignore_sidecar {
+                println!("{}", serde_json::to_string_pretty(&main_rows)?);
+                return Ok(());
+            }
+            if with_macro {
+                let opts = UnionOptions {
+                    dedup: !no_macro_dedup,
+                    ignore_sidecar: false,
+                };
+                let (layout, _map, path_map_present) = indexer.macro_crate_layout()?;
+                let side = indexer.open_macro_store()?;
+                if let Some(side) = side {
+                    let status = indexer.macro_status()?;
+                    if status.stale {
+                        eprintln!(
+                            "warn: macro sidecar is stale \
+                             (main source fingerprint changed since sidecar build); \
+                             unioning existing rows — run `agentgraph macro rebuild`"
                         );
                     }
-                    v
-                })
-                .collect();
-            if with_macro {
-                // Absent sidecar → empty union (graceful; no error, no file created).
-                if let Some(side) = indexer.open_macro_store()? {
                     let side_hits = side.callers_filtered(&name, limit, filter)?;
-                    for r in side_hits {
-                        mapped.push(tag_macro_ref_json(&r));
-                    }
+                    let expanded_root = status
+                        .expanded_root
+                        .clone()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| indexer.root.clone());
+                    let (rows, stats) = union_callers(
+                        main_rows,
+                        &side_hits,
+                        &expanded_root,
+                        &indexer.root,
+                        &layout,
+                        opts,
+                    );
+                    let _ = indexer.store_dedup_stats(&stats);
+                    let payload = serde_json::json!({
+                        "callers": rows,
+                        "sidecar_present": true,
+                        "stale": status.stale,
+                        "origin": "macro_expanded",
+                        "path_map_present": path_map_present,
+                        "dedup_stats": stats,
+                        "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup",
+                    });
+                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                    return Ok(());
                 }
+                // Absent sidecar → empty union (graceful; plain array, no error).
             }
-            println!("{}", serde_json::to_string_pretty(&mapped)?);
+            println!("{}", serde_json::to_string_pretty(&main_rows)?);
         }
         Commands::Impact {
             name,
@@ -371,6 +472,7 @@ pub fn run(cli: Cli) -> Result<()> {
             recall,
             sound,
             with_macro,
+            no_macro_dedup,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
@@ -406,28 +508,56 @@ pub fn run(cli: Cli) -> Result<()> {
             let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.impact_filtered(&name, depth, limit, filter)?;
+
+            let ignore_sidecar = exact_only;
+            if with_macro && ignore_sidecar {
+                println!("{}", serde_json::to_string_pretty(&hits)?);
+                return Ok(());
+            }
             if with_macro {
-                // Always emit `at` on impact union rows (callers symmetry).
-                let mut mapped: Vec<serde_json::Value> = hits
-                    .iter()
-                    .map(|n| {
-                        let mut v = serde_json::to_value(n).unwrap_or_default();
-                        if let Some(obj) = v.as_object_mut() {
-                            obj.insert(
-                                "at".into(),
-                                serde_json::json!(format!("{}:{}", n.path, n.line)),
-                            );
-                        }
-                        v
-                    })
-                    .collect();
+                let main_rows = main_impact_json(&hits);
+                let opts = UnionOptions {
+                    dedup: !no_macro_dedup,
+                    ignore_sidecar: false,
+                };
+                let (layout, _map, path_map_present) = indexer.macro_crate_layout()?;
                 if let Some(side) = indexer.open_macro_store()? {
-                    let side_hits = side.impact_filtered(&name, depth, limit, filter)?;
-                    for n in side_hits {
-                        mapped.push(tag_macro_impact_json(&n));
+                    let status = indexer.macro_status()?;
+                    if status.stale {
+                        eprintln!(
+                            "warn: macro sidecar is stale \
+                             (main source fingerprint changed since sidecar build); \
+                             unioning existing rows — run `agentgraph macro rebuild`"
+                        );
                     }
+                    let side_hits = side.impact_filtered(&name, depth, limit, filter)?;
+                    let expanded_root = status
+                        .expanded_root
+                        .clone()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| indexer.root.clone());
+                    let (rows, stats) = union_impact(
+                        main_rows,
+                        &side_hits,
+                        &expanded_root,
+                        &indexer.root,
+                        &layout,
+                        opts,
+                    );
+                    let _ = indexer.store_dedup_stats(&stats);
+                    let payload = serde_json::json!({
+                        "impact": rows,
+                        "sidecar_present": true,
+                        "stale": status.stale,
+                        "origin": "macro_expanded",
+                        "path_map_present": path_map_present,
+                        "dedup_stats": stats,
+                        "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup",
+                    });
+                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&main_rows)?);
                 }
-                println!("{}", serde_json::to_string_pretty(&mapped)?);
             } else {
                 println!("{}", serde_json::to_string_pretty(&hits)?);
             }
@@ -576,7 +706,6 @@ pub fn run(cli: Cli) -> Result<()> {
                     let _ = s2.callers_filtered(&n, limit, ConfidenceFilter::Default)?;
                     callers_ms.push(t.elapsed().as_secs_f64() * 1000.0);
                     let t = std::time::Instant::now();
-                    let s2 = indexer.open_store()?;
                     let _ = s2.impact_filtered(&n, 2, 50, ConfidenceFilter::Default)?;
                     impact_ms.push(t.elapsed().as_secs_f64() * 1000.0);
                 } else {
@@ -628,6 +757,16 @@ pub fn run(cli: Cli) -> Result<()> {
                 let status = indexer.macro_status()?;
                 println!("{}", serde_json::to_string_pretty(&status)?);
             }
+            MacroCmd::Rebuild { force } => {
+                let result = indexer.macro_rebuild(force)?;
+                let status = indexer.macro_status()?;
+                let payload = serde_json::json!({
+                    "macro_sidecar": result,
+                    "status": status,
+                    "note": "sidecar rebuilt from recorded expanded_root (idempotent; not sound)",
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            }
         },
         Commands::Graph {
             name,
@@ -638,6 +777,7 @@ pub fn run(cli: Cli) -> Result<()> {
             exact_only,
             include_dynamic,
             with_macro,
+            no_macro_dedup,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
@@ -658,15 +798,61 @@ pub fn run(cli: Cli) -> Result<()> {
             // has room before the viz cap truncates.
             let query_limit = crate::viz::MAX_GRAPH_NODES.saturating_add(50).max(100);
             let q = Query::new(&store);
+            let ignore_sidecar = exact_only && with_macro;
+            let opts = UnionOptions {
+                dedup: !no_macro_dedup,
+                ignore_sidecar,
+            };
 
             let mut data = match direction {
                 GraphDirection::Callers => {
                     let hits = q.callers_filtered(&name, query_limit, filter)?;
                     let mut d = build_callers_graph(&name, &hits, flags.clone());
-                    if with_macro {
+                    if with_macro && !opts.ignore_sidecar {
                         if let Some(side) = indexer.open_macro_store()? {
+                            let (layout, _, _) = indexer.macro_crate_layout()?;
+                            let status = indexer.macro_status()?;
                             let side_hits = side.callers_filtered(&name, query_limit, filter)?;
-                            add_macro_caller_rows(&mut d, &name, &side_hits);
+                            let expanded_root = status
+                                .expanded_root
+                                .clone()
+                                .map(PathBuf::from)
+                                .unwrap_or_else(|| indexer.root.clone());
+                            let (main_rows, _) = (main_callers_json(&hits), ());
+                            // Re-run union for viz: use mapped ReferenceRecords via JSON side.
+                            // Map each side hit path for the graph nodes.
+                            let mut mapped_records = Vec::new();
+                            for r in &side_hits {
+                                let mapped = macro_map::map_expanded_path(
+                                    &r.path,
+                                    &expanded_root,
+                                    &indexer.root,
+                                    &layout,
+                                );
+                                let mut r2 = r.clone();
+                                if let Some(mp) = mapped {
+                                    r2.path = mp;
+                                }
+                                mapped_records.push(r2);
+                            }
+                            // Optional de-dup against main keys.
+                            if opts.dedup {
+                                let mut main_keys = std::collections::HashSet::new();
+                                for v in &main_rows {
+                                    if let (Some(n), Some(p)) =
+                                        (v["name"].as_str(), v["path"].as_str())
+                                    {
+                                        let e = v["enclosing"].as_str().unwrap_or("");
+                                        main_keys.insert(format!("{n}\u{0}{e}\u{0}{p}"));
+                                    }
+                                }
+                                mapped_records.retain(|r| {
+                                    let e = r.enclosing.clone().unwrap_or_default();
+                                    !main_keys
+                                        .contains(&format!("{}\u{0}{e}\u{0}{}", r.name, r.path))
+                                });
+                            }
+                            add_macro_caller_rows(&mut d, &name, &mapped_records);
                         }
                     }
                     d
@@ -678,12 +864,49 @@ pub fn run(cli: Cli) -> Result<()> {
                     let b = build_callers_graph(&name, &callers_hits, flags.clone());
                     let mut d = merge_graphs(a, b);
                     d.depth = depth;
-                    if with_macro {
+                    if with_macro && !opts.ignore_sidecar {
                         if let Some(side) = indexer.open_macro_store()? {
+                            let (layout, _, _) = indexer.macro_crate_layout()?;
+                            let status = indexer.macro_status()?;
+                            let expanded_root = status
+                                .expanded_root
+                                .clone()
+                                .map(PathBuf::from)
+                                .unwrap_or_else(|| indexer.root.clone());
                             let si = side.impact_filtered(&name, depth, query_limit, filter)?;
                             let sc = side.callers_filtered(&name, query_limit, filter)?;
-                            add_macro_impact_rows(&mut d, &name, &si);
-                            add_macro_caller_rows(&mut d, &name, &sc);
+                            let map_imp: Vec<crate::model::ImpactNode> = si
+                                .iter()
+                                .map(|n| {
+                                    let mut n2 = n.clone();
+                                    if let Some(mp) = macro_map::map_expanded_path(
+                                        &n.path,
+                                        &expanded_root,
+                                        &indexer.root,
+                                        &layout,
+                                    ) {
+                                        n2.path = mp;
+                                    }
+                                    n2
+                                })
+                                .collect();
+                            let map_cal: Vec<crate::model::ReferenceRecord> = sc
+                                .iter()
+                                .map(|r| {
+                                    let mut r2 = r.clone();
+                                    if let Some(mp) = macro_map::map_expanded_path(
+                                        &r.path,
+                                        &expanded_root,
+                                        &indexer.root,
+                                        &layout,
+                                    ) {
+                                        r2.path = mp;
+                                    }
+                                    r2
+                                })
+                                .collect();
+                            add_macro_impact_rows(&mut d, &name, &map_imp);
+                            add_macro_caller_rows(&mut d, &name, &map_cal);
                         }
                     }
                     d
@@ -691,11 +914,33 @@ pub fn run(cli: Cli) -> Result<()> {
                 GraphDirection::Impact => {
                     let hits = q.impact_filtered(&name, depth, query_limit, filter)?;
                     let mut d = build_impact_graph(&name, &hits, flags.clone(), depth);
-                    if with_macro {
+                    if with_macro && !opts.ignore_sidecar {
                         if let Some(side) = indexer.open_macro_store()? {
+                            let (layout, _, _) = indexer.macro_crate_layout()?;
+                            let status = indexer.macro_status()?;
+                            let expanded_root = status
+                                .expanded_root
+                                .clone()
+                                .map(PathBuf::from)
+                                .unwrap_or_else(|| indexer.root.clone());
                             let side_hits =
                                 side.impact_filtered(&name, depth, query_limit, filter)?;
-                            add_macro_impact_rows(&mut d, &name, &side_hits);
+                            let map_imp: Vec<crate::model::ImpactNode> = side_hits
+                                .iter()
+                                .map(|n| {
+                                    let mut n2 = n.clone();
+                                    if let Some(mp) = macro_map::map_expanded_path(
+                                        &n.path,
+                                        &expanded_root,
+                                        &indexer.root,
+                                        &layout,
+                                    ) {
+                                        n2.path = mp;
+                                    }
+                                    n2
+                                })
+                                .collect();
+                            add_macro_impact_rows(&mut d, &name, &map_imp);
                         }
                     }
                     d

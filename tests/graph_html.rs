@@ -453,3 +453,70 @@ fn reference_record_callers_builder_renders() {
     assert!(html.contains("createUser"));
     assert!(html.contains("helper"));
 }
+
+/// Track M1: HTML shows mapped source path + MACRO badge when sidecar rows present.
+#[test]
+fn cli_graph_with_macro_shows_mapped_path_and_badge() {
+    let base = std::env::temp_dir().join(format!(
+        "agentgraph-graph-html-macro-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let root = base.join("src-root");
+    let expanded = base.join("expanded-shadow");
+    // Source layout uses workspace crate path; expanded uses crate-dir layout.
+    std::fs::create_dir_all(root.join("crates/event-engine/src")).unwrap();
+    std::fs::create_dir_all(expanded.join("event-engine")).unwrap();
+    std::fs::write(
+        root.join("crates/event-engine/src/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+pub fn process() -> i32 { helper() + 1 }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        expanded.join("event-engine/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+pub fn process() -> i32 { helper() + 1 }
+pub fn fmt() -> i32 { helper() }
+"#,
+    )
+    .unwrap();
+
+    assert!(run(&root, &["index", "--force"]).status.success());
+    let exp = expanded.to_string_lossy().into_owned();
+    let side = run(&root, &["index", "--force", "--macro-expanded-root", &exp]);
+    assert!(side.status.success(), "sidecar: {}", stderr(&side));
+
+    let out_path = root.join("macro.html");
+    let out_s = out_path.to_string_lossy().to_string();
+    let g = run(
+        &root,
+        &[
+            "graph",
+            "helper",
+            "--with-macro",
+            "--direction",
+            "callers",
+            "--out",
+            out_s.as_str(),
+        ],
+    );
+    assert!(g.status.success(), "graph: {}", stderr(&g));
+    let html = std::fs::read_to_string(&out_path).expect("read macro graph html");
+    assert!(
+        html.contains("MACRO") || html.contains("macro_expanded"),
+        "MACRO badge / origin expected in HTML"
+    );
+    // Mapped source path (crate-aligned) should appear, not only the expanded
+    // shadow path `event-engine/lib.rs`.
+    assert!(
+        html.contains("crates/event-engine/src/lib.rs"),
+        "mapped source path expected in HTML; snippet: {}",
+        &html[..html.len().min(2000)]
+    );
+    // Honesty line still present.
+    assert!(html.contains("not a complete runtime graph"));
+}

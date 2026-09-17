@@ -1,6 +1,7 @@
 pub mod export;
 pub mod extract;
 pub mod llm;
+pub mod macro_map;
 pub mod parser;
 pub mod resolve;
 pub mod rules;
@@ -13,9 +14,15 @@ use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-use crate::model::{
-    ImpactNode, IndexStats, Language, MacroIndexResult, MacroSidecarStatus, ReferenceRecord,
+pub use macro_map::{
+    map_expanded_path, path_map_from_meta, path_map_to_meta, source_fingerprint,
+    tag_macro_impact_json, tag_macro_ref_json, union_callers, union_impact, CrateLayout, PathMap,
+    PathMapPair, UnionOptions,
 };
+
+use crate::model::{IndexStats, Language, MacroIndexResult, MacroSidecarStatus};
+
+pub use crate::model::DedupStats;
 
 /// Sidecar DB file name under `<root>/.agentgraph/` (P2 optional, CLI default OFF).
 pub const MACRO_SIDECAR_DB_NAME: &str = "index.macro.db";
@@ -23,33 +30,6 @@ pub const MACRO_SIDECAR_DB_NAME: &str = "index.macro.db";
 /// Absolute path of the optional macro-expanded sidecar for a project root.
 pub fn macro_sidecar_path(root: &Path) -> PathBuf {
     root.join(".agentgraph").join(MACRO_SIDECAR_DB_NAME)
-}
-
-/// Tag a sidecar ReferenceRecord for JSON union (`origin` + `at=path:line`).
-pub fn tag_macro_ref_json(r: &ReferenceRecord) -> serde_json::Value {
-    let mut v = serde_json::to_value(r).unwrap_or_default();
-    if let Some(obj) = v.as_object_mut() {
-        obj.insert(
-            "at".into(),
-            serde_json::json!(format!("{}:{}", r.path, r.line)),
-        );
-        obj.insert("origin".into(), serde_json::json!("macro_expanded"));
-    }
-    v
-}
-
-/// Tag a sidecar ImpactNode for JSON union (`origin=macro_expanded` + `at`).
-/// `at=path:line` matches callers tagging so agents can locate rows uniformly.
-pub fn tag_macro_impact_json(n: &ImpactNode) -> serde_json::Value {
-    let mut v = serde_json::to_value(n).unwrap_or_default();
-    if let Some(obj) = v.as_object_mut() {
-        obj.insert(
-            "at".into(),
-            serde_json::json!(format!("{}:{}", n.path, n.line)),
-        );
-        obj.insert("origin".into(), serde_json::json!("macro_expanded"));
-    }
-    v
 }
 
 pub struct Indexer {
@@ -185,10 +165,12 @@ impl Indexer {
     }
 
     /// Index an expanded shadow tree into the sidecar DB.
-    /// Does **not** touch `<root>/.agentgraph/index.db`. Not sound — dual-index noise only.
+    /// Does **not** touch `<root>/.agentgraph/index.db`. Not sound — dual-index
+    /// candidates only (Track M1: path map + fingerprint + de-dup at query).
     ///
     /// Validates nesting **before** any main-index side effects when called from CLI;
-    /// also re-validates here (defense in depth).
+    /// also re-validates here (defense in depth). Writes `meta.source_fingerprint`
+    /// (main source aggregate) and discovered `meta.path_map` pairs.
     pub fn index_macro_expanded(
         &self,
         expanded_root: &Path,
@@ -205,11 +187,20 @@ impl Indexer {
             db_path: db_path.clone(),
         };
         let stats = side.index(force)?;
+
+        // M1: fingerprint of the **main** source tree at sidecar build time +
+        // discovered path-map pairs (heuristics + existence-checked exact pairs).
+        let fingerprint = macro_map::source_fingerprint(&self.root);
+        let layout = CrateLayout::default();
+        let path_map = macro_map::discover_path_map(&expanded, &self.root, &layout);
         {
             let store = store::Store::open(&db_path)?;
             store.set_meta("sidecar_kind", "macro_expanded")?;
             store.set_meta("origin", "macro_expanded")?;
             store.set_meta("expanded_root", &expanded.to_string_lossy())?;
+            store.set_meta("source_fingerprint", &fingerprint)?;
+            store.set_meta("path_map", &macro_map::path_map_to_meta(&path_map))?;
+            store.set_meta("rebuild_policy", "manual")?;
         }
         Ok(MacroIndexResult {
             files: stats.files,
@@ -219,7 +210,85 @@ impl Indexer {
             path: db_path.to_string_lossy().into_owned(),
             expanded_root: expanded.to_string_lossy().into_owned(),
             origin: "macro_expanded".to_string(),
+            source_fingerprint: Some(fingerprint),
+            path_map_present: !path_map.is_empty(),
+            stale: false,
         })
+    }
+
+    /// Rebuild the sidecar from the **recorded** `expanded_root` (M1 `macro rebuild`).
+    /// Idempotent. Fails loudly when no expanded_root was recorded or when the
+    /// recorded root currently nests with `--root` (R27).
+    pub fn macro_rebuild(&self, force: bool) -> Result<MacroIndexResult> {
+        let status = self.macro_status()?;
+        if !status.exists {
+            anyhow::bail!(
+                "macro rebuild: no sidecar at {}; \
+                 run `index --macro-expanded-root <sibling-shadow>` first",
+                status.path
+            );
+        }
+        let expanded_root = status.expanded_root.ok_or_else(|| {
+            anyhow::anyhow!(
+                "macro rebuild: sidecar has no recorded expanded_root; \
+                 rebuild with `index --macro-expanded-root <sibling-shadow>`"
+            )
+        })?;
+        if status.expanded_root_nested {
+            anyhow::bail!(
+                "macro rebuild: expanded_root '{expanded_root}' currently nests with --root \
+                 (R27); move the shadow tree outside --root before rebuild"
+            );
+        }
+        if status.expanded_root_missing {
+            anyhow::bail!(
+                "macro rebuild: expanded_root '{expanded_root}' does not exist on disk; \
+                 restore the shadow tree or re-run index --macro-expanded-root"
+            );
+        }
+        // force=true: explicit rebuild always re-parses the expanded tree.
+        self.index_macro_expanded(Path::new(&expanded_root), force)
+    }
+
+    /// Layout + path map used at query time for `--with-macro` unions.
+    pub fn macro_crate_layout(&self) -> Result<(CrateLayout, PathMap, bool)> {
+        let path = self.macro_sidecar_path();
+        if !path.exists() {
+            return Ok((CrateLayout::default(), PathMap::default(), false));
+        }
+        let store = store::Store::open(&path)?;
+        let map = macro_map::path_map_from_meta(store.get_meta("path_map")?.as_deref());
+        let present = !map.is_empty();
+        let layout = CrateLayout::from_path_map(&map);
+        Ok((layout, map, present))
+    }
+
+    /// Current vs recorded sidecar source fingerprint → stale flag.
+    ///
+    /// Missing recorded fingerprint (pre-M1 sidecar) → `stale=true` is **not**
+    /// forced; we report `stale=false` but leave `source_fingerprint: None` so
+    /// operators can `macro rebuild` to upgrade. Present + mismatch → stale.
+    pub fn macro_sidecar_stale(&self, recorded: Option<&str>) -> bool {
+        match recorded {
+            None => false,
+            Some("") => false,
+            Some(rec) => {
+                let current = macro_map::source_fingerprint(&self.root);
+                current != rec
+            }
+        }
+    }
+
+    /// Write last union de-dup stats into sidecar meta (for `macro status`).
+    pub fn store_dedup_stats(&self, stats: &DedupStats) -> Result<()> {
+        let path = self.macro_sidecar_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        let store = store::Store::open(&path)?;
+        let json = serde_json::to_string(stats)?;
+        store.set_meta("dedup_stats", &json)?;
+        Ok(())
     }
 
     /// Whether the sidecar exists + path + counts. Does not create the DB.
@@ -228,16 +297,9 @@ impl Indexer {
         let path_str = path.to_string_lossy().into_owned();
         if !path.exists() {
             return Ok(MacroSidecarStatus {
-                exists: false,
                 path: path_str,
-                files: 0,
-                symbols: 0,
-                refs: 0,
-                origin: None,
-                expanded_root: None,
-                expanded_root_missing: false,
-                expanded_root_nested: false,
-                subset_violation_count: 0,
+                rebuild_policy: Some("manual".into()),
+                ..MacroSidecarStatus::default()
             });
         }
         let store = store::Store::open(&path)?;
@@ -262,6 +324,26 @@ impl Indexer {
         // Sidecar-only S honesty (unsafe/eval in the expanded tree). Does not
         // claim or flip main subset_ok.
         let subset_violation_count = store.subset_violations()?.len();
+
+        let source_fingerprint = store.get_meta("source_fingerprint")?;
+        let stale = self.macro_sidecar_stale(source_fingerprint.as_deref());
+
+        let path_map = macro_map::path_map_from_meta(store.get_meta("path_map")?.as_deref());
+        let path_map_present = !path_map.is_empty();
+        let path_map_pairs: Vec<(String, String)> = path_map
+            .pairs
+            .iter()
+            .map(|p| {
+                let tag = if p.prefix { "prefix" } else { "exact" };
+                (format!("{}:{tag}", p.expanded), p.source.clone())
+            })
+            .collect();
+
+        let dedup_stats: DedupStats = match store.get_meta("dedup_stats")? {
+            Some(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+            None => DedupStats::default(),
+        };
+
         Ok(MacroSidecarStatus {
             exists: true,
             path: path_str,
@@ -273,6 +355,12 @@ impl Indexer {
             expanded_root_missing,
             expanded_root_nested,
             subset_violation_count,
+            stale,
+            source_fingerprint,
+            path_map_present,
+            path_map: path_map_pairs,
+            dedup_stats,
+            rebuild_policy: Some("manual".into()),
         })
     }
 

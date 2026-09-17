@@ -268,7 +268,31 @@ pub struct ImpactNode {
     pub confidence: Confidence,
 }
 
-/// Optional macro-expanded sidecar (P2). CLI default OFF — see docs/macro-sidecar.md.
+/// Query-time sidecar de-dup counters (Track M1). Serde-default for old JSON.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DedupStats {
+    /// Sidecar rows dropped because they matched a main Exact row (same key).
+    #[serde(default)]
+    pub merged_exact: usize,
+    /// Sidecar rows dropped because main already had a Heuristic row for the key.
+    #[serde(default)]
+    pub merged_heuristic: usize,
+    /// Sidecar rows kept after de-dup (candidates, including unmapped).
+    #[serde(default)]
+    pub kept_sidecar: usize,
+    /// Kept sidecar rows whose path could not be mapped back to source.
+    #[serde(default)]
+    pub unmapped: usize,
+    /// Main-store row count at union time.
+    #[serde(default)]
+    pub main_rows: usize,
+    /// Sidecar-store row count at union time (before de-dup).
+    #[serde(default)]
+    pub sidecar_rows: usize,
+}
+
+/// Optional macro-expanded sidecar (P2 / Track M1). CLI default OFF.
+/// See docs/macro-sidecar.md. Not sound.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MacroSidecarStatus {
     pub exists: bool,
@@ -294,9 +318,52 @@ pub struct MacroSidecarStatus {
     /// main `subset_ok`; see docs/macro-sidecar.md.
     #[serde(default)]
     pub subset_violation_count: usize,
+    /// True when main source fingerprint no longer matches the fingerprint
+    /// recorded at sidecar build time (or the recorded fingerprint is missing
+    /// after an upgrade). `--with-macro` warns and still unions.
+    #[serde(default)]
+    pub stale: bool,
+    /// Fingerprint of the main source tree at last sidecar build/rebuild.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fingerprint: Option<String>,
+    /// Explicit expanded→source pairs recorded in sidecar meta (if any).
+    #[serde(default)]
+    pub path_map_present: bool,
+    /// Serialized path-map pairs (empty when none).
+    #[serde(default)]
+    pub path_map: Vec<(String, String)>,
+    /// Last `--with-macro` de-dup counters written back to sidecar meta.
+    #[serde(default)]
+    pub dedup_stats: DedupStats,
+    /// Sidecars are operator-rebuilt (`macro rebuild`); no auto cargo-expand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rebuild_policy: Option<String>,
 }
 
-/// Result of `index --macro-expanded-root` (sidecar build; does not replace main).
+impl Default for MacroSidecarStatus {
+    fn default() -> Self {
+        Self {
+            exists: false,
+            path: String::new(),
+            files: 0,
+            symbols: 0,
+            refs: 0,
+            origin: None,
+            expanded_root: None,
+            expanded_root_missing: false,
+            expanded_root_nested: false,
+            subset_violation_count: 0,
+            stale: false,
+            source_fingerprint: None,
+            path_map_present: false,
+            path_map: Vec::new(),
+            dedup_stats: DedupStats::default(),
+            rebuild_policy: Some("manual".into()),
+        }
+    }
+}
+
+/// Result of `index --macro-expanded-root` / `macro rebuild` (sidecar build).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MacroIndexResult {
     pub files: usize,
@@ -306,6 +373,15 @@ pub struct MacroIndexResult {
     pub path: String,
     pub expanded_root: String,
     pub origin: String,
+    /// Main source fingerprint recorded at this sidecar build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fingerprint: Option<String>,
+    /// True when explicit path-map pairs were written to sidecar meta.
+    #[serde(default)]
+    pub path_map_present: bool,
+    /// Fingerprint match after this build (should be false immediately after).
+    #[serde(default)]
+    pub stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

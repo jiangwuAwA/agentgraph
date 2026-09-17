@@ -462,10 +462,14 @@ pub fn outer() { mid(); }
             stderr(&out)
         );
         let hits = parse_json(&out);
-        let arr = hits
-            .as_array()
-            .unwrap_or_else(|| panic!("array expected: {hits}"));
-        for row in arr {
+        let arr: Vec<serde_json::Value> = if let Some(a) = hits.as_array() {
+            a.clone()
+        } else if let Some(a) = hits.get("impact").and_then(|x| x.as_array()) {
+            a.clone()
+        } else {
+            panic!("array or wrapped impact expected: {hits}");
+        };
+        for row in &arr {
             assert_eq!(
                 row["origin"], "macro_expanded",
                 "sidecar-only seed must not mix untagged main rows at depth={depth}: {row}"
@@ -509,19 +513,22 @@ pub fn outer() { mid(); }
     let with = run(&root, &["callers", "only_in_side", "--with-macro"]);
     assert!(with.status.success(), "{}", stderr(&with));
     let wh = parse_json(&with);
-    let enc: Vec<String> = wh
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|r| r["enclosing"].as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
+    let wh_rows: Vec<serde_json::Value> = if let Some(a) = wh.as_array() {
+        a.clone()
+    } else if let Some(a) = wh.get("callers").and_then(|x| x.as_array()) {
+        a.clone()
+    } else {
+        vec![]
+    };
+    let enc: Vec<String> = wh_rows
+        .iter()
+        .filter_map(|r| r["enclosing"].as_str().map(|s| s.to_string()))
+        .collect();
     assert!(
         enc.iter().any(|e| e == "mid"),
         "with_macro callers of sidecar-only callee must include mid: {enc:?}"
     );
-    for row in wh.as_array().unwrap() {
+    for row in &wh_rows {
         if row["enclosing"] == "mid" || row["enclosing"] == "outer" {
             assert_eq!(row["origin"], "macro_expanded", "{row}");
         }
@@ -684,11 +691,15 @@ fn mcp_callers_at_field_stable_with_and_without_macro() {
         );
     }
 
-    let marr = macro_payload
-        .as_array()
-        .unwrap_or_else(|| panic!("with_macro callers must be array: {macro_payload}"));
+    let marr: Vec<serde_json::Value> = if let Some(a) = macro_payload.as_array() {
+        a.clone()
+    } else if let Some(a) = macro_payload.get("callers").and_then(|x| x.as_array()) {
+        a.clone()
+    } else {
+        panic!("with_macro callers must be array or wrapped object: {macro_payload}");
+    };
     let mut saw_side = false;
-    for row in marr {
+    for row in &marr {
         assert!(
             row["at"].is_string(),
             "MCP callers with_macro rows must include `at`: {row}"

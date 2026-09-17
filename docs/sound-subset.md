@@ -1,7 +1,10 @@
 # Sound subset (L2 — S-qualified modeled edges)
 
-> **Status:** **S-qualified** (not a blanket “production” label). When
-> `subset_ok: true`, `--sound` walks Exact + allowlisted Heuristic +
+**Status:** **S-qualified** (not a blanket “production” label).
+**Non-claim:** not ecosystem sound; not production sound; not a complete runtime graph; no zero-miss outside modeled S. Expand/sidecar edges are not sound-certified.
+**Reproduce:** `cargo test --test l2_subset --test l2_sound -- --nocapture`; CLI `agentgraph subset` / `impact X --sound`.
+
+> When `subset_ok: true`, `--sound` walks Exact + allowlisted Heuristic +
 > finite-domain dynamic edges **for the call kinds we model**:
 >
 > 1. Direct syntactic calls  

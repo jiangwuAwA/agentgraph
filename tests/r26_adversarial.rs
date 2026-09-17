@@ -371,8 +371,15 @@ fn deleted_expanded_tree_stale_sidecar_honest() {
         stderr(&with)
     );
     let hits = parse_json(&with);
+    let rows: Vec<serde_json::Value> = if let Some(arr) = hits.as_array() {
+        arr.clone()
+    } else if let Some(arr) = hits.get("callers").and_then(|x| x.as_array()) {
+        arr.clone()
+    } else {
+        vec![]
+    };
     assert!(
-        hits.as_array().map(|a| !a.is_empty()).unwrap_or(false),
+        !rows.is_empty(),
         "stale sidecar rows may still union: {}",
         stdout(&with)
     );
@@ -388,9 +395,9 @@ fn deleted_expanded_tree_stale_sidecar_honest() {
     );
 }
 
-/// `--with-macro --exact-only` must filter sidecar rows the same as main.
+/// `--with-macro --exact-only` ignores the sidecar entirely (Track M1 §1.4).
 #[test]
-fn with_macro_exact_only_filters_sidecar() {
+fn with_macro_exact_only_ignores_sidecar() {
     let base = temp_root("exact");
     let root = base.join("app");
     let expanded = base.join("expanded");
@@ -422,27 +429,29 @@ fn with_macro_exact_only_filters_sidecar() {
     );
     assert!(with.status.success(), "{}", stderr(&with));
     let hits = parse_json(&with);
-    let enc: Vec<String> = hits
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|r| r["enclosing"].as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-    assert!(
-        enc.iter().any(|e| e == "clone"),
-        "exact sidecar hit expected: {enc:?}"
-    );
+    let arr = hits.as_array().cloned().unwrap_or_else(|| {
+        hits.get("callers")
+            .and_then(|x| x.as_array())
+            .cloned()
+            .unwrap_or_default()
+    });
+    let enc: Vec<String> = arr
+        .iter()
+        .filter_map(|r| r["enclosing"].as_str().map(|s| s.to_string()))
+        .collect();
     assert!(
         enc.iter().any(|e| e == "process"),
         "exact main hit expected: {enc:?}"
     );
-    for r in hits.as_array().unwrap() {
-        if r["origin"] == "macro_expanded" {
-            // exact-only: confidence should not be dynamic
-            let conf = r["confidence"].as_str().unwrap_or("");
-            assert_ne!(conf, "dynamic_candidate", "row={r}");
-        }
+    assert!(
+        !enc.iter().any(|e| e == "clone"),
+        "exact-only + with-macro must ignore sidecar (no clone): {enc:?} raw={}",
+        stdout(&with)
+    );
+    for r in &arr {
+        assert_ne!(
+            r["origin"], "macro_expanded",
+            "exact-only must not tag sidecar rows: {r}"
+        );
     }
 }

@@ -59,6 +59,8 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 
 所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。
 
+**可选宏旁路（P2/M1，默认关闭，非 sound）：** `index --macro-expanded-root` 把**已有**的 expand 影子树写入 sidecar；`callers`/`impact`/`graph --with-macro` 联合查询时映射回源码路径并默认去重（`--no-macro-dedup` 为调试开关；`--exact-only --with-macro` 忽略 sidecar）。`macro status` 暴露 `stale`/`path_map_present`/`dedup_stats`；`macro rebuild` 幂等重建（不调用 `cargo expand`）。`origin=macro_expanded`；与 `--sound` 互斥。详见 [docs/macro-sidecar.md](docs/macro-sidecar.md)。
+
 ### 索引质量
 
 - **导入解析** — TS/JS 相对路径、Python 包、Rust 本地 `crate::`/`super::`/`self::`（按段计数）、保守的 Go 包路径

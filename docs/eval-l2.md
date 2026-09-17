@@ -2,6 +2,8 @@
 
 **Status:** **S-qualified** for **modeled** edges when `subset_ok` (see
 [sound-subset.md](sound-subset.md)). Outside S or unmodeled APIs: no claim.
+**Non-claim:** not ecosystem sound; not a complete runtime graph; expand/sidecar edges are not in the sound set; no zero-miss guarantee outside modeled S.
+**Reproduce:** `cargo test --test l2_subset --test l2_sound -- --nocapture` (optional manual tracer below).
 
 Reproduce:
 

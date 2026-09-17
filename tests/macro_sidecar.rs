@@ -102,16 +102,29 @@ fn parse_json(out: &Output) -> serde_json::Value {
 }
 
 fn callers_enclosings(hits: &serde_json::Value) -> Vec<String> {
-    hits.as_array()
-        .expect("callers JSON array")
+    union_rows(hits)
         .iter()
         .filter_map(|r| r["enclosing"].as_str().map(|s| s.to_string()))
         .collect()
 }
 
+/// M1: `--with-macro` with a present sidecar returns a wrapped object
+/// (`callers`/`impact` + dedup_stats/stale); absent sidecar stays a plain array.
+fn union_rows(v: &serde_json::Value) -> Vec<serde_json::Value> {
+    if let Some(arr) = v.as_array() {
+        return arr.clone();
+    }
+    if let Some(arr) = v.get("callers").and_then(|x| x.as_array()) {
+        return arr.clone();
+    }
+    if let Some(arr) = v.get("impact").and_then(|x| x.as_array()) {
+        return arr.clone();
+    }
+    panic!("expected array or wrapped with-macro payload: {v}");
+}
+
 fn has_origin_macro(hits: &serde_json::Value) -> bool {
-    hits.as_array()
-        .expect("callers JSON array")
+    union_rows(hits)
         .iter()
         .any(|r| r["origin"] == "macro_expanded")
 }
@@ -255,14 +268,11 @@ fn with_macro_finds_expanded_only_callers() {
     let imp = run(&root, &["impact", "helper", "--depth", "2", "--with-macro"]);
     assert!(imp.status.success(), "{}", stderr(&imp));
     let imp_hits = parse_json(&imp);
+    let imp_rows = union_rows(&imp_hits);
     assert!(
-        imp_hits
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|n| n["enclosing"] == "fmt"
-                || n["enclosing"] == "clone"
-                || n["origin"] == "macro_expanded"),
+        imp_rows.iter().any(|n| n["enclosing"] == "fmt"
+            || n["enclosing"] == "clone"
+            || n["origin"] == "macro_expanded"),
         "impact --with-macro should surface expanded rows: {}",
         stdout(&imp)
     );
@@ -435,6 +445,12 @@ fn expanded_only_symbols_no_subset_ok_claims() {
         );
         // If any rows appear, they must be origin-tagged when from sidecar.
         if let Some(arr) = fmt_json.as_array() {
+            for r in arr {
+                if r.get("origin").is_some() {
+                    assert_eq!(r["origin"], "macro_expanded");
+                }
+            }
+        } else if let Some(arr) = fmt_json.get("callers").and_then(|x| x.as_array()) {
             for r in arr {
                 if r.get("origin").is_some() {
                     assert_eq!(r["origin"], "macro_expanded");

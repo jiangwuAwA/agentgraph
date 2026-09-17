@@ -18,9 +18,24 @@ Explicit user override examples that waive TDD for a change: "skip tests", "just
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+python scripts/check_docs_claims.py   # M5 docs claims gate (also via tests/docs_claims.rs)
 ```
 
-CI runs the same three (plus multi-OS build/test).
+CI runs the same three (plus multi-OS build/test) and the M5 docs claims check.
+
+## Release checklist (M5 credibility gate)
+
+Before tagging a release, confirm:
+
+- [ ] `python scripts/check_docs_claims.py` green (and `cargo test --test docs_claims`)
+- [ ] README / README.zh-CN / AGENTS capability sentences ⊆ implementation + `docs/eval-*.md`
+- [ ] Every CLI flag/command mentioned in docs exists in clap (`src/cli.rs`) — checker verifies this
+- [ ] Eval numbers live in `docs/eval-*.md`; README only cites them (no new slogans)
+- [ ] Public goldens under `fixtures/eval-goldens/` (no private stock source / expand artifacts)
+- [ ] Private eval paths are skipped in CI, not required
+- [ ] No banned oversell: 零漏报 / 生态 sound / 宏完整 / production sound / complete runtime graph as a **product** guarantee
+- [ ] Honesty lines that explicitly deny those claims are preserved (checker must stay green on them)
+- [ ] `cargo fmt` + `clippy -D warnings` + `cargo test` + CLI E2E (+ `scip lint` where available)
 
 ## Layout
 
@@ -47,7 +62,7 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **L3 (research, non-blocking):** `formal/IncrementalIndex.tla` TLC-checked (no errors); I1–I3 in `tests/l3_invariants.rs`; I4 mini-language containment in `src/formal/mini_lang.rs` + `tests/l4_mini_lang.rs`; Lean 4 theorem `runtime_subset_static` in [`formal/lean/`](formal/lean/README.md) (`lake build` green, stdlib only). TLC/Lean optional locally; main CI does not require theorem provers.
 
-**P2 macro sidecar (optional, default OFF):** `index --macro-expanded-root` writes `<root>/.agentgraph/index.macro.db`; `callers`/`impact --with-macro` union sidecar hits tagged `origin=macro_expanded` (+ `at=path:line`). Nested expanded roots (under/equal/containing `--root`) are **rejected before main reindex**; relative expanded roots resolve against `--root` (not cwd). `limit` is per store (~2N union). Stale sidecars: `macro status` sets `expanded_root_missing`; later nesting/junction sets `expanded_root_nested`; sidecar-only S noise is `subset_violation_count` (does not flip main subset). Watch + concurrent sidecar index serialize on WAL/busy_timeout (no corruption). Not sound — see [docs/macro-sidecar.md](docs/macro-sidecar.md).
+**P2/M1 macro sidecar (optional, default OFF; not sound):** `index --macro-expanded-root` writes `<root>/.agentgraph/index.macro.db` from an **already-produced** expanded shadow tree (never auto `cargo expand`). `callers`/`impact`/`graph --with-macro` union sidecar hits tagged `origin=macro_expanded` (+ `at=path:line`, `mapped`/`mapped_path` when path map applies). **M1 path map:** expanded paths map back to source (explicit `meta.path_map` pairs + crate-root heuristics; unmappable rows keep `mapped=false`). **De-dup ON by default** on `name+enclosing+mapped_path` (main Exact/Heuristic wins; `--no-macro-dedup` debug); `--exact-only --with-macro` **ignores** the sidecar. Sidecar build writes `meta.source_fingerprint`; `macro status` exposes `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy=manual`; stale + `--with-macro` warns and still unions (`stale:true` in wrapped payload). `macro rebuild` / MCP `macro_rebuild` re-index the recorded `expanded_root` (idempotent; fails if missing/nested). Nested expanded roots remain **rejected before main reindex**; relative expanded roots resolve against `--root` (not cwd). `limit` is per store (~2N without de-dup). Absent sidecar: default queries unchanged (plain arrays); `--with-macro` graceful empty. `--sound && --with-macro` stay mutually exclusive — expanded edges are never sound-certified. See [docs/macro-sidecar.md](docs/macro-sidecar.md).
 
 **HTML graph viz (shipped):** `agentgraph graph <symbol>` writes self-contained offline HTML (default `<root>/.agentgraph/graph.html`); impact BFS primary view; colors by confidence; honesty line “L0/L1 candidates, not a complete runtime graph”; empty neighborhood still writes a page (exit 0 + note). See [docs/graph-html.md](docs/graph-html.md).
 

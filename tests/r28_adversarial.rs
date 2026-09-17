@@ -433,6 +433,13 @@ pub fn mid() { only_in_side(); }
                     macro_rows.push(row.clone());
                 }
             }
+        } else if let Some(a) = arr.get("impact").and_then(|x| x.as_array()) {
+            // M1 wrapped with-macro payload.
+            for row in a {
+                if row["origin"] == "macro_expanded" {
+                    macro_rows.push(row.clone());
+                }
+            }
         }
     }
     assert!(

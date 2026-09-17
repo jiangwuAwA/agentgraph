@@ -243,6 +243,96 @@ fn e2e_mcp_initialize_and_tools_call() {
         text.contains("macro_status"),
         "tools/list must include macro_status; tools/list={text}"
     );
+    // M1: new macro surface advertised.
+    assert!(
+        text.contains("macro_rebuild"),
+        "tools/list must include macro_rebuild; tools/list={text}"
+    );
+    assert!(
+        text.contains("no_macro_dedup"),
+        "callers/impact schema must expose no_macro_dedup; tools/list={text}"
+    );
+}
+
+/// Track M1 CLI flag matrix: --no-macro-dedup exists; --sound && --with-macro
+/// still mutually exclusive; macro rebuild help exists; exact-only+with-macro OK.
+#[test]
+fn e2e_cli_macro_m1_flag_matrix() {
+    // Help surfaces.
+    let c = Command::new(bin())
+        .args(["callers", "--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("callers help");
+    let ctext = stdout(&c);
+    assert!(
+        ctext.contains("--no-macro-dedup") || ctext.contains("no-macro-dedup"),
+        "callers help must document --no-macro-dedup: {ctext}"
+    );
+    assert!(
+        ctext.contains("with-macro") || ctext.contains("with_macro"),
+        "callers help must document --with-macro"
+    );
+    assert!(
+        ctext.to_lowercase().contains("per store") || ctext.contains("2N") || ctext.contains("~2N"),
+        "callers help must document per-store limit: {ctext}"
+    );
+
+    let mh = Command::new(bin())
+        .args(["macro", "--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("macro help");
+    let mtext = stdout(&mh);
+    assert!(mtext.contains("status"), "macro help: {mtext}");
+    assert!(
+        mtext.contains("rebuild"),
+        "macro help must include rebuild: {mtext}"
+    );
+
+    // --sound && --with-macro still fail closed.
+    let root = temp_root("m1-flags");
+    write_fixture(&root);
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success(), "{}", stderr(&idx));
+    let combo = run(&root, &["callers", "createUser", "--sound", "--with-macro"]);
+    assert!(
+        !combo.status.success(),
+        "sound+with_macro must stay mutually exclusive"
+    );
+    let err = stderr(&combo).to_lowercase();
+    assert!(
+        err.contains("mutually") || err.contains("with-macro") || err.contains("with_macro"),
+        "err={err}"
+    );
+
+    // --exact-only --with-macro is accepted (sidecar ignored, not an error).
+    let exact_macro = run(
+        &root,
+        &["callers", "createUser", "--with-macro", "--exact-only"],
+    );
+    assert!(
+        exact_macro.status.success(),
+        "exact-only + with-macro must succeed: {}",
+        stderr(&exact_macro)
+    );
+
+    // --no-macro-dedup is accepted without a sidecar.
+    let nodedup = run(
+        &root,
+        &["callers", "createUser", "--with-macro", "--no-macro-dedup"],
+    );
+    assert!(
+        nodedup.status.success(),
+        "no-macro-dedup without sidecar: {}",
+        stderr(&nodedup)
+    );
+
+    // Default without sidecar stays a plain JSON array (M1 regression).
+    let plain = run(&root, &["callers", "createUser"]);
+    assert!(plain.status.success());
+    let v: serde_json::Value = serde_json::from_str(&stdout(&plain)).unwrap();
+    assert!(v.is_array(), "default callers JSON must stay an array: {v}");
 }
 
 /// MCP query tools on an empty index must return isError=true with 'index' in the message.

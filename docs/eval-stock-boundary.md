@@ -1,5 +1,9 @@
 # stock-trading-app boundary — S map, golden L0/L1, claim policy
 
+**Status:** operator boundary report on a **private** quant monorepo; source never committed; CI skips.
+**Non-claim:** per-crate “clean” is a **trial candidate**, not product soundness. No zero-miss / ecosystem-sound / macro-complete / production-sound guarantee. Not a complete runtime graph.
+**Reproduce:** operator-only scripts below (private checkout required). Public synthetic stand-in: [`fixtures/eval-goldens/`](../fixtures/eval-goldens/).
+
 **Corpus:** private multi-language quant monorepo at `D:\projects\eval-corpus\stock-trading-app`  
 (≈757 `.rs` + TS/TSX/Python; **source is never committed** to agentgraph).  
 **Index:** `.agentgraph/index.db` (operator force-reindex after product change).  

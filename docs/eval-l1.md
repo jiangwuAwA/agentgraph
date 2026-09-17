@@ -1,5 +1,9 @@
 # L1 Evaluation Report
 
+**Status:** shipped L1 candidate rules; fixture-scale + framework-shaped public corpora.
+**Non-claim:** L1 edges are **candidates**, never sound. No zero-miss / ecosystem-sound / complete-runtime-graph product claim. Private stock numbers are operator-only (skipped in CI).
+**Reproduce:** `cargo test --test l1_eval -- --nocapture` (also `l1_eval_real`). Public synthetic goldens: [`fixtures/eval-goldens/`](../fixtures/eval-goldens/).
+
 Reproducible corpus + golden edges live in [`fixtures/eval-l1/`](../fixtures/eval-l1/).
 Metrics are produced by `tests/l1_eval.rs` (run in CI via `cargo test`).
 

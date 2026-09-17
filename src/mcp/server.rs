@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::index::{tag_macro_impact_json, tag_macro_ref_json, Indexer};
+use crate::index::{union_callers, union_impact, Indexer, UnionOptions};
 use crate::query::{parse_query_flags, Query};
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
@@ -117,7 +117,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "callers",
-                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate. sound=true uses the L2 sound-eligible edge set (mutually exclusive with exact_only/include_dynamic) and reports S-violations.",
+                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate. sound=true uses the L2 sound-eligible edge set (mutually exclusive with exact_only/include_dynamic) and reports S-violations. with_macro unions optional sidecar hits (origin=macro_expanded, paths mapped when possible); de-dup ON by default; exact_only+with_macro ignores the sidecar; not sound.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -127,14 +127,15 @@ fn tools_list() -> Value {
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false},
-                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. limit applies per store; union may return ~2N rows. Not sound-certified."}
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Paths mapped to source when possible; de-dup ON (same name+enclosing+mapped_path as main Exact/Heuristic drops sidecar row). exact_only ignores sidecar. Mutually exclusive with sound. limit applies per store; without de-dup union may return ~2N rows. Not sound-certified."},
+                        "no_macro_dedup": {"type": "boolean", "default": false, "description": "Debug: keep duplicate sidecar rows under with_macro (default de-dup ON)."}
                     },
                     "required": ["name"]
                 }
             },
             {
                 "name": "impact",
-                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges.",
+                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges. with_macro unions optional sidecar (mapped path + de-dup ON; not sound).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -145,17 +146,28 @@ fn tools_list() -> Value {
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false},
-                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. limit applies per store; union may return ~2N rows. Not sound-certified."}
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mapped paths + de-dup ON. exact_only ignores sidecar. Mutually exclusive with sound. limit applies per store; without de-dup union may return ~2N rows. Not sound-certified."},
+                        "no_macro_dedup": {"type": "boolean", "default": false, "description": "Debug: keep duplicate sidecar rows under with_macro (default de-dup ON)."}
                     },
                     "required": ["name"]
                 }
             },
             {
                 "name": "macro_status",
-                "description": "Optional macro-expanded sidecar status (P2): whether <root>/.agentgraph/index.macro.db exists, its path, and file/symbol/ref counts. Default product path does not use this sidecar.",
+                "description": "Optional macro-expanded sidecar status (P2/M1): exists, path, counts, origin, expanded_root(_missing/_nested), subset_violation_count, stale (source fingerprint), path_map_present/path_map, dedup_stats, rebuild_policy. Default product path does not use this sidecar. Not sound.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
+                }
+            },
+            {
+                "name": "macro_rebuild",
+                "description": "Re-index the recorded expanded_root into the macro sidecar (idempotent; Track M1). Does not run cargo-expand. Fails when expanded_root is missing/nested. Not sound.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "force": {"type": "boolean", "default": true, "description": "Force full re-parse of the expanded tree"}
+                    }
                 }
             },
             {
@@ -355,6 +367,10 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("with_macro")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let no_macro_dedup = args
+                    .get("no_macro_dedup")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
@@ -410,11 +426,48 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         v
                     })
                     .collect();
+                // M1: exact_only + with_macro ignores sidecar (plain array).
+                if with_macro && exact_only {
+                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
+                }
                 if with_macro {
                     if let Some(side) = indexer.open_macro_store()? {
-                        for r in side.callers_filtered(sym, limit, filter)? {
-                            mapped.push(tag_macro_ref_json(&r));
+                        let opts = UnionOptions {
+                            dedup: !no_macro_dedup,
+                            ignore_sidecar: false,
+                        };
+                        let (layout, _map, path_map_present) = indexer.macro_crate_layout()?;
+                        let status = indexer.macro_status()?;
+                        if status.stale {
+                            eprintln!(
+                                "warn: macro sidecar is stale; unioning existing rows — run macro rebuild"
+                            );
                         }
+                        let side_hits = side.callers_filtered(sym, limit, filter)?;
+                        let expanded_root = status
+                            .expanded_root
+                            .clone()
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_else(|| root.clone());
+                        let (rows, stats) = union_callers(
+                            std::mem::take(&mut mapped),
+                            &side_hits,
+                            &expanded_root,
+                            &root,
+                            &layout,
+                            opts,
+                        );
+                        let _ = indexer.store_dedup_stats(&stats);
+                        let payload = json!({
+                            "callers": rows,
+                            "sidecar_present": true,
+                            "stale": status.stale,
+                            "origin": "macro_expanded",
+                            "path_map_present": path_map_present,
+                            "dedup_stats": stats,
+                            "note": "sidecar union is optional candidates (not sound); de-dup ON unless no_macro_dedup",
+                        });
+                        return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                     }
                 }
                 Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
@@ -441,6 +494,10 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .unwrap_or(false);
                 let with_macro = args
                     .get("with_macro")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let no_macro_dedup = args
+                    .get("no_macro_dedup")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
@@ -498,11 +555,47 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         v
                     })
                     .collect();
+                if with_macro && exact_only {
+                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
+                }
                 if with_macro {
                     if let Some(side) = indexer.open_macro_store()? {
-                        for n in side.impact_filtered(sym, depth, limit, filter)? {
-                            mapped.push(tag_macro_impact_json(&n));
+                        let opts = UnionOptions {
+                            dedup: !no_macro_dedup,
+                            ignore_sidecar: false,
+                        };
+                        let (layout, _map, path_map_present) = indexer.macro_crate_layout()?;
+                        let status = indexer.macro_status()?;
+                        if status.stale {
+                            eprintln!(
+                                "warn: macro sidecar is stale; unioning existing rows — run macro rebuild"
+                            );
                         }
+                        let side_hits = side.impact_filtered(sym, depth, limit, filter)?;
+                        let expanded_root = status
+                            .expanded_root
+                            .clone()
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_else(|| root.clone());
+                        let (rows, stats) = union_impact(
+                            std::mem::take(&mut mapped),
+                            &side_hits,
+                            &expanded_root,
+                            &root,
+                            &layout,
+                            opts,
+                        );
+                        let _ = indexer.store_dedup_stats(&stats);
+                        let payload = json!({
+                            "impact": rows,
+                            "sidecar_present": true,
+                            "stale": status.stale,
+                            "origin": "macro_expanded",
+                            "path_map_present": path_map_present,
+                            "dedup_stats": stats,
+                            "note": "sidecar union is optional candidates (not sound); de-dup ON unless no_macro_dedup",
+                        });
+                        return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                     }
                 }
                 Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
@@ -511,6 +604,18 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let indexer = Indexer::new(&root)?;
                 let status = indexer.macro_status()?;
                 Ok(ok_text(serde_json::to_string_pretty(&status)?))
+            }
+            "macro_rebuild" => {
+                let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(true);
+                let indexer = Indexer::new(&root)?;
+                let result = indexer.macro_rebuild(force)?;
+                let status = indexer.macro_status()?;
+                let payload = json!({
+                    "macro_sidecar": result,
+                    "status": status,
+                    "note": "sidecar rebuilt from recorded expanded_root (idempotent; not sound)",
+                });
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
             "subset" => {
                 let indexer = Indexer::new(&root)?;

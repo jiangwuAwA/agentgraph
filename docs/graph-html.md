@@ -1,7 +1,8 @@
 # HTML code-graph visualization (`agentgraph graph`)
 
 **Status:** shipped. Offline, self-contained HTML.  
-**Honesty:** the page shows **indexed** L0/L1 (and optional L1 dynamic / macro sidecar) edges — **not** a complete runtime graph and not a soundness proof.
+**Non-claim / Honesty:** the page shows **indexed** L0/L1 (and optional L1 dynamic / macro sidecar) edges — **not** a complete runtime graph and not a soundness proof. No zero-miss / ecosystem-sound / macro-complete guarantee.
+**Reproduce:** `cargo test --test graph_html` or `agentgraph --root fixtures/sample-app index --force && agentgraph --root fixtures/sample-app graph <symbol>`.
 
 ---
 

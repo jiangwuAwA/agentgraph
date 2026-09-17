@@ -1,4 +1,9 @@
-# Large-repo evaluation — `stock-trading-app` (private, multi-language)
+# Large-repo evaluation — stock-trading-app (private, multi-language)
+
+**Status:** operator measurements on a **private** multi-language repo; CI skips this corpus (access required).
+**Non-claim:** not a product soundness proof; no zero-miss / ecosystem-sound / production-sound guarantee; L1 numbers are candidates with known noise (e.g. common-name fmt/default/drop).
+**Reproduce:** requires clone access to the private repo; not run in required CI. Public synthetic stand-in: fixtures/eval-goldens/.
+
 
 **Corpus:** private GitHub repo `jiangwuAwA/stock-trading-app` (not vendored here).  
 **Languages (source bytes):** Rust ≈16.9 MB, TypeScript ≈0.9 MB, Python ≈0.4 MB, plus JS.  

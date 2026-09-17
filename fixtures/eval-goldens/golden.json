@@ -1,0 +1,103 @@
+{
+  "description": "Public synthetic golden edge sites for agentgraph M5 credibility gate. Candidates/expected sites — not soundness proofs. Not private stock corpus.",
+  "non_claims": [
+    "L1 edges are candidates, not sound",
+    "Not a complete runtime graph",
+    "No zero-miss / ecosystem-sound / macro-complete product guarantee",
+    "expand/sidecar completeness is not claimed here"
+  ],
+  "corpora": {
+    "ts-nest-mini": {
+      "source_root": "ts-nest-mini",
+      "language": "typescript",
+      "edges": [
+        {
+          "symbol": "AppService",
+          "site_file": "src/app.module.ts",
+          "site_contains": "providers: [",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.nest.module_providers"
+        },
+        {
+          "symbol": "AppController",
+          "site_file": "src/app.module.ts",
+          "site_contains": "controllers: [AppController]",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.nest.module_controllers"
+        },
+        {
+          "symbol": "ConfigService",
+          "site_file": "src/app.module.ts",
+          "site_contains": "useClass: ConfigService",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.nest.module_providers"
+        },
+        {
+          "symbol": "AppService",
+          "site_file": "src/app.controller.ts",
+          "site_contains": "appService: AppService",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.nest.ctor_inject"
+        },
+        {
+          "symbol": "getHello",
+          "site_file": "src/app.controller.ts",
+          "site_contains": "this.appService.getHello",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        }
+      ]
+    },
+    "rust-inventory-mini": {
+      "source_root": "rust-inventory-mini",
+      "language": "rust",
+      "edges": [
+        {
+          "symbol": "DemoStrategy",
+          "site_file": "src/lib.rs",
+          "site_contains": "factory: || Box::new(DemoStrategy::new",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.inventory_submit"
+        },
+        {
+          "symbol": "StrategyRegistration",
+          "site_file": "src/lib.rs",
+          "site_contains": "inventory::submit!",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.inventory_submit"
+        },
+        {
+          "symbol": "DemoStrategy",
+          "site_file": "src/lib.rs",
+          "site_contains": "impl Strategy for DemoStrategy",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.impl_trait"
+        },
+        {
+          "symbol": "run_registered",
+          "site_file": "src/lib.rs",
+          "site_contains": "run_registered(&DemoStrategy::new",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        },
+        {
+          "symbol": "name",
+          "site_file": "src/lib.rs",
+          "site_contains": "s.name()",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        }
+      ]
+    }
+  }
+}

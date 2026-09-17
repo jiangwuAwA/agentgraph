@@ -64,7 +64,8 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view) — see [docs/graph-html.md](docs/graph-html.md) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
-| `macro status` | Optional macro-expanded sidecar (P2, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / sidecar `subset_violation_count` |
+| `macro status` | Optional macro-expanded sidecar (P2/M1, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / `subset_violation_count` / `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy` |
+| `macro rebuild` | Re-index recorded expanded shadow into sidecar (idempotent; no `cargo expand`; not sound) |
 
 Confidence windows on `callers` / `impact` (and MCP tools):
 
@@ -72,7 +73,7 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic` / **`--recall`**: also DynamicCandidate (reflection / computed keys — noisier)
 - `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md).
-- `--with-macro` (P2, **default OFF**): union optional macro-expanded sidecar hits tagged `origin=macro_expanded`. Not sound; mutually exclusive with `--sound`. See [docs/macro-sidecar.md](docs/macro-sidecar.md).
+- `--with-macro` (P2/M1, **default OFF**): union optional macro-expanded sidecar hits tagged `origin=macro_expanded` with **mapped source paths** when the path map applies. De-dup ON by default (same logical edge as main Exact/Heuristic keeps the main row); `--no-macro-dedup` is a debug escape. `--exact-only --with-macro` ignores the sidecar. Stale sidecars warn and still union (`macro rebuild` repairs). Not sound; mutually exclusive with `--sound`. See [docs/macro-sidecar.md](docs/macro-sidecar.md).
 
 **怕漏（missed edges）时：** 优先 `--sound`（`subset_ok` 时）或 `--recall`。干净的图 ≠ 完整的图。
 
@@ -124,7 +125,7 @@ Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the 
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), optional **`macro_status`** / `with_macro` (P2 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

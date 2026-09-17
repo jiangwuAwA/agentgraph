@@ -1,10 +1,12 @@
 # Macro-expand indexing spike (Track B)
 
 **Status:** spike complete — **partial production readiness**, soundness **not** claimed  
+**Non-claim:** not sound expand-graph; not macro-complete; not production sound; not a complete runtime graph. Product path remains optional sidecar (`docs/macro-sidecar.md`).
 **Corpus:** private `D:\projects\eval-corpus\stock-trading-app` (source never committed)  
 **Shadow tree (operator machine, never commit):** `D:\projects\eval-corpus\stock-trading-app-expanded\`  
-**Reproduce:** `powershell -File scripts\stock_macro_expand_spike.ps1`  
-**Diff helper:** `python scripts\expand_index_diff.py prepare|diff`
+**Reproduce:** `powershell -File scripts\stock_macro_expand_spike.ps1` (operator; skipped in required CI)  
+**Diff helper:** `python scripts\expand_index_diff.py prepare|diff`  
+**Public stand-ins:** [`fixtures/eval-goldens/`](../fixtures/eval-goldens/) (synthetic only).
 
 Related: [eval-stock-boundary.md](eval-stock-boundary.md) (L0/L1 stock goldens), [sound-subset.md](sound-subset.md), [eval-l1.md](eval-l1.md).
 
@@ -235,7 +237,8 @@ on stock source (`fmt`/`drop`/`default` floods in eval-stock-boundary § noise p
 | **P1** | Operator runbook: expand **1–2 clean crates** when crates.io/nightly available; keep shadow outside repo; never dual-index without path policy | 0.5–1 d | runbook |
 | **P2** (optional product) | Side-index ingest: `confidence=macro_expanded` (or dedicated rule_id) + path map `expanded/…` → `crates/…`; **de-dup** with source Exact edges; CLI flag `--include-macro-expanded` default **off** | **1–2 weeks** eng | only if goldens show L1 gaps expand actually fills |
 
-**P2 shipped form (this repo):** optional sidecar DB + `--macro-expanded-root` / `--with-macro` / `macro status` (no path rewrite, no de-dup, not sound). See [macro-sidecar.md](macro-sidecar.md).
+**P2 shipped form (this repo):** optional sidecar DB + `--macro-expanded-root` / `--with-macro` / `macro status` (origin `macro_expanded`, not sound). **M1 product path:** path map + de-dup + fingerprint/stale + `macro rebuild`. See [macro-sidecar.md](macro-sidecar.md) and §8 below.
+
 | **P3** | Selective real expand of derive-heavy clean crates (`model-selection-replay`, `event-engine`, `repository`) on a network-enabled builder; store **edges** not sources | +1 week | builder job, **not** required Rust CI |
 
 **Time-to-production refinement:**
@@ -306,3 +309,30 @@ $raw = cargo rustc -p event-engine --lib -- -Zunpretty=expanded
 ```
 
 Machine note: operator laptop; wall-clock / SQLite counts, not CI.
+
+---
+
+## 8. Productized path (M1)
+
+Track M1 upgrades the optional sidecar from “manual dual-root ops” to a **product query path** without claiming sound expand-graphs.
+
+| Spike gap (this doc) | M1 product answer |
+|---|---|
+| Dual-index duplication / path drift | `map_expanded_path` + sidecar `meta.path_map`; crate-root heuristics (`event-engine/lib.rs` → `crates/event-engine/src/lib.rs`) when the source crate dir exists |
+| No de-dup | `--with-macro` de-dup ON by default (`name+enclosing+mapped_path`); main Exact/Heuristic wins; `dedup_stats` in query payload + `macro status` |
+| Stale sidecar after main edits | `meta.source_fingerprint` at build; `status.stale`; `--with-macro` **warns + still unions** + `stale:true` |
+| Operator-only rebuild scripts | CLI `macro rebuild` / MCP `macro_rebuild` (re-index recorded `expanded_root`; **no** `cargo expand` call) |
+| Exact-only ambiguity | `--exact-only --with-macro` **ignores** sidecar (locked in tests) |
+| Honesty | Origin stays **`macro_expanded`**; `--sound && --with-macro` still mutually exclusive; HTML shows mapped path + MACRO badge |
+
+**Still not claimed:** sound expand-graph; proc-macro completeness; required-CI expand; stock corpus in-repo. Stock expanded trees remain private operator assets (e.g. `eval-corpus/.../real-expanded/`); product tests use **synthetic fixtures** only.
+
+**Useful product sentence after M1:** optional expanded-edge *candidates* for derive/inventory-shaped symbols, **mapped + de-duped** against the source index, with stale detection — alongside existing L1 rules on source. Not L2.
+
+Reproduce product behavior (no private corpus):
+
+```bash
+cargo test --test macro_pathmap --test macro_dedup --test macro_rebuild --test macro_sidecar
+```
+
+Operator spike compare (private machine) remains `scripts/stock_macro_expand_spike.ps1` — **not** a product dependency.

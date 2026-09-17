@@ -356,7 +356,7 @@ ref {
 | L2 范围膨胀成「重写 CodeQL」 | 子集 S 范围受控（S_js 保守 AST；S_py/S_go v1 词法）；新特性先进 L1 |
 | fsnotify 在网络盘/Windows 抖动 | 回退轮询；debounce；集成测试 |
 | 形式化空转 | L3 独立目录与里程碑；不设为 M1–M4 阻塞 |
-| 文档再次「打脸」 | 发布前 doc 与实现对照清单（对抗审核流程） |
+| 文档再次「打脸」 | 发布前 doc 与实现对照清单（对抗审核流程）；**M5 已落地**：`scripts/check_docs_claims.py` + `tests/docs_claims.rs` 自动核对 README/AGENTS 能力句、禁止超售短语与 clap flag 存在性（见 AGENTS.md 发版清单） |
 
 ---
 

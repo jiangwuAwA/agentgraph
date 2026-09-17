@@ -107,6 +107,16 @@ violation). Rust joins the `ast_modeled` promise tier.
 `asm!` / `global_asm!`, `std::ptr::*` / `core::ptr::*` paths.
 Comments and strings do **not** trigger (AST advantage over lexical).
 
+**Unsafe call sites are in the L0/L1 graph; subset_ok stays false.**
+`walk_rust` recurses into `unsafe_block` children and `unsafe fn` bodies like
+normal blocks, so call expressions there mint **Exact** `call` refs (same as
+safe code). System APIs such as `File::from_raw_fd` / `UnixStream::from_raw_fd`
+/ `libc::geteuid` / `libc::fcntl` appear as Exact L0 edges with enclosing
+function name and path qualifier — **honest L0 evidence**, not a soundness
+claim. The S scanner still flags those files (`unsafe` violation →
+`promise_tier: disabled`). Do **not** enable `--sound` on crates that contain
+`unsafe`. Regression: `tests/rust_unsafe_calls.rs`.
+
 **Rust L1 allowlist:** `rs.di.impl_trait` (implementor methods) and
 `rs.di.inventory_submit` (`inventory::submit!` registration type + factory
 `Type::new` identifiers written at the call site) are finite-domain

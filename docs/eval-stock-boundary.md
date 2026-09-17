@@ -142,6 +142,7 @@ Also clean and useful: `auth`, `trading`, `pipeline`, `execution-traits`, `commo
 - Qualified Rust paths (`event_engine::evolve`) are Exact under bare name `evolve`.
 - `tokio::spawn(async { … })` **inner calls are already Exact** (tree-sitter walks the block) — verified on `trading/persist.rs` (`create`/`upsert`/`is_transient_db_err` inside spawn) and `auth/tests/security_core.rs` (`authorize` inside spawn). **No product change needed for tokio.**
 - `async_trait` method **bodies** extract as normal async fns; implementor edges come from `rs.di.impl_trait` (L1), not missing L0.
+- **`unsafe` block / `unsafe` fn call sites are already Exact L0** (Track A pin). `walk_rust` visits `call_expression` under `unsafe_block` and unsafe-fn bodies the same as safe code. Corpus system APIs (`File::from_raw_fd`, `UnixStream::from_raw_fd`, `libc::geteuid`, `libc::fcntl` in `api/src/security.rs`, `src-tauri/src/lib.rs`, model-selection storage/installer) extract as Exact `call` refs with enclosing fn + qualifier. **S still flags `unsafe`** — full-tree `subset_ok` remains **false**; do **not** enable `--sound` on unsafe crates. Product change not required; tests: `tests/rust_unsafe_calls.rs`. Honesty note in [sound-subset.md](sound-subset.md).
 
 ---
 
@@ -203,11 +204,50 @@ callers MomentumRotationStrategy
 - Macro-complete call graphs (`inventory` edges are registration candidates only; `inventory::iter` runtime fan-out is not modeled).
 - DynamicCandidate quality (`py.dynamic.getattr` / `ts.dynamic.computed` still expected-noisy; excluded from default windows).
 
+**Track A (unsafe-call L0 visibility) is a pin, not a soundness claim.** Operator smoke on the existing stock index:
+
+```text
+callers from_raw_fd --exact-only
+  exact call @ crates/api/src/security.rs:118  enclosing=LocalBootstrap::deliver_to_inherited_fd  qualifier=File
+  exact call @ crates/api/src/security.rs:128  enclosing=LocalBootstrap::deliver_to_inherited_fd  qualifier=UnixStream
+  … more OwnedFd/File sites in model-selection-installer/storage …
+
+callers geteuid --exact-only
+  exact call @ src-tauri/src/lib.rs:171  enclosing=open_private_regular_file  qualifier=libc
+  exact call @ crates/model-selection-installer/src/local_install.rs:469  … qualifier=libc
+  …
+
+subset (full tree)
+  in_subset=false  promise_tier=disabled  violation_count=115
+  unsafe @ crates/api/src/security.rs:118  snippet=unsafe { File::from_raw_fd(fd) }
+  unsafe @ crates/api/src/security.rs:128  snippet=unsafe { UnixStream::from_raw_fd(...) }
+```
+
+Same sites appear as Exact call refs **and** `unsafe` S violations — graph edges + sound off.
+
 ### Operator next steps (optional)
 
 1. Path-scoped or single-crate index of `repository` / `event-engine` for `--sound` demos where `subset_ok` can be true on that slice.
 2. Investigate tree-sitter ERROR files (often very large generated/contract tests) — recovery would shrink `parse_error`, not unsafe.
 3. Do not market L2 on the full monorepo.
+4. Macro-expand spike (derive/async_trait/inventory edges via shadow expanded trees) — see [eval-macro-expand.md](eval-macro-expand.md). Separate roots only; no sound claim; not required CI.
+
+---
+
+## Macro expand spike (summary)
+
+Full write-up: [eval-macro-expand.md](eval-macro-expand.md). Shadow root (operator, never commit):
+`D:\projects\eval-corpus\stock-trading-app-expanded\`.
+
+| finding | value |
+|---|---|
+| Real expand tooling here | `cargo expand` / nightly blocked; **`RUSTC_BOOTSTRAP=1 cargo rustc -Zunpretty=expanded` works** |
+| Stock crate real expand | blocked on crates.io this machine |
+| Synthetic + real mini-spike index | **no parser panic** after UTF-8 |
+| Source-view vs expanded-view (4 crates) | symbols **1100 → 2140**; `fmt` +131, `clone` +121, inventory registrar-shaped +36 |
+| Dual-index noise | path map not automatic; heuristic refs inflate on expand |
+| S on expanded trees | **false** — expand injects `unsafe TrivialClone` / large-file `parse_error` |
+| Product `src/` change | **none** from this spike |
 
 ---
 
@@ -217,6 +257,8 @@ callers MomentumRotationStrategy
 |---|---|
 | `cargo fmt --check` | ✅ |
 | `cargo clippy --all-targets -- -D warnings` | ✅ |
-| `cargo test` (full) | ✅ green (includes `l1_rules_inventory`) |
+| `cargo test` (full) | ✅ green (includes `l1_rules_inventory`, `rust_unsafe_calls`) |
 | Force reindex stock corpus | ✅ 994 files / 168 088 refs / heuristic 1 180 |
+| Track A smoke `callers from_raw_fd/geteuid --exact-only` | ✅ Exact hits on unsafe system-API sites |
+| Track A smoke `subset` | ✅ `in_subset=false` / `promise_tier=disabled` (unsafe still flags) |
 | Corpus source committed? | **No** |

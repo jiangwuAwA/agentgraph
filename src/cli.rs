@@ -70,6 +70,7 @@ pub enum Commands {
         sound: bool,
         /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
         /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
+        /// `--limit` applies per store; the union may return up to ~2N rows.
         #[arg(long, default_value_t = false)]
         with_macro: bool,
     },
@@ -94,6 +95,7 @@ pub enum Commands {
         sound: bool,
         /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
         /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
+        /// `--limit` applies per store; the union may return up to ~2N rows.
         #[arg(long, default_value_t = false)]
         with_macro: bool,
     },
@@ -350,9 +352,19 @@ pub fn run(cli: Cli) -> Result<()> {
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.impact_filtered(&name, depth, limit, filter)?;
             if with_macro {
+                // Always emit `at` on impact union rows (callers symmetry).
                 let mut mapped: Vec<serde_json::Value> = hits
                     .iter()
-                    .map(|n| serde_json::to_value(n).unwrap_or_default())
+                    .map(|n| {
+                        let mut v = serde_json::to_value(n).unwrap_or_default();
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert(
+                                "at".into(),
+                                serde_json::json!(format!("{}:{}", n.path, n.line)),
+                            );
+                        }
+                        v
+                    })
                     .collect();
                 if let Some(side) = indexer.open_macro_store()? {
                     let side_hits = side.impact_filtered(&name, depth, limit, filter)?;

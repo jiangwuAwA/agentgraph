@@ -38,10 +38,15 @@ pub fn tag_macro_ref_json(r: &ReferenceRecord) -> serde_json::Value {
     v
 }
 
-/// Tag a sidecar ImpactNode for JSON union (`origin=macro_expanded`).
+/// Tag a sidecar ImpactNode for JSON union (`origin=macro_expanded` + `at`).
+/// `at=path:line` matches callers tagging so agents can locate rows uniformly.
 pub fn tag_macro_impact_json(n: &ImpactNode) -> serde_json::Value {
     let mut v = serde_json::to_value(n).unwrap_or_default();
     if let Some(obj) = v.as_object_mut() {
+        obj.insert(
+            "at".into(),
+            serde_json::json!(format!("{}:{}", n.path, n.line)),
+        );
         obj.insert("origin".into(), serde_json::json!("macro_expanded"));
     }
     v

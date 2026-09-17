@@ -1814,6 +1814,51 @@ fn path_segments_from_scoped(node: Node, source: &str) -> Option<Vec<String>> {
     }
 }
 
+/// Join a use-list prefix with a child path segment list.
+///
+/// Items inside `use PREFIX::{…}` are **suffixes** relative to `PREFIX`.
+/// Ignoring the prefix made `use evil::{inventory::submit}` look like the
+/// inventory crate's `submit` (sound-allowlist fail-open).
+fn join_use_prefix(prefix: &[String], segs: Vec<String>) -> Vec<String> {
+    if prefix.is_empty() {
+        return segs;
+    }
+    let mut full = prefix.to_vec();
+    full.extend(segs);
+    full
+}
+
+/// Path segments of a `use …::*` node (the path before `::*`).
+fn wildcard_path_segments(node: Node, source: &str) -> Vec<String> {
+    let mut segs: Vec<String> = Vec::new();
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        match ch.kind() {
+            "scoped_identifier" => {
+                if let Some(s) = path_segments_from_scoped(ch, source) {
+                    segs = s;
+                }
+            }
+            "identifier" | "crate" | "self" | "super" => {
+                // Prefer a full scoped path when present; otherwise accumulate.
+                if segs.is_empty() {
+                    if let Some(s) = path_segments_from_scoped(ch, source) {
+                        segs = s;
+                    } else {
+                        segs.push(node_text(ch, source).to_string());
+                    }
+                } else if let Some(s) = path_segments_from_scoped(ch, source) {
+                    segs.extend(s);
+                } else {
+                    segs.push(node_text(ch, source).to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    segs
+}
+
 fn collect_from_use_item(
     node: Node,
     source: &str,
@@ -1822,11 +1867,15 @@ fn collect_from_use_item(
 ) {
     match node.kind() {
         "scoped_identifier" => {
-            if let Some(segs) = path_segments_from_scoped(node, source) {
-                if is_inventory_submit_full_path(&segs) {
-                    if let Some(local) = segs.last() {
-                        out.insert(local.clone());
-                    }
+            // Prefix must stay attached inside use-lists: `use evil::{inventory::submit}`
+            // is NOT the inventory crate.
+            let segs = match path_segments_from_scoped(node, source) {
+                Some(child) => join_use_prefix(&prefix, child),
+                None => prefix,
+            };
+            if is_inventory_submit_full_path(&segs) {
+                if let Some(local) = segs.last() {
+                    out.insert(local.clone());
                 }
             }
         }
@@ -1847,7 +1896,10 @@ fn collect_from_use_item(
                 }
                 if !seen_as {
                     if ch.kind() == "scoped_identifier" {
-                        segs = path_segments_from_scoped(ch, source).unwrap_or(segs);
+                        // Child path is relative to the use-list prefix when present.
+                        if let Some(child) = path_segments_from_scoped(ch, source) {
+                            segs = join_use_prefix(&prefix, child);
+                        }
                     } else if matches!(ch.kind(), "identifier" | "crate" | "self" | "super") {
                         segs.push(node_text(ch, source).to_string());
                     }
@@ -1884,8 +1936,18 @@ fn collect_from_use_item(
             collect_from_use_list(node, source, prefix, out);
         }
         "use_wildcard" | "scoped_use_list_wildcard" => {
-            if prefix.last().map(|s| s == "inventory").unwrap_or(false)
-                && is_inventory_crate_prefix(&prefix)
+            // `use inventory::*` / `use crate::inventory::*` — path may live on
+            // this node (not only in the parent prefix).
+            let segs = {
+                let from_node = wildcard_path_segments(node, source);
+                if from_node.is_empty() {
+                    prefix
+                } else {
+                    join_use_prefix(&prefix, from_node)
+                }
+            };
+            if segs.last().map(|s| s == "inventory").unwrap_or(false)
+                && is_inventory_crate_prefix(&segs)
             {
                 out.insert("submit".to_string());
             }

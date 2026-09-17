@@ -100,6 +100,8 @@ agentgraph callers helper --with-macro    # main ∪ sidecar; sidecar rows tagge
 agentgraph impact helper --with-macro --depth 2
 ```
 
+`--limit` / tool `limit` applies **per store**. The union may return up to **~2N** rows (main ≤ N + sidecar ≤ N). Budget agent context accordingly.
+
 Sidecar hit tagging (callers):
 
 ```json
@@ -113,7 +115,13 @@ Sidecar hit tagging (callers):
 }
 ```
 
+Sidecar hit tagging (impact): `origin=macro_expanded` **and** `at=path:line` (same location field as callers). MCP `impact` rows always carry `at` (with or without `with_macro`) so schema does not flip on the flag — mirrors callers.
+
 Main-index rows are **not** tagged with `origin`. Expect **dual-index noise**: the same logical call can appear twice (once from source, once from expanded) with different paths/lines.
+
+### Concurrent watch + sidecar index
+
+SQLite opens both stores with `journal_mode=WAL` + `busy_timeout=5000`. A live `watch` on the main index and a concurrent `index --macro-expanded-root` (main write + sidecar write) serialize on locks; the main store remains queryable. If a writer holds the DB longer than 5s, the other process fails closed with a busy error — retry — it does not corrupt `index.db`. `tests/r28_adversarial.rs` locks this contract.
 
 ### Honesty gates
 
@@ -178,5 +186,7 @@ Merging would require a **sound path map + de-dup + subset story** that we do no
 `tests/r26_adversarial.rs` also locks: nested expanded-root reject (no main pollution), spaces in sibling paths, inventory path allowlist, stale `expanded_root_missing`, MCP `with_macro`/`macro_status` schema.
 
 `tests/r27_adversarial.rs` locks: project-relative expanded roots (cwd decoy reject), `expanded_root_nested` after junction, sidecar `subset_violation_count`, index without `--force` still validates+writes sidecar, impact `--with-macro` sidecar-only independent BFS, delete-sidecar no-resurrect, MCP callers `at` schema stability with/without `with_macro`.
+
+`tests/r28_adversarial.rs` locks: inventory alias grammar (rename/`s!`, brace rename, `pub use`, nested `mod`, cfg_attr, wildcard, foreign use-list fail-closed), CLI `--with-macro` ~2N help text, MCP impact `origin`+`at` symmetry, rust-only `ast_modeled` promise, concurrent watch+sidecar index no-corruption, SCIP lint on inventory+nest fixture.
 
 Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

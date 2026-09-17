@@ -127,7 +127,7 @@ fn tools_list() -> Value {
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false},
-                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. Not sound-certified."}
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. limit applies per store; union may return ~2N rows. Not sound-certified."}
                     },
                     "required": ["name"]
                 }
@@ -145,7 +145,7 @@ fn tools_list() -> Value {
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false},
-                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. Not sound-certified."}
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. limit applies per store; union may return ~2N rows. Not sound-certified."}
                     },
                     "required": ["name"]
                 }
@@ -462,6 +462,17 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let subset_ok = violations.is_empty();
                     let languages = store.stats(&root.to_string_lossy())?.languages;
                     let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
+                    // Always emit `at` on impact rows (caller symmetry).
+                    let mapped: Vec<Value> = hits
+                        .into_iter()
+                        .map(|n| {
+                            let mut v = serde_json::to_value(&n).unwrap_or_default();
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("at".into(), json!(format!("{}:{}", n.path, n.line)));
+                            }
+                            v
+                        })
+                        .collect();
                     let payload = serde_json::json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
@@ -469,25 +480,32 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         "promise": promise,
                         "promise_languages": languages,
                         "subset_violations": violations,
-                        "impact": hits,
+                        "impact": mapped,
                     });
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
                 let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
+                // Always emit `at` on impact rows (with or without with_macro) so
+                // e2e consumers do not see schema flip on the flag — mirrors callers.
+                let mut mapped: Vec<Value> = hits
+                    .iter()
+                    .map(|n| {
+                        let mut v = serde_json::to_value(n).unwrap_or_default();
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert("at".into(), json!(format!("{}:{}", n.path, n.line)));
+                        }
+                        v
+                    })
+                    .collect();
                 if with_macro {
-                    let mut mapped: Vec<Value> = hits
-                        .iter()
-                        .map(|n| serde_json::to_value(n).unwrap_or_default())
-                        .collect();
                     if let Some(side) = indexer.open_macro_store()? {
                         for n in side.impact_filtered(sym, depth, limit, filter)? {
                             mapped.push(tag_macro_impact_json(&n));
                         }
                     }
-                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
                 }
-                Ok(ok_text(serde_json::to_string_pretty(&hits)?))
+                Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
             }
             "macro_status" => {
                 let indexer = Indexer::new(&root)?;

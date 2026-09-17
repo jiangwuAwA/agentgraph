@@ -79,19 +79,34 @@ pub fn normalize_root(path: &std::path::Path) -> std::path::PathBuf {
 /// Compute `path` relative to `root` with `/` separators.
 ///
 /// Direct `normalize_root` + `strip_prefix` first. On mismatch (macOS `/var` vs
-/// `/private/var` symlink forms, UNC, etc.) canonicalize **both** sides and
-/// retry — same pattern as the MCP root jail. Returns `None` when `path` is
-/// not under `root` even after canonicalization (caller must skip the file).
+/// `/private/var` symlink forms, Windows 8.3 short names, UNC, etc.) resolve
+/// both sides and retry — same pattern as the MCP root jail. Returns `None`
+/// when `path` is not under `root` even after resolution (caller must skip).
+///
+/// Deleted leaves cannot be canonicalized; their **parent** still can, so
+/// resolve the parent and re-join the file name (watch delete/rename).
 pub fn rel_path_under_root(path: &std::path::Path, root: &std::path::Path) -> Option<String> {
     let p_n = normalize_root(path);
     let r_n = normalize_root(root);
     if let Ok(rel) = p_n.strip_prefix(&r_n) {
         return Some(rel.to_string_lossy().replace('\\', "/"));
     }
-    let p_c = path.canonicalize().ok()?;
     let r_c = root.canonicalize().ok()?;
-    let p_cn = normalize_root(&p_c);
     let r_cn = normalize_root(&r_c);
+    let p_resolved = resolve_for_prefix_match(path)?;
+    let p_cn = normalize_root(&p_resolved);
     let rel = p_cn.strip_prefix(&r_cn).ok()?;
     Some(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Canonicalize `path` if it exists; otherwise canonicalize its parent and
+/// re-join the last component (deleted file/dir under a live parent).
+fn resolve_for_prefix_match(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    if let Ok(c) = path.canonicalize() {
+        return Some(c);
+    }
+    let parent = path.parent()?;
+    let name = path.file_name()?;
+    let parent_c = parent.canonicalize().ok()?;
+    Some(parent_c.join(name))
 }

@@ -390,11 +390,9 @@ impl Indexer {
         }
 
         for path in paths {
-            // Canonicalize then strip UNC so strip_prefix matches Indexer::new (R6 M2 + R7).
-            let cand_canon = path.canonicalize().unwrap_or_else(|_| path.clone());
-            let cand = parser::normalize_root(&cand_canon);
-            let base = parser::normalize_root(&self.root);
-            let Some(rel_path) = cand.strip_prefix(&base).ok() else {
+            // Resolve UNC / macOS /var / Windows short-name forms even when the
+            // leaf is already deleted (canonicalize parent + re-join).
+            let Some(rel) = parser::rel_path_under_root(path, &self.root) else {
                 eprintln!(
                     "index_paths: skip {} (outside root {})",
                     path.display(),
@@ -402,7 +400,6 @@ impl Indexer {
                 );
                 continue;
             };
-            let rel = rel_path.to_string_lossy().replace('\\', "/");
             if !path.exists() {
                 deleted.push(rel);
                 continue;

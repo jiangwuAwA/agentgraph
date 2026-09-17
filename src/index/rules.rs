@@ -279,6 +279,19 @@ fn ts_call_rules(
         }
     }
 
+    // Nest dynamic module: ConfigModule.forRootAsync({ imports, inject, useFactory })
+    // / TypeOrmModule.forRootAsync(...). Config-object DI deps are real registrations.
+    if matches!(method.as_str(), "forRootAsync" | "forRoot") {
+        ts_nest_for_root_config(
+            node,
+            source,
+            ctx,
+            references,
+            enclosing.clone(),
+            &format!("{fn_text}(...)"),
+        );
+    }
+
     // container.bind(X) / ioc.bind(X)
     if method == "bind" {
         if let Some(arg) = first_interesting_arg(node, source) {
@@ -713,6 +726,7 @@ fn ts_nest_module_metadata(
             "providers" => ("providers", "ts.nest.module_providers"),
             "controllers" => ("controllers", "ts.nest.module_controllers"),
             "imports" => ("imports", "ts.nest.module_imports"),
+            "exports" => ("exports", "ts.nest.module_exports"),
             _ => continue,
         };
         if value.kind() != "array" {
@@ -773,6 +787,12 @@ fn ts_nest_sink_elem(
             let t = node_text(n, source);
             if !t.is_empty() {
                 sink(t.to_string(), None);
+            }
+        }
+        // Bare string tokens: `exports: ['CONFIG']` / `providers: ['TOKEN']`.
+        "string" | "string_fragment" | "template_string" => {
+            if let Some(name) = nest_token_name(n, source) {
+                sink(name, None);
             }
         }
         "member_expression" => {
@@ -983,6 +1003,103 @@ fn first_object_arg<'a>(node: Node<'a>, _source: &str) -> Option<Node<'a>> {
         }
     }
     None
+}
+
+/// Nest dynamic-module config object: `X.forRootAsync({ imports, inject, useFactory })`.
+/// Emits Heuristic edges for DI arrays and factory bodies (same finite-domain
+/// registration as `@Module` metadata).
+fn ts_nest_for_root_config(
+    call: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    enclosing: Option<String>,
+    snippet_prefix: &str,
+) {
+    let Some(obj) = first_object_arg(call, source) else {
+        return;
+    };
+    let line = line_of(ctx, call);
+    let mut cursor = obj.walk();
+    for pair in obj.children(&mut cursor) {
+        if pair.kind() != "pair" {
+            continue;
+        }
+        let Some(key) = pair.child_by_field_name("key") else {
+            continue;
+        };
+        let Some(value) = pair.child_by_field_name("value") else {
+            continue;
+        };
+        let key_t = node_text(key, source);
+        let rule_id = match key_t {
+            "imports" => "ts.nest.module_imports",
+            "inject" | "useFactory" => "ts.nest.module_providers",
+            _ => continue,
+        };
+        let snippet = format!(
+            "{snippet_prefix} {key_t}: {}",
+            node_text(value, source)
+                .chars()
+                .take(80)
+                .collect::<String>()
+                .replace('\n', " ")
+        );
+        if key_t == "useFactory" {
+            let fv = unwrap_parens(value);
+            if matches!(fv.kind(), "arrow_function" | "function_expression") {
+                if let Some(body) = fv.child_by_field_name("body") {
+                    let mut local_sink = |name: String, elem_line: Option<usize>| {
+                        push_l1(
+                            references,
+                            L1Edge {
+                                name,
+                                qualifier: None,
+                                line: elem_line.unwrap_or(line),
+                                enclosing: enclosing.clone(),
+                                confidence: Confidence::Heuristic,
+                                rule_id,
+                                snippet: snippet.clone(),
+                            },
+                        );
+                    };
+                    ts_nest_factory_body(body, source, &mut local_sink);
+                }
+            }
+            continue;
+        }
+        if value.kind() == "array" {
+            ts_nest_array_targets(value, source, rule_id, |name, elem_line| {
+                push_l1(
+                    references,
+                    L1Edge {
+                        name,
+                        qualifier: None,
+                        line: elem_line.unwrap_or(line),
+                        enclosing: enclosing.clone(),
+                        confidence: Confidence::Heuristic,
+                        rule_id,
+                        snippet: snippet.clone(),
+                    },
+                );
+            });
+        } else {
+            ts_nest_sink_elem(value, source, rule_id, &mut |name, elem_line| {
+                push_l1(
+                    references,
+                    L1Edge {
+                        name,
+                        qualifier: None,
+                        line: elem_line.unwrap_or(line),
+                        enclosing: enclosing.clone(),
+                        confidence: Confidence::Heuristic,
+                        rule_id,
+                        snippet: snippet.clone(),
+                    },
+                );
+            });
+        }
+    }
 }
 
 /// `constructor(private readonly svc: AppService)` → Heuristic ref to `AppService`

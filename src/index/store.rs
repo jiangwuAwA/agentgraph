@@ -968,7 +968,19 @@ impl Store {
             self.conn
                 .execute("UPDATE refs SET resolved_symbol_id = NULL", [])?;
         } else {
-            // Snapshot old symbol ids on dirty paths, then NULL those + refs pointing at them.
+            // R17: clear inbound links whose target symbol no longer exists.
+            // prune_missing cascade-deletes symbols; replace_file DELETE+INSERT
+            // renumbers ids. Either way other files' refs can keep dangling sids
+            // that the dirty-path snapshot below cannot see (old ids are gone).
+            self.conn.execute(
+                "UPDATE refs SET resolved_symbol_id = NULL
+                 WHERE resolved_symbol_id IS NOT NULL
+                   AND NOT EXISTS (
+                     SELECT 1 FROM symbols s WHERE s.id = refs.resolved_symbol_id
+                   )",
+                [],
+            )?;
+            // Snapshot current symbol ids on dirty paths, then NULL those + refs pointing at them.
             let mut old_ids: Vec<i64> = Vec::new();
             for p in dirty_paths {
                 let mut stmt = self

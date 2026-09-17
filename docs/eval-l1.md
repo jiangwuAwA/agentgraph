@@ -23,6 +23,7 @@ cargo test --test l1_eval -- --nocapture
 - Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
 - L1 edges remain **candidates** — never sound.
 - **Large private multi-language repo** (`stock-trading-app`) measured separately: [eval-large-repo.md](eval-large-repo.md).
+- **Real-tree L1 sampling** (stock-trading-app + public `nestjs-starter`) lives in [eval-large-repo.md](eval-large-repo.md) § “L1 sampling (this commit)”. Headline: fixture L1 lift does **not** transfer to the Nest starter — real Nest bare decorators / `@Module` metadata produced **0 Heuristic edges**; Rust monorepo lift is almost entirely `rs.di.impl_trait` implementor edges. Noise proxy there is manual sampling, not golden labels.
 
 ## Results (this commit)
 

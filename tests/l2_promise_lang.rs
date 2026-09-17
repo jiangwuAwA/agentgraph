@@ -1,7 +1,7 @@
 //! TDD: language-aware sound promise tiers.
 //!
 //! Stop the false-green loop: a single global SOUND_PROMISE_OK must not be
-//! emitted for ALL languages. JS/TS/Rust (AST-modeled) vs Python/Go (lexical v1)
+//! emitted for ALL languages. JS/TS/Python/Go (AST-modeled) vs Rust (lexical v1)
 //! get distinct promise strings; mixed corpora never silently claim AST green.
 
 use agentgraph::index::subset::{
@@ -67,6 +67,22 @@ def login_handler(email, password):
     .unwrap();
 }
 
+fn write_rust_auth(root: &Path) {
+    std::fs::write(
+        root.join("src/auth.rs"),
+        r#"
+pub fn authenticate(email: &str, password: &str) -> bool {
+    !email.is_empty() && !password.is_empty()
+}
+
+pub fn login_handler(email: &str, password: &str) -> bool {
+    authenticate(email, password)
+}
+"#,
+    )
+    .unwrap();
+}
+
 fn index_and_impact(root: &Path, name: &str) -> Value {
     let (ok, _, err) = run(root, &["index", "--force"]);
     assert!(ok, "index failed: {err}");
@@ -91,16 +107,36 @@ fn unit_pure_ast_languages_select_ast_tier() {
 }
 
 #[test]
-fn unit_pure_python_selects_lexical_v1_not_ast() {
+fn unit_pure_python_selects_ast_tier() {
+    // Python is now AST-modeled (tree-sitter scanner), not lexical v1.
     let langs = vec!["python".to_string()];
+    let tier = sound_promise_tier(true, &langs);
+    assert_eq!(tier, SoundPromiseTier::AstModeled);
+    let text = sound_promise_text(tier);
+    assert_eq!(text, SOUND_PROMISE_OK_AST);
+    assert!(
+        !text.contains("lexical v1"),
+        "py OK must not claim lexical v1: {text}"
+    );
+}
+
+#[test]
+fn unit_pure_go_selects_ast_tier() {
+    let langs = vec!["go".to_string()];
+    assert_eq!(
+        sound_promise_tier(true, &langs),
+        SoundPromiseTier::AstModeled
+    );
+}
+
+#[test]
+fn unit_pure_rust_selects_lexical_v1() {
+    // Rust scan_rust is still line-oriented lexical v1.
+    let langs = vec!["rust".to_string()];
     let tier = sound_promise_tier(true, &langs);
     assert_eq!(tier, SoundPromiseTier::LexicalV1);
     let text = sound_promise_text(tier);
     assert_eq!(text, SOUND_PROMISE_OK_LEXICAL_V1);
-    assert_ne!(
-        text, SOUND_PROMISE_OK_AST,
-        "py OK must not be the AST OK string"
-    );
     assert!(
         text.contains("lexical") || text.contains("Lexical"),
         "lexical tier text must say lexical: {text}"
@@ -108,8 +144,17 @@ fn unit_pure_python_selects_lexical_v1_not_ast() {
 }
 
 #[test]
-fn unit_mixed_js_python_selects_weakest_lexical_tier() {
+fn unit_mixed_js_python_selects_ast_tier() {
+    // Both are AST-modeled — no downgrade.
     let langs = vec!["javascript".to_string(), "python".to_string()];
+    let (tier, text) = select_sound_promise(true, &langs);
+    assert_eq!(tier, SoundPromiseTier::AstModeled);
+    assert_eq!(text, SOUND_PROMISE_OK_AST);
+}
+
+#[test]
+fn unit_mixed_js_rust_selects_weakest_lexical_tier() {
+    let langs = vec!["javascript".to_string(), "rust".to_string()];
     let (tier, text) = select_sound_promise(true, &langs);
     assert_eq!(tier, SoundPromiseTier::MixedLexicalV1);
     assert_eq!(text, SOUND_PROMISE_OK_MIXED_LEXICAL_V1);
@@ -124,15 +169,6 @@ fn unit_mixed_js_python_selects_weakest_lexical_tier() {
     assert!(
         text.to_ascii_lowercase().contains("mix"),
         "mixed text must mention mixed: {text}"
-    );
-}
-
-#[test]
-fn unit_go_selects_lexical_v1() {
-    let langs = vec!["go".to_string()];
-    assert_eq!(
-        sound_promise_tier(true, &langs),
-        SoundPromiseTier::LexicalV1
     );
 }
 
@@ -155,14 +191,14 @@ fn unit_language_classifiers() {
     assert!(is_ast_modeled_language("typescript"));
     assert!(is_ast_modeled_language("tsx"));
     assert!(is_ast_modeled_language("jsx"));
-    assert!(is_ast_modeled_language("rust"));
-    assert!(!is_ast_modeled_language("python"));
-    assert!(!is_ast_modeled_language("go"));
+    assert!(is_ast_modeled_language("python"));
+    assert!(is_ast_modeled_language("go"));
+    assert!(!is_ast_modeled_language("rust"));
 
-    assert!(is_lexical_v1_language("python"));
-    assert!(is_lexical_v1_language("go"));
+    assert!(is_lexical_v1_language("rust"));
     assert!(!is_lexical_v1_language("javascript"));
-    assert!(!is_lexical_v1_language("rust"));
+    assert!(!is_lexical_v1_language("python"));
+    assert!(!is_lexical_v1_language("go"));
 }
 
 // --- CLI: pure JS tree → AST OK ---------------------------------------------
@@ -187,34 +223,67 @@ fn cli_impact_sound_pure_js_tree_emits_ast_ok() {
     );
 }
 
-// --- CLI: pure Python tree → LEXICAL_V1, not AST ----------------------------
+// --- CLI: pure Python tree → AST OK (upgraded from lexical v1) --------------
 
 #[test]
-fn cli_impact_sound_pure_python_tree_emits_lexical_v1() {
+fn cli_impact_sound_pure_python_tree_emits_ast_ok() {
     let root = temp_root("pure-py");
     write_py_auth(&root);
     let v = index_and_impact(&root, "authenticate");
     assert_eq!(v["mode"], "sound");
     assert_eq!(v["subset_ok"], true, "clean py must be in S: {v}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{v}");
+    let promise = v["promise"].as_str().unwrap_or("");
+    assert_eq!(
+        promise, SOUND_PROMISE_OK_AST,
+        "pure Python must emit AST OK: {v}"
+    );
+    assert_ne!(promise, SOUND_PROMISE_OK_LEXICAL_V1);
+}
+
+// --- CLI: pure Rust tree → LEXICAL_V1 (scan_rust still lexical) -------------
+
+#[test]
+fn cli_impact_sound_pure_rust_tree_emits_lexical_v1() {
+    let root = temp_root("pure-rs");
+    write_rust_auth(&root);
+    let v = index_and_impact(&root, "authenticate");
+    assert_eq!(v["mode"], "sound");
+    assert_eq!(v["subset_ok"], true, "clean rust must be in S: {v}");
     assert_eq!(v["promise_tier"], "lexical_v1", "{v}");
     let promise = v["promise"].as_str().unwrap_or("");
     assert_eq!(
         promise, SOUND_PROMISE_OK_LEXICAL_V1,
-        "pure Python must emit lexical v1 OK: {v}"
+        "pure Rust must emit lexical v1 OK: {v}"
     );
     assert_ne!(
         promise, SOUND_PROMISE_OK_AST,
-        "false-green: py must never get the AST OK string"
+        "false-green: rust must never get the AST OK string"
     );
 }
 
-// --- CLI: mixed JS+Python → weakest tier, never silent AST ------------------
+// --- CLI: mixed JS+Python → both AST, no downgrade --------------------------
 
 #[test]
-fn cli_impact_sound_mixed_js_python_never_ast_only_green() {
+fn cli_impact_sound_mixed_js_python_stays_ast() {
     let root = temp_root("mixed-js-py");
     write_js_auth(&root);
     write_py_auth(&root);
+    let v = index_and_impact(&root, "authenticate");
+    assert_eq!(v["mode"], "sound");
+    assert_eq!(v["subset_ok"], true, "{v}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{v}");
+    let promise = v["promise"].as_str().unwrap_or("");
+    assert_eq!(promise, SOUND_PROMISE_OK_AST, "{v}");
+}
+
+// --- CLI: mixed JS+Rust → weakest tier, never silent AST --------------------
+
+#[test]
+fn cli_impact_sound_mixed_js_rust_never_ast_only_green() {
+    let root = temp_root("mixed-js-rs");
+    write_js_auth(&root);
+    write_rust_auth(&root);
     let v = index_and_impact(&root, "authenticate");
     assert_eq!(v["mode"], "sound");
     assert_eq!(v["subset_ok"], true, "{v}");
@@ -250,20 +319,20 @@ export function dangerous(code) {
 // --- CLI: callers --sound uses the same tier --------------------------------
 
 #[test]
-fn cli_callers_sound_pure_python_emits_lexical_v1() {
+fn cli_callers_sound_pure_python_emits_ast_ok() {
     let root = temp_root("callers-py");
     write_py_auth(&root);
-    let (ok, _, err) = run(&root, &["index", "--force"]);
+    let (ok, _, err) = run(root.as_path(), &["index", "--force"]);
     assert!(ok, "index failed: {err}");
-    let (ok, stdout, err) = run(&root, &["callers", "authenticate", "--sound"]);
+    let (ok, stdout, err) = run(root.as_path(), &["callers", "authenticate", "--sound"]);
     assert!(ok, "callers --sound failed: {err}");
     let v: Value = serde_json::from_str(&stdout).expect("callers sound json");
     assert_eq!(v["mode"], "sound");
     assert_eq!(v["subset_ok"], true, "{v}");
-    assert_eq!(v["promise_tier"], "lexical_v1", "{v}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{v}");
     assert_eq!(
         v["promise"].as_str().unwrap_or(""),
-        SOUND_PROMISE_OK_LEXICAL_V1,
+        SOUND_PROMISE_OK_AST,
         "{v}"
     );
 }
@@ -274,16 +343,16 @@ fn cli_callers_sound_pure_python_emits_lexical_v1() {
 fn cli_subset_reports_promise_tier() {
     let root = temp_root("subset-py");
     write_py_auth(&root);
-    let (ok, _, err) = run(&root, &["index", "--force"]);
+    let (ok, _, err) = run(root.as_path(), &["index", "--force"]);
     assert!(ok, "index failed: {err}");
-    let (ok, stdout, err) = run(&root, &["subset"]);
+    let (ok, stdout, err) = run(root.as_path(), &["subset"]);
     assert!(ok, "subset failed: {err}");
     let v: Value = serde_json::from_str(&stdout).expect("subset json");
     assert_eq!(v["in_subset"], true, "{stdout}");
-    assert_eq!(v["promise_tier"], "lexical_v1", "{stdout}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{stdout}");
     assert_eq!(
         v["promise"].as_str().unwrap_or(""),
-        SOUND_PROMISE_OK_LEXICAL_V1,
+        SOUND_PROMISE_OK_AST,
         "{stdout}"
     );
 }

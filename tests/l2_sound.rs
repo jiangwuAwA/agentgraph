@@ -31,6 +31,8 @@ fn copy_fixture_to_temp(rel: &str, tag: &str) -> PathBuf {
     let dst = std::env::temp_dir().join(format!("agentgraph-l2-sound-{tag}"));
     let _ = std::fs::remove_dir_all(&dst);
     copy_dir(&src, &dst);
+    // Do NOT canonicalize here: on Windows that yields `\\?\` UNC paths which
+    // Node (differential tracer) rejects. Indexer::new canonicalizes internally.
     dst
 }
 
@@ -38,7 +40,12 @@ fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
     std::fs::create_dir_all(dst).unwrap();
     for e in std::fs::read_dir(src).unwrap() {
         let e = e.unwrap();
-        let t = dst.join(e.file_name());
+        let name = e.file_name();
+        // Never copy a pre-existing index DB into the isolated fixture.
+        if name == ".agentgraph" {
+            continue;
+        }
+        let t = dst.join(&name);
         if e.file_type().unwrap().is_dir() {
             copy_dir(&e.path(), &t);
         } else {
@@ -55,13 +62,22 @@ fn index_clean() -> PathBuf {
     root
 }
 
+/// Process-unique tag: pid + monotonic counter + wall clock.
+///
+/// Wall clock alone is NOT unique when parallel tests in the same process call
+/// this within one OS timer tick (observed on macOS CI: auth/evil fixtures
+/// collided into one temp dir → evil `src/evil.js` violations landed in the
+/// auth index). The AtomicU64 makes collisions impossible.
 fn unique_tag() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    format!("{}-{n}", std::process::id())
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{n}-{c}", std::process::id())
 }
 
 #[test]
@@ -236,5 +252,16 @@ fn which_node() -> Option<PathBuf> {
         None
     } else {
         Some(PathBuf::from(first))
+    }
+}
+
+/// Guard against temp-dir collisions from coarse wall-clock resolution (macOS CI).
+#[test]
+fn unique_tag_is_collision_free_under_rapid_calls() {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    for _ in 0..10_000 {
+        let tag = unique_tag();
+        assert!(seen.insert(tag), "unique_tag collided within one process");
     }
 }

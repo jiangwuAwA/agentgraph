@@ -75,3 +75,23 @@ pub fn normalize_root(path: &std::path::Path) -> std::path::PathBuf {
     }
     path.to_path_buf()
 }
+
+/// Compute `path` relative to `root` with `/` separators.
+///
+/// Direct `normalize_root` + `strip_prefix` first. On mismatch (macOS `/var` vs
+/// `/private/var` symlink forms, UNC, etc.) canonicalize **both** sides and
+/// retry — same pattern as the MCP root jail. Returns `None` when `path` is
+/// not under `root` even after canonicalization (caller must skip the file).
+pub fn rel_path_under_root(path: &std::path::Path, root: &std::path::Path) -> Option<String> {
+    let p_n = normalize_root(path);
+    let r_n = normalize_root(root);
+    if let Ok(rel) = p_n.strip_prefix(&r_n) {
+        return Some(rel.to_string_lossy().replace('\\', "/"));
+    }
+    let p_c = path.canonicalize().ok()?;
+    let r_c = root.canonicalize().ok()?;
+    let p_cn = normalize_root(&p_c);
+    let r_cn = normalize_root(&r_c);
+    let rel = p_cn.strip_prefix(&r_cn).ok()?;
+    Some(rel.to_string_lossy().replace('\\', "/"))
+}

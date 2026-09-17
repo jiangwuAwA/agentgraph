@@ -13,13 +13,17 @@ fn fixture_src() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/eval-l2/s-js-esm")
 }
 
+/// Process-unique tag: pid + monotonic counter + wall clock (macOS CI collision guard).
 fn unique_tag() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    format!("{}-{n}", std::process::id())
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{n}-{c}", std::process::id())
 }
 
 fn copy_dir(src: &Path, dst: &Path) {

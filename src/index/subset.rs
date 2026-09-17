@@ -4,10 +4,10 @@
 //! occur is contained in the static over-approximation (`--sound` walk).
 //! Outside S: **no** completeness claim. Violations are reported, not hidden.
 //!
-//! **Language-aware honesty (R-track B):** AST-modeled S (js/ts/rust) and
-//! lexical-v1 scanners (python/go) do **not** carry the same assurance.
+//! **Language-aware honesty:** AST-modeled S (js/ts/tsx/jsx, python, go) and
+//! the lexical-v1 Rust scanner do **not** carry the same assurance.
 //! CLI/MCP must select the promise string by tier — never emit the AST OK
-//! for a corpus that contains py/go.
+//! for a corpus that contains rust (still lexical).
 
 use serde::{Deserialize, Serialize};
 use tree_sitter::Node;
@@ -19,15 +19,17 @@ use crate::model::{Confidence, Language};
 // Language-aware sound promise (shared by CLI + MCP — single source of truth)
 // ---------------------------------------------------------------------------
 
-/// AST-modeled S (js/ts/tsx/jsx, rust): full S-qualified OK text.
-pub const SOUND_PROMISE_OK_AST: &str = "S satisfied (AST-modeled subset). Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP.";
+/// AST-modeled S (js/ts/tsx/jsx, python, go): full S-qualified OK text.
+/// Still an engineering S gate — **not** ecosystem sound / not a proven
+/// runtime call-graph over-approx.
+pub const SOUND_PROMISE_OK_AST: &str = "S satisfied (AST-modeled subset). Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP. AST scanner is an engineering S gate, not ecosystem sound.";
 
-/// Lexical/scanner v1 (python, go): weaker text — scanner is conservative
-/// lexical v1, not frozen, and is **not** equal assurance to AST S_js.
-pub const SOUND_PROMISE_OK_LEXICAL_V1: &str = "S satisfied (scanner tier: lexical v1). Python/Go S scanners are conservative lexical v1 (not frozen, weaker than AST-modeled S_js/S_rs) — this OK is NOT the same assurance as an AST-modeled subset. Sound walk over-approximates modeled reference edges only; this is NOT a proven runtime call-graph over-approx.";
+/// Lexical/scanner v1 (rust): weaker text — scanner is conservative
+/// line-oriented lexical v1, not frozen, and is **not** equal assurance to AST S.
+pub const SOUND_PROMISE_OK_LEXICAL_V1: &str = "S satisfied (scanner tier: lexical v1). Rust S scanner is conservative lexical v1 (not frozen, weaker than AST-modeled S_js/S_py/S_go) — this OK is NOT the same assurance as an AST-modeled subset. Sound walk over-approximates modeled reference edges only; this is NOT a proven runtime call-graph over-approx.";
 
 /// Mixed AST + lexical-v1 corpus: weakest tier governs; name both tiers.
-pub const SOUND_PROMISE_OK_MIXED_LEXICAL_V1: &str = "S satisfied, but the corpus mixes AST-modeled languages with lexical-v1 scanners (python/go). The weakest tier governs: Python/Go S are conservative lexical v1 (not frozen) — NOT the same assurance as AST-modeled S_js/S_rs. Sound walk over-approximates modeled reference edges only.";
+pub const SOUND_PROMISE_OK_MIXED_LEXICAL_V1: &str = "S satisfied, but the corpus mixes AST-modeled languages with the lexical-v1 Rust scanner. The weakest tier governs: Rust S is conservative lexical v1 (not frozen) — NOT the same assurance as AST-modeled S_js/S_py/S_go. Sound walk over-approximates modeled reference edges only.";
 
 /// Violations present → eligibility claim disabled (unchanged behavior).
 pub const SOUND_PROMISE_DISABLED: &str =
@@ -36,9 +38,9 @@ pub const SOUND_PROMISE_DISABLED: &str =
 /// Which assurance tier applies to a sound query on this corpus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SoundPromiseTier {
-    /// AST-modeled S (js/ts/tsx/jsx, rust): full S-qualified OK text.
+    /// AST-modeled S (js/ts/tsx/jsx, python, go): full S-qualified OK text.
     AstModeled,
-    /// Lexical/scanner v1 (python, go) only: weaker text.
+    /// Lexical/scanner v1 (rust) only: weaker text.
     LexicalV1,
     /// Mixed AST + lexical-v1: weakest tier governs.
     MixedLexicalV1,
@@ -58,20 +60,26 @@ impl SoundPromiseTier {
 }
 
 /// Language strings use `Language::as_str()` (from the index `files` table).
+///
+/// Rust remains lexical-v1: `scan_rust` is still line-oriented. Python/Go
+/// were upgraded to tree-sitter AST scanners and therefore join the AST tier.
 pub fn is_lexical_v1_language(lang: &str) -> bool {
-    matches!(lang, "python" | "go")
+    matches!(lang, "rust")
 }
 
 pub fn is_ast_modeled_language(lang: &str) -> bool {
-    matches!(lang, "typescript" | "tsx" | "javascript" | "jsx" | "rust")
+    matches!(
+        lang,
+        "typescript" | "tsx" | "javascript" | "jsx" | "python" | "go"
+    )
 }
 
 /// Select the promise tier from `subset_ok` + languages in the indexed corpus.
 ///
 /// Rules (fail-honest, weakest tier wins):
 /// 1. Any S violation → `Disabled`.
-/// 2. Corpus contains python/go **only** → `LexicalV1`.
-/// 3. Corpus mixes AST languages with python/go → `MixedLexicalV1`.
+/// 2. Corpus contains rust **only** → `LexicalV1`.
+/// 3. Corpus mixes AST languages with rust → `MixedLexicalV1`.
 /// 4. Corpus is AST-only (or empty) → `AstModeled`.
 pub fn sound_promise_tier(subset_ok: bool, languages: &[String]) -> SoundPromiseTier {
     if !subset_ok {
@@ -221,14 +229,10 @@ pub fn scan_tree(root: &std::path::Path) -> Vec<SubsetReport> {
     let Ok(files) = super::walker::collect_source_files(root) else {
         return out;
     };
-    let base = parser::normalize_root(root);
     for path in files {
-        let p_n = parser::normalize_root(&path);
-        let rel = p_n
-            .strip_prefix(&base)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let Some(rel) = parser::rel_path_under_root(&path, root) else {
+            continue;
+        };
         let Some(lang) = Language::from_path(&rel) else {
             continue;
         };
@@ -328,99 +332,6 @@ fn unwrap_js_callee<'a>(mut n: Node<'a>) -> Node<'a> {
 
 fn string_lit_inner(text: &str) -> &str {
     text.trim_matches(|ch| ch == '\'' || ch == '"' || ch == '`')
-}
-
-/// True when `s` contains `word` as a standalone identifier (not `__getattr__` / `foogetattr`).
-fn contains_ident(s: &str, word: &str) -> bool {
-    let bytes = s.as_bytes();
-    let w = word.as_bytes();
-    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let mut i = 0;
-    while i + w.len() <= bytes.len() {
-        if &bytes[i..i + w.len()] == w {
-            let before_ok = i == 0 || !is_ident(bytes[i - 1]);
-            let after = i + w.len();
-            let after_ok = after >= bytes.len() || !is_ident(bytes[after]);
-            if before_ok && after_ok {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
-}
-
-/// True when the remainder after `getattr(` proves the second arg is a *plain*
-/// string literal on this line (same-line only). Fail-closed: multi-line args,
-/// concat, ternary, or a second call of `getattr` with a dynamic name are dynamic.
-fn getattr_call_second_is_plain_literal(rest: &str) -> bool {
-    let mut depth = 0i32;
-    let mut in_str: Option<char> = None;
-    let mut comma_at: Option<usize> = None;
-    let mut closed = false;
-    for (i, ch) in rest.char_indices() {
-        if let Some(q) = in_str {
-            if ch == q {
-                in_str = None;
-            }
-            continue;
-        }
-        match ch {
-            '\'' | '"' => in_str = Some(ch),
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => {
-                if depth == 0 {
-                    closed = true;
-                    break;
-                }
-                depth -= 1;
-            }
-            ',' if depth == 0 => {
-                comma_at = Some(i);
-                break;
-            }
-            _ => {}
-        }
-    }
-    if comma_at.is_none() {
-        // Single-arg getattr is not a name lookup — but only if we actually saw `)`.
-        // Open-ended (multi-line args) must leave S.
-        return closed;
-    }
-    let ci = comma_at.unwrap();
-    let after = rest[ci + 1..].trim_start();
-    let Some(q) = after.chars().next() else {
-        return false; // comma then EOL — multi-line second arg
-    };
-    if q != '\'' && q != '"' {
-        return false;
-    }
-    let body = &after[1..];
-    let Some(end) = body.find(q) else {
-        return false; // unterminated — multi-line
-    };
-    let tail = body[end + 1..].trim_start();
-    // Only closing of the getattr call (or another arg / comment) may follow.
-    tail.is_empty() || tail.starts_with(')') || tail.starts_with(',') || tail.starts_with('#')
-}
-
-/// True when this line's `getattr` uses are all safe for S_py.
-/// Over-flags: a missed escape is worse than a false S violation.
-fn line_getattr_is_s_safe(compact_line: &str) -> bool {
-    // `getattr` / `getattr (` split across lines: identifier without `(` on this line.
-    if contains_ident(compact_line, "getattr") && !compact_line.contains("getattr(") {
-        return false;
-    }
-    let mut search = 0usize;
-    while let Some(rel) = compact_line[search..].find("getattr(") {
-        let start = search + rel;
-        let rest = &compact_line[start + "getattr(".len()..];
-        if !getattr_call_second_is_plain_literal(rest) {
-            return false;
-        }
-        search = start + "getattr(".len();
-    }
-    true
 }
 
 /// True when the call's single argument is a plain `string` node (static module specifier).
@@ -829,160 +740,445 @@ fn js_rhs_mentions_eval_or_function(rhs: &str) -> bool {
     in_tok && (tok == "eval" || tok == "Function")
 }
 
-/// Drop whitespace that sits immediately before `(` so `eval (` matches `eval(`.
-fn strip_space_before_paren(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut pending_ws = String::new();
-    for ch in s.chars() {
-        if ch == ' ' || ch == '\t' {
-            pending_ws.push(ch);
-            continue;
-        }
-        if ch == '(' {
-            pending_ws.clear();
-        } else {
-            out.push_str(&pending_ws);
-            pending_ws.clear();
-        }
-        out.push(ch);
-    }
-    out.push_str(&pending_ws);
-    out
-}
-
 fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
-    // v1 conservative lexical scanner (not a full freeze / AST analysis).
-    // Prefer over-flag: a false violation is cheaper than a missed escape.
-    for (idx, raw_line) in source.lines().enumerate() {
-        let line_no = idx + 1;
-        let t = raw_line.trim();
-        if t.starts_with('#') {
-            continue;
+    // AST scanner (tree-sitter-python). Fail-closed on parse errors.
+    // Comments/strings are not AST call targets — they no longer false-positive.
+    let Ok(tree) = parser::parse(source, Language::Python) else {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter failed to parse — cannot certify S",
+        );
+        return;
+    };
+    if tree.root_node().has_error() {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter ERROR nodes — cannot certify S",
+        );
+        return;
+    }
+    // Cheap alias pass: `from builtins import eval as e` / `import builtins as b`.
+    let mut import_aliases: Vec<(String, String)> = Vec::new();
+    collect_py_dangerous_imports(tree.root_node(), source, &mut import_aliases);
+    walk_py_s(tree.root_node(), source, path, &import_aliases, violations);
+}
+
+/// Dangerous Python names that leave S when referenced (not only when called).
+const PY_DANGEROUS_NAMES: &[&str] = &[
+    "eval",
+    "exec",
+    "__import__",
+    "__getattribute__",
+    "attrgetter",
+    "methodcaller",
+    "FunctionType",
+    "compile",
+];
+
+/// Import aliases that shadow dangerous builtins: local_name → original.
+fn collect_py_dangerous_imports(node: Node, source: &str, out: &mut Vec<(String, String)>) {
+    let mut cursor = node.walk();
+    match node.kind() {
+        "aliased_import" => {
+            // `eval as e` — original then alias.
+            let mut names = Vec::new();
+            for child in node.named_children(&mut cursor) {
+                if child.kind() == "dotted_name" || child.kind() == "identifier" {
+                    names.push(snippet_at(source, child));
+                }
+            }
+            if names.len() >= 2 {
+                out.push((names[1].clone(), names[0].clone()));
+            }
         }
-        let compact = strip_space_before_paren(t);
-        if compact.contains("eval(") || compact.contains("exec(") {
-            push_v(violations, path, line_no, "py_eval_exec", t);
+        "import_from_statement" => {
+            // `from builtins import eval` (no alias) — local name is the original.
+            let mut module = String::new();
+            let mut cursor2 = node.walk();
+            for child in node.children(&mut cursor2) {
+                if child.kind() == "dotted_name" {
+                    module = snippet_at(source, child);
+                    break;
+                }
+            }
+            let dangerous_module = matches!(
+                module.as_str(),
+                "builtins" | "importlib" | "operator" | "types"
+            );
+            if dangerous_module {
+                let mut cursor3 = node.walk();
+                for child in node.children(&mut cursor3) {
+                    if child.kind() == "dotted_name" || child.kind() == "aliased_import" {
+                        // handled below via recursion; bare names:
+                    }
+                    if child.kind() == "dotted_name"
+                        && child.parent().map(|p| p.id()) == Some(node.id())
+                    {
+                        let name = snippet_at(source, child);
+                        if PY_DANGEROUS_NAMES.contains(&name.as_str()) || name == "import_module" {
+                            out.push((name.clone(), name));
+                        }
+                    }
+                }
+                // Wildcard / parenthesized import list: walk named children for identifiers.
+                let mut cursor4 = node.walk();
+                for child in node.named_children(&mut cursor4) {
+                    if child.kind() == "dotted_name" {
+                        let name = snippet_at(source, child);
+                        if name != module
+                            && (PY_DANGEROUS_NAMES.contains(&name.as_str())
+                                || name == "import_module")
+                            && !out.iter().any(|(l, _)| *l == name)
+                        {
+                            out.push((name.clone(), name));
+                        }
+                    } else if child.kind() == "aliased_import" {
+                        let mut names = Vec::new();
+                        let mut c5 = child.walk();
+                        for g in child.named_children(&mut c5) {
+                            if g.kind() == "dotted_name" || g.kind() == "identifier" {
+                                names.push(snippet_at(source, g));
+                            }
+                        }
+                        if names.len() >= 2
+                            && (PY_DANGEROUS_NAMES.contains(&names[0].as_str())
+                                || names[0] == "import_module")
+                        {
+                            out.push((names[1].clone(), names[0].clone()));
+                        }
+                    }
+                }
+            }
         }
-        if compact.contains("__import__(") {
-            push_v(violations, path, line_no, "py___import__", t);
-        }
-        if compact.contains("setattr(") {
-            push_v(violations, path, line_no, "py_setattr", t);
-        }
-        // Non-literal / multi-line getattr invents call targets (R6 space + R7 fail-closed).
-        if !line_getattr_is_s_safe(&compact) {
-            push_v(violations, path, line_no, "py_getattr_dynamic", t);
-        }
-        // M3: `__builtins__['eval']` / `__builtins__.eval` escapes S_py.
-        if t.contains("__builtins__") {
-            push_v(violations, path, line_no, "py_builtins", t);
-        }
-        // R8: sibling dynamic-attr / import APIs leave S_py (fail-closed).
-        // R9: also bare identifier without `(` (alias g = attrgetter).
-        if compact.contains("__getattribute__(")
-            || compact.contains("attrgetter(")
-            || compact.contains("attrgetter")
-            || compact.contains("__getattribute__")
-            || compact.contains("methodcaller")
-            || compact.contains("FunctionType")
-            || compact.contains("__dict__[")
-            || compact.contains("compile(")
-        {
-            push_v(violations, path, line_no, "py_dynamic_attr", t);
-        }
-        // R10 C1 / R12 C4: eval/exec/__import__ aliases and wrappers.
-        let evalish = compact
-            .chars()
-            .filter(|c| !matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | ',' | '\'' | '"'))
-            .collect::<String>();
-        let has_bare_eval = t
-            .split(|c: char| !c.is_alphanumeric() && c != '_')
-            .any(|w| matches!(w, "eval" | "exec" | "__import__"));
-        if evalish.contains("=eval")
-            || evalish.contains("=exec")
-            || evalish.contains("=__import__")
-            || compact.contains(".eval")
-            || compact.contains(".exec")
-            || (compact.contains("getattr(")
-                && (compact.contains("'eval'")
-                    || compact.contains("\"eval\"")
-                    || compact.contains("'exec'")
-                    || compact.contains("\"exec\"")))
-            || has_bare_eval && !t.contains("eval(") && !t.contains("exec(")
-        {
-            push_v(violations, path, line_no, "py_eval_alias", t);
-        }
-        if (compact.contains("vars(")
-            || compact.contains("globals(")
-            || compact.contains("locals("))
-            && t.contains('[')
-        {
-            push_v(violations, path, line_no, "py_vars_subscript", t);
-        }
-        // Non-literal importlib.import_module — **every** call on the line (R9).
-        if compact.contains("import_module") && !import_module_all_literal(&compact) {
-            push_v(violations, path, line_no, "py_import_module_dynamic", t);
-        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_py_dangerous_imports(child, source, out);
     }
 }
 
-/// Fail-closed: every `import_module(` on the line must take a plain string first arg.
-fn import_module_all_literal(compact: &str) -> bool {
-    let mut rest = compact;
-    let mut seen = 0usize;
-    while let Some(idx) = rest.find("import_module(") {
-        seen += 1;
-        let after = &rest[idx + "import_module(".len()..];
-        let Some(end) = after.find(')') else {
-            return false; // multi-line
-        };
-        let args = after[..end].trim();
-        let first = args.split(',').next().unwrap_or("").trim();
-        let ok = first.len() >= 2
-            && (first.starts_with('\'') || first.starts_with('"'))
-            && first.ends_with(first.chars().next().unwrap())
-            && !first.contains('+');
-        if !ok {
-            return false;
+/// Resolve a Python callee node to a flat name for S checks.
+/// `eval` → `eval`; `importlib.import_module` → `import_module`;
+/// `__builtins__.eval` → `eval`.
+fn py_callee_flat_name(node: Node, source: &str) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(snippet_at(source, node)),
+        "attribute" => {
+            let attr = node.child_by_field_name("attribute")?;
+            Some(snippet_at(source, attr))
         }
-        rest = &after[end..];
+        _ => None,
     }
-    seen > 0
+}
+
+/// Full dotted text of a callee (`importlib.import_module`, `builtins.eval`).
+fn py_callee_dotted(node: Node, source: &str) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(snippet_at(source, node)),
+        "attribute" => {
+            let obj = node.child_by_field_name("object")?;
+            let attr = node.child_by_field_name("attribute")?;
+            let obj_s = py_callee_dotted(obj, source)?;
+            Some(format!("{obj_s}.{}", snippet_at(source, attr)))
+        }
+        _ => None,
+    }
+}
+
+/// True when this Python expression is a plain string literal node.
+fn py_is_string_literal(node: Node) -> bool {
+    matches!(node.kind(), "string" | "concatenated_string")
+}
+
+/// Second positional arg of a call, if present.
+fn py_call_second_arg(call: Node) -> Option<Node> {
+    let args = call.child_by_field_name("arguments")?;
+    let mut cursor = args.walk();
+    let named: Vec<Node> = args.named_children(&mut cursor).collect();
+    named.get(1).copied()
+}
+
+/// First positional arg of a call, if present.
+fn py_call_first_arg(call: Node) -> Option<Node> {
+    let args = call.child_by_field_name("arguments")?;
+    let mut cursor = args.walk();
+    let named: Vec<Node> = args.named_children(&mut cursor).collect();
+    named.first().copied()
+}
+
+fn walk_py_s(
+    node: Node,
+    source: &str,
+    path: &str,
+    import_aliases: &[(String, String)],
+    violations: &mut Vec<SubsetViolation>,
+) {
+    let mut cursor = node.walk();
+    let kind = node.kind();
+    let line = line_of_offset(source, node.start_byte());
+    let snippet = snippet_at(source, node).replace('\n', " ");
+
+    match kind {
+        "call" => {
+            if let Some(func) = node.child_by_field_name("function") {
+                let flat = py_callee_flat_name(func, source);
+                let dotted = py_callee_dotted(func, source);
+                let flat_s = flat.as_deref().unwrap_or("");
+                // Import alias: `e = eval` via `from builtins import eval as e`.
+                let flat_resolved = import_aliases
+                    .iter()
+                    .find(|(local, _)| *local == flat_s)
+                    .map(|(_, orig)| orig.as_str())
+                    .unwrap_or(flat_s);
+
+                if matches!(flat_resolved, "eval" | "exec") {
+                    push_v(violations, path, line, "py_eval_exec", &snippet);
+                }
+                if flat_resolved == "__import__" {
+                    push_v(violations, path, line, "py___import__", &snippet);
+                }
+                if flat_resolved == "setattr" {
+                    push_v(violations, path, line, "py_setattr", &snippet);
+                }
+                if flat_resolved == "compile" {
+                    push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+                // getattr: second arg must be a string literal (finite domain).
+                // A string naming eval/exec/__import__ invents a call target.
+                if flat_resolved == "getattr" {
+                    match py_call_second_arg(node) {
+                        Some(arg) if py_is_string_literal(arg) => {
+                            let inner = snippet_at(source, arg);
+                            let inner_trim = inner.trim_matches(|c| c == '\'' || c == '"');
+                            if matches!(inner_trim, "eval" | "exec" | "__import__") {
+                                push_v(violations, path, line, "py_eval_alias", &snippet);
+                            }
+                        }
+                        Some(_) => {
+                            push_v(violations, path, line, "py_getattr_dynamic", &snippet);
+                        }
+                        None => {
+                            // Single-arg getattr is not a name lookup — stay in S.
+                        }
+                    }
+                }
+                // importlib.import_module / from-import import_module:
+                // first arg must be a string literal.
+                if flat_resolved == "import_module"
+                    || dotted.as_deref() == Some("importlib.import_module")
+                {
+                    match py_call_first_arg(node) {
+                        Some(arg) if py_is_string_literal(arg) => {}
+                        _ => {
+                            push_v(violations, path, line, "py_import_module_dynamic", &snippet);
+                        }
+                    }
+                }
+                // __getattribute__ / attrgetter / methodcaller / FunctionType calls.
+                if matches!(
+                    flat_resolved,
+                    "__getattribute__" | "attrgetter" | "methodcaller" | "FunctionType"
+                ) {
+                    push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+                // vars/globals/locals used as subscript base: vars()['x'].
+                if matches!(flat_resolved, "vars" | "globals" | "locals") {
+                    if let Some(parent) = node.parent() {
+                        if parent.kind() == "subscript" {
+                            push_v(violations, path, line, "py_vars_subscript", &snippet);
+                        }
+                    }
+                }
+            }
+        }
+        "attribute" => {
+            // __builtins__.eval / __builtins__['eval'] handled via subscript/attribute.
+            let text = snippet_at(source, node);
+            if text.contains("__builtins__") {
+                push_v(violations, path, line, "py_builtins", &snippet);
+            }
+            if text.ends_with(".__dict__") || text == "__dict__" {
+                push_v(violations, path, line, "py_dynamic_attr", &snippet);
+            }
+            // .eval / .exec member access (builtins.eval, obj.eval, …).
+            if let Some(attr) = node.child_by_field_name("attribute") {
+                let an = snippet_at(source, attr);
+                if an == "eval" || an == "exec" {
+                    push_v(violations, path, line, "py_eval_alias", &snippet);
+                }
+            }
+        }
+        "subscript" => {
+            let text = snippet_at(source, node);
+            if text.contains("__builtins__") {
+                push_v(violations, path, line, "py_builtins", &snippet);
+            }
+            if text.contains("__dict__") {
+                push_v(violations, path, line, "py_dynamic_attr", &snippet);
+            }
+            // __builtins__['eval'] / d['eval'] via string key.
+            if let Some(sub) = node.child_by_field_name("subscript") {
+                if py_is_string_literal(sub) {
+                    let inner = snippet_at(source, sub);
+                    let inner_trim = inner.trim_matches(|c| c == '\'' || c == '"');
+                    if matches!(inner_trim, "eval" | "exec" | "__import__") {
+                        push_v(violations, path, line, "py_eval_alias", &snippet);
+                    }
+                }
+            }
+        }
+        "assignment" => {
+            // e = eval / e = exec / e = __import__
+            if let Some(right) = node.child_by_field_name("right") {
+                let rt = snippet_at(source, right);
+                if matches!(rt.as_str(), "eval" | "exec" | "__import__") {
+                    push_v(violations, path, line, "py_eval_alias", &snippet);
+                }
+                // e = builtins.eval
+                if right.kind() == "attribute" {
+                    if let Some(attr) = right.child_by_field_name("attribute") {
+                        let an = snippet_at(source, attr);
+                        if an == "eval" || an == "exec" {
+                            push_v(violations, path, line, "py_eval_alias", &snippet);
+                        }
+                    }
+                }
+            }
+        }
+        "identifier" => {
+            // Bare reference to a dangerous name (not the callee of a call —
+            // those are already flagged). Catches `e = eval` and `return attrgetter`.
+            let name = snippet_at(source, node);
+            let resolved = import_aliases
+                .iter()
+                .find(|(local, _)| *local == name)
+                .map(|(_, orig)| orig.clone())
+                .unwrap_or_else(|| name.clone());
+            let is_callee = node
+                .parent()
+                .map(|p| {
+                    p.kind() == "call"
+                        && p.child_by_field_name("function")
+                            .map(|f| f.id() == node.id())
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            if !is_callee {
+                if matches!(resolved.as_str(), "eval" | "exec" | "__import__") {
+                    push_v(violations, path, line, "py_eval_alias", &snippet);
+                }
+                if matches!(
+                    resolved.as_str(),
+                    "__getattribute__" | "attrgetter" | "methodcaller" | "FunctionType" | "compile"
+                ) {
+                    push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+                if resolved == "__builtins__" {
+                    push_v(violations, path, line, "py_builtins", &snippet);
+                }
+                if resolved == "__dict__" {
+                    push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+            }
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut cursor) {
+        walk_py_s(child, source, path, import_aliases, violations);
+    }
+}
+
+/// `//go:linkname` is a significant comment (compiler directive).
+fn go_comment_is_linkname(text: &str) -> bool {
+    text.contains("go:linkname")
 }
 
 fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
-    for (idx, raw_line) in source.lines().enumerate() {
-        let line_no = idx + 1;
-        let t = raw_line.trim();
-        // R10 M5 / R12 C5: cgo and //go:linkname (strip comments; any "C" import form).
-        let no_comment = t.split("//").next().unwrap_or(t).trim();
-        let cgo = t.contains("go:linkname")
-            || no_comment.contains("import \"C\"")
-            || no_comment.contains("import(`C`)")
-            || no_comment.contains("\"C\"")
-            || no_comment.contains("`C`")
-            // R13 M4: import "unsafe" / aliased reflect.
-            || (no_comment.contains("import") && no_comment.contains("\"unsafe\""))
-            || (no_comment.contains("import") && no_comment.contains("\"reflect\""))
-            || (no_comment.contains("import") && no_comment.contains("`reflect`"));
-        if cgo {
-            push_v(violations, path, line_no, "go_cgo_linkname", t);
+    // AST scanner (tree-sitter-go). Fail-closed on parse errors.
+    // Comments/strings are not AST selectors — they no longer false-positive
+    // (except //go:linkname, which is a significant compiler directive).
+    let Ok(tree) = parser::parse(source, Language::Go) else {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter failed to parse — cannot certify S",
+        );
+        return;
+    };
+    if tree.root_node().has_error() {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter ERROR nodes — cannot certify S",
+        );
+        return;
+    }
+    walk_go_s(tree.root_node(), source, path, violations);
+}
+
+fn walk_go_s(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
+    let mut cursor = node.walk();
+    let kind = node.kind();
+    let line = line_of_offset(source, node.start_byte());
+    let snippet = snippet_at(source, node).replace('\n', " ");
+
+    match kind {
+        "comment" => {
+            if go_comment_is_linkname(&snippet_at(source, node)) {
+                push_v(violations, path, line, "go_cgo_linkname", &snippet);
+            }
         }
-        if t.starts_with("//") {
-            continue;
+        "import_spec" => {
+            // import "C" / import "unsafe" / import "reflect"
+            if let Some(path_node) = node.child_by_field_name("path") {
+                let raw = snippet_at(source, path_node);
+                let import_path = raw.trim_matches(|c| c == '"' || c == '`');
+                if matches!(import_path, "C" | "unsafe" | "reflect") {
+                    push_v(violations, path, line, "go_cgo_linkname", &snippet);
+                }
+            }
         }
-        // unsafe.Pointer / unsafe.Sizeof / unsafe.Add — leave S_go v1.
-        if t.contains("unsafe.") || t.starts_with("unsafe ") {
-            push_v(violations, path, line_no, "go_unsafe", t);
+        "selector_expression" => {
+            // unsafe.X / reflect.X / plugin.Open / syscall.NewCallback
+            if let Some(operand) = node.child_by_field_name("operand") {
+                if operand.kind() == "identifier" {
+                    let op = snippet_at(source, operand);
+                    if op == "unsafe" {
+                        push_v(violations, path, line, "go_unsafe", &snippet);
+                    }
+                    if op == "reflect" {
+                        push_v(violations, path, line, "go_reflect", &snippet);
+                    }
+                    if op == "plugin" || op == "syscall" {
+                        if let Some(field) = node.child_by_field_name("field") {
+                            let fname = snippet_at(source, field);
+                            if (op == "plugin" && fname == "Open")
+                                || (op == "syscall" && fname == "NewCallback")
+                            {
+                                push_v(violations, path, line, "go_dynamic_symbol", &snippet);
+                            }
+                        }
+                    }
+                }
+            }
         }
-        // reflect.Value.Call / MethodByName invents call edges.
-        if t.contains("reflect.") {
-            push_v(violations, path, line_no, "go_reflect", t);
-        }
-        // plugin.Open / syscall.NewCallback-style dynamic symbols.
-        if t.contains("plugin.Open") || t.contains("syscall.NewCallback") {
-            push_v(violations, path, line_no, "go_dynamic_symbol", t);
-        }
+        _ => {}
+    }
+
+    for child in node.children(&mut cursor) {
+        walk_go_s(child, source, path, violations);
     }
 }
 

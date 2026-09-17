@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::index::Indexer;
+use crate::index::{tag_macro_impact_json, tag_macro_ref_json, Indexer};
 use crate::query::{parse_query_flags, Query};
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
@@ -126,7 +126,8 @@ fn tools_list() -> Value {
                         "exact_only": {"type": "boolean", "default": false},
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
-                        "sound": {"type": "boolean", "default": false}
+                        "sound": {"type": "boolean", "default": false},
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. Not sound-certified."}
                     },
                     "required": ["name"]
                 }
@@ -143,9 +144,18 @@ fn tools_list() -> Value {
                         "exact_only": {"type": "boolean", "default": false},
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
-                        "sound": {"type": "boolean", "default": false}
+                        "sound": {"type": "boolean", "default": false},
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Mutually exclusive with sound. Not sound-certified."}
                     },
                     "required": ["name"]
+                }
+            },
+            {
+                "name": "macro_status",
+                "description": "Optional macro-expanded sidecar status (P2): whether <root>/.agentgraph/index.macro.db exists, its path, and file/symbol/ref counts. Default product path does not use this sidecar.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
                 }
             },
             {
@@ -341,9 +351,19 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
+                let with_macro = args
+                    .get("with_macro")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
+                if sound && with_macro {
+                    return Err(anyhow::anyhow!(
+                        "sound is mutually exclusive with with_macro \
+                         (macro sidecar is not sound-certified)"
+                    ));
+                }
                 if sound {
                     if exact_only || include_dynamic || recall {
                         return Err(anyhow::anyhow!(
@@ -378,6 +398,24 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 }
                 let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
+                if with_macro {
+                    let mut mapped: Vec<Value> = hits
+                        .into_iter()
+                        .map(|r| {
+                            let mut v = serde_json::to_value(&r).unwrap_or_default();
+                            if let Some(obj) = v.as_object_mut() {
+                                obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
+                            }
+                            v
+                        })
+                        .collect();
+                    if let Some(side) = indexer.open_macro_store()? {
+                        for r in side.callers_filtered(sym, limit, filter)? {
+                            mapped.push(tag_macro_ref_json(&r));
+                        }
+                    }
+                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
+                }
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
             "impact" => {
@@ -400,9 +438,19 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("recall")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let with_macro = args
+                    .get("with_macro")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
+                if sound && with_macro {
+                    return Err(anyhow::anyhow!(
+                        "sound is mutually exclusive with with_macro \
+                         (macro sidecar is not sound-certified)"
+                    ));
+                }
                 if sound {
                     if exact_only || include_dynamic || recall {
                         return Err(anyhow::anyhow!(
@@ -426,7 +474,24 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 }
                 let filter = parse_query_flags(exact_only, include_dynamic, recall);
                 let hits = Query::new(&store).impact_filtered(sym, depth, limit, filter)?;
+                if with_macro {
+                    let mut mapped: Vec<Value> = hits
+                        .iter()
+                        .map(|n| serde_json::to_value(n).unwrap_or_default())
+                        .collect();
+                    if let Some(side) = indexer.open_macro_store()? {
+                        for n in side.impact_filtered(sym, depth, limit, filter)? {
+                            mapped.push(tag_macro_impact_json(&n));
+                        }
+                    }
+                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
+                }
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
+            }
+            "macro_status" => {
+                let indexer = Indexer::new(&root)?;
+                let status = indexer.macro_status()?;
+                Ok(ok_text(serde_json::to_string_pretty(&status)?))
             }
             "subset" => {
                 let indexer = Indexer::new(&root)?;

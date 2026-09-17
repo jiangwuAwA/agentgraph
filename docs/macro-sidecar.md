@@ -1,0 +1,160 @@
+# Macro-expanded sidecar index (P2, optional — CLI default OFF)
+
+**Status:** shipped as an **opt-in dual-index**. Not a sound expand-graph.  
+**Default product path remains source L0/L1** (and L2 `--sound` on the main index only).  
+Related spike: [eval-macro-expand.md](eval-macro-expand.md). Soundness: [sound-subset.md](sound-subset.md).
+
+---
+
+## Non-goals
+
+- **No sound expand-graph.** Expanded-only symbols never receive `subset_ok=true` claims.
+- **No required CI expand.** Sidecar build is operator-driven; tests only lock the optional UX.
+- **No path-rewrite magic.** Sidecar rows are unioned with `"origin": "macro_expanded"` — no silent path mapping back to source crates.
+- **Do not edit operator corpora** (e.g. `eval-corpus/stock-trading-app`) from this feature.
+
+---
+
+## What it is
+
+A **second SQLite store** at:
+
+```text
+<root>/.agentgraph/index.macro.db
+```
+
+Built by indexing an **expanded shadow tree** (e.g. `cargo expand` / `rustc -Zunpretty=expanded` output written to a sibling directory). Schema matches the main store (`files` / `symbols` / `refs` / `meta`); `meta.origin = 'macro_expanded'` marks the sidecar kind.
+
+When the sidecar file is **absent**:
+
+- All default queries behave **exactly** as before.
+- `--with-macro` treats the sidecar as **empty** (graceful union; no error; file is not created).
+- `macro status` reports `exists: false` without creating the DB.
+
+---
+
+## UX / commands
+
+### Build sidecar (does not replace main index)
+
+```bash
+agentgraph index --force
+agentgraph index --force --macro-expanded-root /path/to/expanded-shadow
+```
+
+With `--macro-expanded-root`, the CLI still indexes the **main** source tree first, then indexes the expanded tree into the sidecar. JSON shape:
+
+```json
+{
+  "main": { "files": 1, "symbols": 3, "references": 2, "...": "IndexStats" },
+  "macro_sidecar": {
+    "files": 1,
+    "symbols": 5,
+    "references": 4,
+    "path": "<root>/.agentgraph/index.macro.db",
+    "expanded_root": "/path/to/expanded-shadow",
+    "origin": "macro_expanded"
+  },
+  "note": "sidecar is optional dual-index (not sound); default callers/impact ignore it unless --with-macro"
+}
+```
+
+**Keep the expanded tree outside the indexed project root** (sibling directory). If it lives under `--root`, the main walker may ingest expanded sources and pollute the source index.
+
+### Status
+
+```bash
+agentgraph macro status
+```
+
+```json
+{
+  "exists": true,
+  "path": "<root>/.agentgraph/index.macro.db",
+  "files": 1,
+  "symbols": 5,
+  "refs": 4,
+  "origin": "macro_expanded",
+  "expanded_root": "/path/to/expanded-shadow"
+}
+```
+
+### Query union (default OFF)
+
+```bash
+agentgraph callers helper                 # source L0/L1 only — unchanged
+agentgraph callers helper --with-macro    # main ∪ sidecar; sidecar rows tagged
+agentgraph impact helper --with-macro --depth 2
+```
+
+Sidecar hit tagging (callers):
+
+```json
+{
+  "name": "helper",
+  "enclosing": "fmt",
+  "path": "src/core.rs",
+  "origin": "macro_expanded",
+  "at": "src/core.rs:15",
+  "...": "other ReferenceRecord fields"
+}
+```
+
+Main-index rows are **not** tagged with `origin`. Expect **dual-index noise**: the same logical call can appear twice (once from source, once from expanded) with different paths/lines.
+
+### Honesty gates
+
+| Rule | Behavior |
+|---|---|
+| Default callers/impact | Never read the sidecar |
+| `--with-macro` + missing sidecar | Empty union, success |
+| `--sound --with-macro` | **Rejected** (mutually exclusive) |
+| Main `subset` / `--sound` | Operates only on main index; expanded S-violations stay in the sidecar |
+| Expanded-only symbols | May appear under `--with-macro` as ordinary array rows with `origin`; **never** as `subset_ok: true` |
+
+---
+
+## MCP (optional, same defaults)
+
+Tools `callers` / `impact` accept `with_macro: boolean` (default `false`).  
+Tool `macro_status` reports sidecar existence + counts.  
+Same mutual exclusion: `sound` + `with_macro` is an error.
+
+---
+
+## Example (fixture-shaped)
+
+```bash
+# sibling expanded tree with extra fn fmt / fn clone that call helper
+agentgraph --root /tmp/app index --force
+agentgraph --root /tmp/app index --force --macro-expanded-root /tmp/app-expanded
+agentgraph --root /tmp/app macro status
+agentgraph --root /tmp/app callers helper              # no fmt/clone
+agentgraph --root /tmp/app callers helper --with-macro # fmt/clone tagged origin=macro_expanded
+```
+
+---
+
+## Why dual-index (not merge)
+
+The spike ([eval-macro-expand.md](eval-macro-expand.md)) showed:
+
+- Expanded trees mint symbols that **do not exist in source** (`Debug::fmt`, derive `Clone`, …).
+- Heuristic ref counts inflate on expand; paths diverge from source crates.
+- Expanded output can inject `unsafe impl` → S violations even when the source crate is clean.
+
+Merging would require a **sound path map + de-dup + subset story** that we do not have. The sidecar keeps that uncertainty **visible** (`origin=macro_expanded`) instead of laundering it into the main graph.
+
+---
+
+## Tests
+
+`tests/macro_sidecar.rs` locks:
+
+1. Default index/callers: no sidecar file; `--with-macro` graceful when absent.
+2. Expanded-only `fmt`/`clone` appear only under `--with-macro`, tagged.
+3. `macro status` after build reports path + counts + `origin`.
+4. Main `index.db` ref/symbol counts unchanged after sidecar build.
+5. No `subset_ok` claim from expanded-only content; `--sound --with-macro` fails closed.
+
+Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

@@ -97,6 +97,33 @@ Macro-shaped names after real expand (counts):
 
 Reproduce operator compare: `scripts/compare_real_expand.py` + `scripts/stock_macro_expand_spike.ps1`.
 
+#### After storage Windows cfg fix — more crates expand OK
+
+Operator fixed `crates/storage/src/db/risk_intent_private_evidence.rs` on Windows:
+removed **duplicate** unix-only block that lacked `cfg(unix)` (78 compile errors);
+kept the existing `cfg(unix)` / `cfg(not(unix))` stubs. `cargo check -p storage` green.
+
+Real expand then succeeded for:
+
+| crate | bytes |
+|---|---:|
+| `repository` | 308 785 |
+| `auth` | 137 513 |
+| `risk-intent-authority` | 237 765 |
+
+**Five-crate real source vs expanded index** (event-engine + model-selection-replay + repository + auth + risk-intent-authority):
+
+| root | files | symbols | refs | exact | heuristic |
+|---|---:|---:|---:|---:|---:|
+| source | 58 | **1 033** | **3 823** | 3747 | 76 |
+| expanded (one `lib.rs` per crate) | 5 | **1 669** | **5 882** | 5174 | **708** |
+
+| name | src sym | exp sym | src refs | exp refs |
+|---|---:|---:|---:|---:|
+| `fmt` | 2 | **176** | 4 | **182** |
+| `clone` | 0 | **159** | 48 | **793** |
+| `eq` | 0 | **116** | 1 | **117** |
+
 **Synthetic expand (labeled, not rustc):** `scripts/expand_index_diff.py prepare`
 appends post-expansion-shaped impls derived from source patterns for the four crates
 (`event-engine`, `model-selection-replay`, `repository`, `strategy-plugins`):
@@ -207,6 +234,8 @@ on stock source (`fmt`/`drop`/`default` floods in eval-stock-boundary § noise p
 | **P0 (done this spike)** | shadow expand + separate index + diff scripts + docs | done | docs/scripts only |
 | **P1** | Operator runbook: expand **1–2 clean crates** when crates.io/nightly available; keep shadow outside repo; never dual-index without path policy | 0.5–1 d | runbook |
 | **P2** (optional product) | Side-index ingest: `confidence=macro_expanded` (or dedicated rule_id) + path map `expanded/…` → `crates/…`; **de-dup** with source Exact edges; CLI flag `--include-macro-expanded` default **off** | **1–2 weeks** eng | only if goldens show L1 gaps expand actually fills |
+
+**P2 shipped form (this repo):** optional sidecar DB + `--macro-expanded-root` / `--with-macro` / `macro status` (no path rewrite, no de-dup, not sound). See [macro-sidecar.md](macro-sidecar.md).
 | **P3** | Selective real expand of derive-heavy clean crates (`model-selection-replay`, `event-engine`, `repository`) on a network-enabled builder; store **edges** not sources | +1 week | builder job, **not** required Rust CI |
 
 **Time-to-production refinement:**

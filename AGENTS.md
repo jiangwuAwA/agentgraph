@@ -47,6 +47,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **L3 (research, non-blocking):** `formal/IncrementalIndex.tla` TLC-checked (no errors); I1–I3 in `tests/l3_invariants.rs`; I4 mini-language containment in `src/formal/mini_lang.rs` + `tests/l4_mini_lang.rs`; Lean 4 theorem `runtime_subset_static` in [`formal/lean/`](formal/lean/README.md) (`lake build` green, stdlib only). TLC/Lean optional locally; main CI does not require theorem provers.
 
+**P2 macro sidecar (optional, default OFF):** `index --macro-expanded-root` writes `<root>/.agentgraph/index.macro.db`; `callers`/`impact --with-macro` union sidecar hits tagged `origin=macro_expanded`. Not sound — see [docs/macro-sidecar.md](docs/macro-sidecar.md).
+
 ## Commits
 
 - Prefer small, test-backed commits.

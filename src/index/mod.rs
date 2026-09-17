@@ -13,7 +13,39 @@ use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-use crate::model::{IndexStats, Language};
+use crate::model::{
+    ImpactNode, IndexStats, Language, MacroIndexResult, MacroSidecarStatus, ReferenceRecord,
+};
+
+/// Sidecar DB file name under `<root>/.agentgraph/` (P2 optional, CLI default OFF).
+pub const MACRO_SIDECAR_DB_NAME: &str = "index.macro.db";
+
+/// Absolute path of the optional macro-expanded sidecar for a project root.
+pub fn macro_sidecar_path(root: &Path) -> PathBuf {
+    root.join(".agentgraph").join(MACRO_SIDECAR_DB_NAME)
+}
+
+/// Tag a sidecar ReferenceRecord for JSON union (`origin` + `at=path:line`).
+pub fn tag_macro_ref_json(r: &ReferenceRecord) -> serde_json::Value {
+    let mut v = serde_json::to_value(r).unwrap_or_default();
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert(
+            "at".into(),
+            serde_json::json!(format!("{}:{}", r.path, r.line)),
+        );
+        obj.insert("origin".into(), serde_json::json!("macro_expanded"));
+    }
+    v
+}
+
+/// Tag a sidecar ImpactNode for JSON union (`origin=macro_expanded`).
+pub fn tag_macro_impact_json(n: &ImpactNode) -> serde_json::Value {
+    let mut v = serde_json::to_value(n).unwrap_or_default();
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("origin".into(), serde_json::json!("macro_expanded"));
+    }
+    v
+}
 
 pub struct Indexer {
     pub root: PathBuf,
@@ -77,6 +109,97 @@ impl Indexer {
 
     pub fn open_store(&self) -> Result<store::Store> {
         store::Store::open(&self.db_path)
+    }
+
+    /// `<root>/.agentgraph/index.macro.db` (optional P2 sidecar).
+    pub fn macro_sidecar_path(&self) -> PathBuf {
+        macro_sidecar_path(&self.root)
+    }
+
+    /// Open the macro-expanded sidecar if the file exists. Never creates it.
+    /// Absent sidecar → `None` (queries treat as empty; default stays source L0/L1).
+    pub fn open_macro_store(&self) -> Result<Option<store::Store>> {
+        let path = self.macro_sidecar_path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        Ok(Some(store::Store::open(&path)?))
+    }
+
+    /// Index an expanded shadow tree into the sidecar DB.
+    /// Does **not** touch `<root>/.agentgraph/index.db`. Not sound — dual-index noise only.
+    pub fn index_macro_expanded(
+        &self,
+        expanded_root: &Path,
+        force: bool,
+    ) -> Result<MacroIndexResult> {
+        let expanded_raw = expanded_root.canonicalize().map_err(|e| {
+            anyhow::anyhow!("macro expanded root '{}': {e}", expanded_root.display())
+        })?;
+        let expanded = parser::normalize_root(&expanded_raw);
+        if !expanded.is_dir() {
+            anyhow::bail!(
+                "macro expanded root is not a directory: {}",
+                expanded.display()
+            );
+        }
+        let db_path = self.macro_sidecar_path();
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // Reuse the extract/index pipeline, but write only into the sidecar path.
+        let side = Indexer {
+            root: expanded.clone(),
+            db_path: db_path.clone(),
+        };
+        let stats = side.index(force)?;
+        {
+            let store = store::Store::open(&db_path)?;
+            store.set_meta("sidecar_kind", "macro_expanded")?;
+            store.set_meta("origin", "macro_expanded")?;
+            store.set_meta("expanded_root", &expanded.to_string_lossy())?;
+        }
+        Ok(MacroIndexResult {
+            files: stats.files,
+            symbols: stats.symbols,
+            references: stats.references,
+            languages: stats.languages,
+            path: db_path.to_string_lossy().into_owned(),
+            expanded_root: expanded.to_string_lossy().into_owned(),
+            origin: "macro_expanded".to_string(),
+        })
+    }
+
+    /// Whether the sidecar exists + path + counts. Does not create the DB.
+    pub fn macro_status(&self) -> Result<MacroSidecarStatus> {
+        let path = self.macro_sidecar_path();
+        let path_str = path.to_string_lossy().into_owned();
+        if !path.exists() {
+            return Ok(MacroSidecarStatus {
+                exists: false,
+                path: path_str,
+                files: 0,
+                symbols: 0,
+                refs: 0,
+                origin: None,
+                expanded_root: None,
+            });
+        }
+        let store = store::Store::open(&path)?;
+        let stats = store.stats(&self.root.to_string_lossy())?;
+        let origin = match store.get_meta("origin")? {
+            Some(o) => Some(o),
+            None => store.get_meta("sidecar_kind")?,
+        };
+        Ok(MacroSidecarStatus {
+            exists: true,
+            path: path_str,
+            files: stats.files,
+            symbols: stats.symbols,
+            refs: stats.references,
+            origin,
+            expanded_root: store.get_meta("expanded_root")?,
+        })
     }
 
     /// Full or incremental index. Unchanged files (same content hash) are skipped.

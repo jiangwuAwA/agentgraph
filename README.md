@@ -51,6 +51,7 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
+| `macro status` | Optional macro-expanded sidecar (P2, default OFF) — path + counts |
 
 Confidence windows on `callers` / `impact` (and MCP tools):
 
@@ -58,6 +59,7 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic` / **`--recall`**: also DynamicCandidate (reflection / computed keys — noisier)
 - `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md).
+- `--with-macro` (P2, **default OFF**): union optional macro-expanded sidecar hits tagged `origin=macro_expanded`. Not sound; mutually exclusive with `--sound`. See [docs/macro-sidecar.md](docs/macro-sidecar.md).
 
 **怕漏（missed edges）时：** 优先 `--sound`（`subset_ok` 时）或 `--recall`。干净的图 ≠ 完整的图。
 
@@ -109,7 +111,7 @@ Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the 
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`).
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), optional **`macro_status`** / `with_macro` (P2 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

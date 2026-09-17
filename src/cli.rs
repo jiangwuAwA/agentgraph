@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use crate::index::{llm, Indexer};
+use crate::index::{llm, tag_macro_impact_json, tag_macro_ref_json, Indexer};
 use crate::model::ConfidenceFilter;
 use crate::query::{parse_query_flags, Query};
 
@@ -21,6 +21,13 @@ pub struct Cli {
     pub command: Commands,
 }
 
+/// Optional P2 macro-expanded sidecar (CLI default OFF).
+#[derive(Subcommand, Debug)]
+pub enum MacroCmd {
+    /// Print whether the macro-expanded sidecar exists (path + file/symbol/ref counts)
+    Status,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// Build or refresh the local index (incremental by content hash)
@@ -28,6 +35,10 @@ pub enum Commands {
         /// Re-parse every file even if unchanged
         #[arg(long)]
         force: bool,
+        /// Optional: also index an expanded shadow tree into sidecar
+        /// `.agentgraph/index.macro.db` (does not replace the main index)
+        #[arg(long)]
+        macro_expanded_root: Option<PathBuf>,
     },
     /// Show index statistics
     Stats,
@@ -57,6 +68,10 @@ pub enum Commands {
         /// L2: only sound-eligible edges + S-violation report
         #[arg(long, default_value_t = false)]
         sound: bool,
+        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
+        /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
+        #[arg(long, default_value_t = false)]
+        with_macro: bool,
     },
     /// Blast radius: who transitively depends on this symbol
     Impact {
@@ -77,6 +92,10 @@ pub enum Commands {
         /// L2: walk only sound-eligible edges; report S-violations; never claims sound outside S
         #[arg(long, default_value_t = false)]
         sound: bool,
+        /// Union optional macro-expanded sidecar hits (tagged origin=macro_expanded).
+        /// Default OFF; absent sidecar is treated as empty. Not sound — see docs/macro-sidecar.md.
+        #[arg(long, default_value_t = false)]
+        with_macro: bool,
     },
     /// Files most related to a symbol (for retrieval scoping)
     Related {
@@ -136,6 +155,11 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         cold: bool,
     },
+    /// Optional macro-expanded sidecar commands (CLI default OFF)
+    Macro {
+        #[command(subcommand)]
+        command: MacroCmd,
+    },
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -146,9 +170,24 @@ pub fn run(cli: Cli) -> Result<()> {
     let indexer = Indexer::new(&root)?;
 
     match cli.command {
-        Commands::Index { force } => {
-            let stats = indexer.index(force)?;
-            println!("{}", serde_json::to_string_pretty(&stats)?);
+        Commands::Index {
+            force,
+            macro_expanded_root,
+        } => {
+            if let Some(exp) = macro_expanded_root {
+                // Main index first (source L0/L1 stays the default product).
+                let main = indexer.index(force)?;
+                let side = indexer.index_macro_expanded(&exp, force)?;
+                let payload = serde_json::json!({
+                    "main": main,
+                    "macro_sidecar": side,
+                    "note": "sidecar is optional dual-index (not sound); default callers/impact ignore it unless --with-macro",
+                });
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+            } else {
+                let stats = indexer.index(force)?;
+                println!("{}", serde_json::to_string_pretty(&stats)?);
+            }
         }
         Commands::Stats => {
             let stats = indexer.stats()?;
@@ -187,9 +226,16 @@ pub fn run(cli: Cli) -> Result<()> {
             include_dynamic,
             recall,
             sound,
+            with_macro,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            if sound && with_macro {
+                bail!(
+                    "--sound is mutually exclusive with --with-macro \
+                     (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
+                );
+            }
             if sound {
                 if exact_only || include_dynamic || recall {
                     bail!(
@@ -232,7 +278,7 @@ pub fn run(cli: Cli) -> Result<()> {
             let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.callers_filtered(&name, limit, filter)?;
-            let mapped: Vec<serde_json::Value> = hits
+            let mut mapped: Vec<serde_json::Value> = hits
                 .into_iter()
                 .map(|r| {
                     let mut v = serde_json::to_value(&r).unwrap_or_default();
@@ -245,6 +291,15 @@ pub fn run(cli: Cli) -> Result<()> {
                     v
                 })
                 .collect();
+            if with_macro {
+                // Absent sidecar → empty union (graceful; no error, no file created).
+                if let Some(side) = indexer.open_macro_store()? {
+                    let side_hits = side.callers_filtered(&name, limit, filter)?;
+                    for r in side_hits {
+                        mapped.push(tag_macro_ref_json(&r));
+                    }
+                }
+            }
             println!("{}", serde_json::to_string_pretty(&mapped)?);
         }
         Commands::Impact {
@@ -255,9 +310,16 @@ pub fn run(cli: Cli) -> Result<()> {
             include_dynamic,
             recall,
             sound,
+            with_macro,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            if sound && with_macro {
+                bail!(
+                    "--sound is mutually exclusive with --with-macro \
+                     (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
+                );
+            }
             if sound {
                 if exact_only || include_dynamic || recall {
                     bail!(
@@ -284,7 +346,21 @@ pub fn run(cli: Cli) -> Result<()> {
             let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
             let hits = q.impact_filtered(&name, depth, limit, filter)?;
-            println!("{}", serde_json::to_string_pretty(&hits)?);
+            if with_macro {
+                let mut mapped: Vec<serde_json::Value> = hits
+                    .iter()
+                    .map(|n| serde_json::to_value(n).unwrap_or_default())
+                    .collect();
+                if let Some(side) = indexer.open_macro_store()? {
+                    let side_hits = side.impact_filtered(&name, depth, limit, filter)?;
+                    for n in side_hits {
+                        mapped.push(tag_macro_impact_json(&n));
+                    }
+                }
+                println!("{}", serde_json::to_string_pretty(&mapped)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&hits)?);
+            }
         }
         Commands::Related { name, limit } => {
             let store = indexer.open_store()?;
@@ -477,6 +553,12 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Mcp => {
             crate::mcp::server::run_stdio(indexer.root)?;
         }
+        Commands::Macro { command } => match command {
+            MacroCmd::Status => {
+                let status = indexer.macro_status()?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            }
+        },
     }
     Ok(())
 }

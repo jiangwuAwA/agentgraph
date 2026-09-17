@@ -268,6 +268,35 @@ pub struct ImpactNode {
     pub confidence: Confidence,
 }
 
+/// Optional macro-expanded sidecar (P2). CLI default OFF — see docs/macro-sidecar.md.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroSidecarStatus {
+    pub exists: bool,
+    pub path: String,
+    #[serde(default)]
+    pub files: usize,
+    #[serde(default)]
+    pub symbols: usize,
+    #[serde(default)]
+    pub refs: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expanded_root: Option<String>,
+}
+
+/// Result of `index --macro-expanded-root` (sidecar build; does not replace main).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroIndexResult {
+    pub files: usize,
+    pub symbols: usize,
+    pub references: usize,
+    pub languages: Vec<String>,
+    pub path: String,
+    pub expanded_root: String,
+    pub origin: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichReport {
     pub attempted: usize,

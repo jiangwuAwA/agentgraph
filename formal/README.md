@@ -11,6 +11,7 @@ Research / quality-gate track. **Does not block releases.**
 | I1–I3 executable invariants | ✅ `tests/l3_invariants.rs` |
 | I4 small-language soundness | ✅ executable IR + exhaustive/property tests (`tests/l4_mini_lang.rs`, `src/formal/mini_lang.rs`) |
 | Theorem-level I4 (Lean 4) | ✅ `formal/lean/` — `runtime_subset_static`, `lake build` green (stdlib only, no mathlib). See [lean/README.md](lean/README.md) |
+| Nightly Lean CI | ✅ `.github/workflows/lean.yml` — path-filtered + schedule; does not gate main Rust CI |
 
 ## Running TLC
 

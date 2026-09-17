@@ -29,6 +29,8 @@ lake build
 
 Expected: `Build completed successfully` (exit 0).
 
+CI: nightly `lake build` via [`.github/workflows/lean.yml`](../../.github/workflows/lean.yml) (path-filtered to `formal/lean/**`; research track only — not required on the main Rust CI).
+
 ## Correspondence table
 
 | Lean (`MiniLang/Basic.lean`) | Rust (`src/formal/mini_lang.rs`) |

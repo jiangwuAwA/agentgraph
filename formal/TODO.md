@@ -25,7 +25,7 @@
 
 ### 仍未做（范围 A 残留 / 可选）
 
-- [ ] 可选：GitHub nightly `lake build`（主 CI 仍不要求 Lean）
+- [x] 可选：GitHub nightly `lake build`（主 CI 仍不要求 Lean）— `.github/workflows/lean.yml`
 - [ ] 可选：燃料/深度截断与归纳 `Enters` 的形式化桥接（当前由 Rust 穷举测试覆盖有界情形）
 
 ### 范围 B — 不在承诺内
@@ -63,3 +63,4 @@
 |---|---|
 | 2026-09-16 | 建立 backlog；记录定理级 I4 范围 A 估算与验收（L3 可执行 containment / TLC 已交付） |
 | 2026-09-17 | Lean 范围 A 落地：`formal/lean/` + `runtime_subset_static`；`lake build` 绿 |
+| 2026-09-18 | 夜间 Lean CI：`.github/workflows/lean.yml`（schedule + paths 过滤；不挡主 Rust CI） |

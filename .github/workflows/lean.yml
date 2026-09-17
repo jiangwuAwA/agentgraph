@@ -1,0 +1,35 @@
+# Nightly / path-filtered Lean 4 build for the research track (formal/lean).
+# Isolated from the required Rust CI matrix — unrelated Rust PRs do not wait on this.
+name: Lean
+
+on:
+  schedule:
+    # Nightly off-peak UTC (minute not :00 to avoid thundering herd)
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean.yml"
+  pull_request:
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean.yml"
+
+jobs:
+  lake-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      # Toolchain is pinned by formal/lean/lean-toolchain (leanprover/lean4:v4.34.0).
+      # Do not float the Lean version here.
+      - name: lake build
+        working-directory: formal/lean
+        run: lake build

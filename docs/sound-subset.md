@@ -107,6 +107,12 @@ violation). Rust joins the `ast_modeled` promise tier.
 `asm!` / `global_asm!`, `std::ptr::*` / `core::ptr::*` paths.
 Comments and strings do **not** trigger (AST advantage over lexical).
 
+**Rust L1 allowlist:** `rs.di.impl_trait` (implementor methods) and
+`rs.di.inventory_submit` (`inventory::submit!` registration type + factory
+`Type::new` identifiers written at the call site) are finite-domain
+over-approx Heuristic edges. Registration ≠ runtime call; runtime
+`inventory::iter` fan-out is **not** modeled.
+
 ## S_py / S_go (AST scanners — tree-sitter)
 
 See `scan_py` / `scan_go` in `src/index/subset.rs`. Both are **tree-sitter
@@ -188,7 +194,8 @@ These five ids are exactly the `ts.nest.*` entries in
 Non-`ts.nest.*` sound-allowlisted heuristics live in the same constant:
 `ts.di.register|bind|to|decorator`, `ts.event.subscribe|dispatch`,
 `py.di.depends|inject`, `py.framework.init_subclass`, `go.di.handler_map|
-interface_impl|interface_assert|route_register`, `rs.di.impl_trait`.
+interface_impl|interface_assert|route_register`, `rs.di.impl_trait`,
+`rs.di.inventory_submit`.
 
 Array-element unwrapping (still registration): bare ident / member / string
 token / `new T()` / `X.forRoot()` / `forwardRef(() => M)` (never the

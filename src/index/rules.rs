@@ -1752,10 +1752,167 @@ fn walk_rust(
     if node.kind() == "impl_item" {
         rust_impl_trait_rule(node, source, ctx, references);
     }
+    if node.kind() == "macro_invocation" {
+        rust_inventory_submit_rule(node, source, ctx, references);
+    }
 
     for child in node.children(&mut cursor) {
         walk_rust(child, source, ctx, references);
     }
+}
+
+/// `inventory::submit! { RegistrationType { factory: || Box::new(Concrete::new(..)), .. } }`
+///
+/// Finite-domain identifiers written at the call site (registration type +
+/// factory constructor type). Registration ≠ runtime call; Heuristic only.
+/// Does **not** expand arbitrary macros.
+fn rust_inventory_submit_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    // tree-sitter-rust leaves the macro path unlabeled; take first path-ish child.
+    let mut c = node.walk();
+    let path_text = node
+        .children(&mut c)
+        .find(|ch| {
+            matches!(
+                ch.kind(),
+                "identifier" | "scoped_identifier" | "field_expression"
+            )
+        })
+        .map(|ch| node_text(ch, source).to_string())
+        .unwrap_or_default();
+    drop(c);
+
+    if !is_inventory_submit_path(&path_text) {
+        return;
+    }
+
+    // Outer token_tree is the macro body `{ ... }`
+    let mut c = node.walk();
+    let Some(body) = node.children(&mut c).find(|ch| ch.kind() == "token_tree") else {
+        return;
+    };
+
+    let line = line_of(ctx, node);
+    let snippet_src = node_text(node, source);
+    let snippet: String = snippet_src
+        .lines()
+        .next()
+        .unwrap_or("")
+        .chars()
+        .take(80)
+        .collect();
+
+    // Registration type: first UpperCamel identifier at body top level, typically
+    // followed by a nested `{ ... }` struct literal.
+    if let Some(reg) = inventory_registration_type(body, source) {
+        push_l1(
+            references,
+            L1Edge {
+                name: reg,
+                qualifier: None,
+                line,
+                enclosing: None,
+                confidence: Confidence::Heuristic,
+                rule_id: "rs.di.inventory_submit",
+                snippet: snippet.clone(),
+            },
+        );
+    }
+
+    // Factory constructor types: `Ident::new` anywhere inside the body.
+    for ty in inventory_factory_types(body, source) {
+        push_l1(
+            references,
+            L1Edge {
+                name: ty,
+                qualifier: None,
+                line,
+                enclosing: None,
+                confidence: Confidence::Heuristic,
+                rule_id: "rs.di.inventory_submit",
+                snippet: snippet.clone(),
+            },
+        );
+    }
+}
+
+/// Path is the inventory crate's `submit!` macro.
+fn is_inventory_submit_path(path: &str) -> bool {
+    let p = path.trim();
+    if p.is_empty() {
+        return false;
+    }
+    // inventory::submit / ::inventory::submit / crate::inventory::submit
+    p.ends_with("::submit") && p.contains("inventory")
+}
+
+/// UpperCamel identifier at the top level of the macro token_tree that is
+/// followed by a nested struct-literal token_tree.
+fn inventory_registration_type(body: Node<'_>, source: &str) -> Option<String> {
+    let mut c = body.walk();
+    let kids: Vec<Node> = body.children(&mut c).collect();
+    for (i, ch) in kids.iter().enumerate() {
+        if ch.kind() != "identifier" {
+            continue;
+        }
+        let t = node_text(*ch, source);
+        if !is_type_ident(t) {
+            continue;
+        }
+        // Prefer identifier immediately followed by `{` token_tree
+        if kids
+            .get(i + 1)
+            .map(|n| n.kind() == "token_tree")
+            .unwrap_or(false)
+        {
+            return Some(t.to_string());
+        }
+    }
+    // Fallback: first UpperCamel identifier
+    kids.iter()
+        .find(|ch| ch.kind() == "identifier" && is_type_ident(node_text(**ch, source)))
+        .map(|ch| node_text(*ch, source).to_string())
+}
+
+/// Collect `Type::new` constructor type names from nested token trees.
+fn inventory_factory_types(body: Node<'_>, source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_new_ctor_types(body, source, &mut out);
+    out
+}
+
+fn collect_new_ctor_types(node: Node<'_>, source: &str, out: &mut Vec<String>) {
+    // Pattern: identifier :: new  (as sibling sequence inside token_tree)
+    let mut c = node.walk();
+    let kids: Vec<Node> = node.children(&mut c).collect();
+    for (i, ch) in kids.iter().enumerate() {
+        if ch.kind() == "identifier" && node_text(*ch, source) == "new" {
+            // look back for :: and Type
+            if i >= 2 {
+                let sep = kids[i - 1];
+                let ty = kids[i - 2];
+                if sep.kind() == "::" && ty.kind() == "identifier" {
+                    let t = node_text(ty, source);
+                    if is_type_ident(t) && t != "Box" && t != "Self" && !out.iter().any(|x| x == t)
+                    {
+                        out.push(t.to_string());
+                    }
+                }
+            }
+        }
+        if ch.kind() == "token_tree" {
+            collect_new_ctor_types(*ch, source, out);
+        }
+    }
+}
+
+fn is_type_ident(t: &str) -> bool {
+    t.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        && t.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
 fn rust_impl_trait_rule(

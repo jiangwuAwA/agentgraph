@@ -506,6 +506,15 @@ fn sound_eligibility_allowlist() {
         );
     }
     assert!(is_sound_eligible(
+        Confidence::Heuristic,
+        Some("rs.di.impl_trait")
+    ));
+    // inventory::submit! registry: finite-domain registration + factory types.
+    assert!(is_sound_eligible(
+        Confidence::Heuristic,
+        Some("rs.di.inventory_submit")
+    ));
+    assert!(is_sound_eligible(
         Confidence::DynamicCandidate,
         Some("ts.dynamic.computed")
     ));

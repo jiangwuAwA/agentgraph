@@ -24,6 +24,7 @@ cargo test --test l1_eval -- --nocapture
 - L1 edges remain **candidates** — never sound.
 - **Large private multi-language repo** (`stock-trading-app`) measured separately: [eval-large-repo.md](eval-large-repo.md).
 - **Real-tree L1 sampling** (stock-trading-app + public `nestjs-starter`) lives in [eval-large-repo.md](eval-large-repo.md) § “L1 sampling (this commit)”. Historical: fixture L1 lift did **not** transfer to the Nest starter (0 Heuristic) until `ts.nest.module_*` / `ts.nest.ctor_inject` landed; Rust monorepo lift is almost entirely `rs.di.impl_trait` implementor edges. Noise proxy there is manual sampling, not golden labels.
+- **Hand-labeled goldens on stock-trading-app clean/mixed crates** (31 edges): L0 68% → L1 **100%** after `rs.di.inventory_submit` (`inventory::submit!` registry/factory types). Details: [eval-stock-boundary.md](eval-stock-boundary.md). Common-name noise (`fmt`/`drop`/`default`) still floods callers — not a production precision number.
 
 ## Results (this commit)
 
@@ -87,6 +88,7 @@ emits under `ts.nest.module_imports` / `ts.nest.module_providers` (and
 | Python | `py.dynamic.import_module` | `importlib.import_module("pkg.mod")` | DynamicCandidate |
 | Go | `go.di.handler_map` | `map[string]Handler{ "p": H }` | Heuristic |
 | Rust | `rs.di.impl_trait` | `impl Trait for Type { fn m }` | Heuristic |
+| Rust | `rs.di.inventory_submit` | `inventory::submit! { Reg { factory: \|\| Type::new(..) } }` | Heuristic |
 
 Bare `@Injectable()` / `@Controller()` (no args) intentionally produce **no**
 edges — do not invent fake callee names. Module metadata arrays are the

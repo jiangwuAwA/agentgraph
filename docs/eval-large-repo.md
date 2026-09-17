@@ -267,6 +267,26 @@ and `AppModule` (depth 2). Registration ≠ HTTP ServeHTTP still holds.
 
 ---
 
+## S map + golden boundary (this session — see also dedicated docs)
+
+- **Per-crate S-violation map + clean/dirty ranks:** [eval-stock-s-map.md](eval-stock-s-map.md)
+- **Golden L0 vs L1 (31 hand-labeled edges) + claim policy:** [eval-stock-boundary.md](eval-stock-boundary.md)
+
+Headline numbers after product rule `rs.di.inventory_submit` + force reindex:
+
+| item | value |
+|---|---|
+| Refs | 168 088 (exact 166 900 · heuristic **1 180** · dyn 8) |
+| Heuristic delta vs prior sample | 1 142 → 1 180 (**+36** inventory registration/factory) |
+| Golden L0 Exact | **21/31 (68%)** on clean+mixed crates |
+| Golden L1 Default (before inventory rule) | 27/31 (87%) |
+| Golden L1 Default (after) | **31/31 (100%)** |
+| Full-tree `subset_ok` | **false** (`promise_tier: disabled`, 115 violations) |
+| Cleanest crates for scoped `--sound` trials | `repository`, `model-selection-replay`, `risk-intent-authority`, `data-sources`, `event-engine` |
+| Dirtiest (no sound claim) | `nn-ranker`, `src-tauri`, `model-selection-installer`, `alpha-forge`, `scheduler` |
+
+`tokio::spawn` inner calls and `async_trait` method bodies are already **Exact** at L0 — no extract change needed there.
+
 ## Honesty limits (L1 sampling)
 
 - Single private monorepo + one public Nest starter; **not** a published multi-repo benchmark.

@@ -146,6 +146,9 @@ const SOUND_HEURISTIC_RULES: &[&str] = &[
     "go.di.interface_assert",
     "go.di.route_register",
     "rs.di.impl_trait",
+    // inventory::submit! registry: finite-domain registration + factory type
+    // identifiers written at the call site (registration ≠ runtime call).
+    "rs.di.inventory_submit",
 ];
 
 /// DynamicCandidate rules that only fire on **string-literal** keys (finite domain).

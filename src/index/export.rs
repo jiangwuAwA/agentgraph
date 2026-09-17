@@ -13,6 +13,28 @@ use std::path::Path;
 use super::store::Store;
 use crate::model::{ConfidenceFilter, ReferenceRecord, SymbolKind, SymbolRecord};
 
+/// Percent-encode a path for use in a `file://` URI (RFC 3986 / RFC 8089).
+/// Keeps `/` separators and a Windows drive `:`; encodes space, `#`, `?`, `%`,
+/// non-ASCII, and other reserved octets. Without this, roots like
+/// `C:/My Project` produce invalid URIs that SCIP consumers reject.
+fn percent_encode_uri_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for (i, b) in path.bytes().enumerate() {
+        match b {
+            b'/' => out.push('/'),
+            // Windows drive letter colon (`C:/...`) — only at index 1.
+            b':' if i == 1 => out.push(':'),
+            b'-' | b'.' | b'_' | b'~' => out.push(b as char),
+            b if b.is_ascii_alphanumeric() => out.push(b as char),
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
 /// Build a `file://` URI from a project root and a (possibly empty) relative path.
 pub fn file_uri(root: &Path, rel: &str) -> String {
     let mut path = root.to_string_lossy().replace('\\', "/");
@@ -22,6 +44,7 @@ pub fn file_uri(root: &Path, rel: &str) -> String {
         }
         path.push_str(&rel.replace('\\', "/"));
     }
+    let path = percent_encode_uri_path(&path);
     let bytes = path.as_bytes();
     if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         return format!("file:///{path}");

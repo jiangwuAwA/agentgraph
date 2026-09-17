@@ -302,7 +302,13 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Importers { path, limit } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            let hits = store.importers_of_file(&path.replace('\\', "/"), limit)?;
+            // Accept abs paths under root, `./rel`, and Windows backslashes.
+            let lookup = crate::index::parser::rel_path_under_root(
+                std::path::Path::new(&path),
+                &indexer.root,
+            )
+            .unwrap_or_else(|| path.replace('\\', "/"));
+            let hits = store.importers_of_file(&lookup, limit)?;
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
         Commands::Enrich { limit } => {

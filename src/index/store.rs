@@ -1349,6 +1349,9 @@ impl Store {
     }
 
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
+        // Path-form family: CLI/MCP users pass `src\auth.ts`, `./src/auth.ts`,
+        // or `/src/auth.ts`. Store rows use repo-relative `/` form.
+        let normalized = normalize_import_path(file_path);
         let mut stmt = self.conn.prepare(
             "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
              FROM refs
@@ -1356,7 +1359,7 @@ impl Store {
              ORDER BY path, line
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![file_path, limit as i64], map_ref)?;
+        let rows = stmt.query_map(params![normalized, limit as i64], map_ref)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -1719,6 +1722,25 @@ impl Store {
 
 fn last_segment(s: &str) -> String {
     s.rsplit(['.', ':']).next().unwrap_or(s).to_string()
+}
+
+/// Normalize a user-supplied file path for store lookups that compare against
+/// repo-relative `/` form (importers). Accepts Windows backslashes, `./` prefix,
+/// and a leading `/` (CLI users often paste absolute-looking paths).
+fn normalize_import_path(path: &str) -> String {
+    let mut p = path.replace('\\', "/");
+    while let Some(rest) = p.strip_prefix("./") {
+        p = rest.to_string();
+    }
+    // Collapse duplicate slashes (but keep a leading `/` decision below).
+    while p.contains("//") {
+        p = p.replace("//", "/");
+    }
+    // `/src/auth.ts` and `src/auth.ts` are the same store key.
+    if let Some(stripped) = p.strip_prefix('/') {
+        p = stripped.to_string();
+    }
+    p
 }
 
 /// Directory of a repo-relative path (Go package approximation). Root files → "".

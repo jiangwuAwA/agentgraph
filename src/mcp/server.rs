@@ -465,16 +465,21 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
             }
             "importers" => {
-                let path = args
+                let raw = args
                     .get("path")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("path required"))?
-                    .replace('\\', "/");
+                    .ok_or_else(|| anyhow::anyhow!("path required"))?;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
-                let hits = store.importers_of_file(&path, limit)?;
+                // Accept abs paths under root, `./rel`, and Windows backslashes.
+                let lookup = crate::index::parser::rel_path_under_root(
+                    std::path::Path::new(raw),
+                    &indexer.root,
+                )
+                .unwrap_or_else(|| raw.replace('\\', "/"));
+                let hits = store.importers_of_file(&lookup, limit)?;
                 Ok(ok_text(serde_json::to_string_pretty(&hits)?))
             }
             "enrich" => {

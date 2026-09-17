@@ -91,8 +91,15 @@ impl Indexer {
         let collected = walker::collect_source_files_with_stats(&self.root)?;
         let walk_ms = t0.elapsed().as_millis();
 
-        let known: std::collections::HashSet<String> =
+        let mut known: std::collections::HashSet<String> =
             collected.files.iter().map(|f| f.rel.clone()).collect();
+        // R23: oversized / minified sources mint S violations (record_parse_error)
+        // but are NOT in `files` (walker skips them). They must stay in the
+        // keep-set — otherwise prune_missing CASCADE-deletes the violation rows
+        // in the same pass and `--sound` wrongly claims in_subset=true.
+        for p in collected.oversized_paths.iter().chain(collected.minified_paths.iter()) {
+            known.insert(p.clone());
+        }
 
         // Phase 1: metadata short-circuit, then read+hash only candidates (parallel).
         let t_hash = std::time::Instant::now();
@@ -470,12 +477,13 @@ impl Indexer {
         // Use walker's already-resolved rel paths (same rule as full index).
         // Re-stripping with naive strip_prefix + unwrap_or(abs) would put
         // absolute paths into the keep set and prune every store row.
-        let known: std::collections::HashSet<String> =
-            walker::collect_source_files_with_stats(&self.root)?
-                .files
-                .into_iter()
-                .map(|f| f.rel)
-                .collect();
+        // R23: also keep oversized/minified paths so S violations survive prune.
+        let collected = walker::collect_source_files_with_stats(&self.root)?;
+        let mut known: std::collections::HashSet<String> =
+            collected.files.iter().map(|f| f.rel.clone()).collect();
+        for p in collected.oversized_paths.iter().chain(collected.minified_paths.iter()) {
+            known.insert(p.clone());
+        }
 
         let mut dirty_paths: Vec<String> = Vec::new();
         store.begin_batch()?;

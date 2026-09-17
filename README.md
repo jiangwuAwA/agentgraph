@@ -26,11 +26,23 @@ agentgraph index
 agentgraph find createUser
 agentgraph callers validateEmail
 agentgraph impact validateEmail --depth 3
+agentgraph graph validateEmail --depth 2   # offline HTML graph (default .agentgraph/graph.html)
 agentgraph importers src/auth.ts
 agentgraph export scip --out index.scip   # official scip CLI can read this
 ```
 
 Index lives at `<root>/.agentgraph/index.db` (add to `.gitignore`).
+
+### HTML graph (visual, offline)
+
+```bash
+agentgraph graph helper --depth 2 --out graph.html
+# open graph.html in a browser — no network
+```
+
+Impact-style BFS neighborhood with confidence colors (Exact / Heuristic / DynamicCandidate),
+bilingual UI, click-to-inspect nodes. **Shows indexed L0/L1 candidates, not a complete
+runtime graph.** Empty neighborhood still writes a page. Details: [docs/graph-html.md](docs/graph-html.md).
 
 Incremental index skips rehash when **mtime+size match**. On network/FAT volumes
 or tools that preserve mtime across content edits, set `AGENTGRAPH_TRUST_MTIME=0`
@@ -49,6 +61,7 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
 | `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`) |
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
+| `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view) — see [docs/graph-html.md](docs/graph-html.md) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
 | `macro status` | Optional macro-expanded sidecar (P2, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / sidecar `subset_violation_count` |

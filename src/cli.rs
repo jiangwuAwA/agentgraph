@@ -1,10 +1,14 @@
 use anyhow::{bail, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 use crate::index::{llm, tag_macro_impact_json, tag_macro_ref_json, Indexer};
 use crate::model::ConfidenceFilter;
 use crate::query::{parse_query_flags, Query};
+use crate::viz::{
+    add_macro_caller_rows, add_macro_impact_rows, build_callers_graph, build_impact_graph,
+    merge_graphs, render_graph_html, GraphDirection, GraphFlags,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -162,6 +166,57 @@ pub enum Commands {
         #[command(subcommand)]
         command: MacroCmd,
     },
+    /// Render a local self-contained HTML code-graph around a symbol
+    ///
+    /// Primary view is impact-style BFS (outgoing blast radius). Open the
+    /// written HTML in a browser — no network required. Shows indexed L0/L1
+    /// candidates, not a complete runtime graph.
+    Graph {
+        /// Query symbol name (center of the neighborhood)
+        name: String,
+        /// BFS depth for impact (ignored for pure callers view)
+        #[arg(long, default_value_t = 2)]
+        depth: usize,
+        /// Output HTML path (default: <root>/.agentgraph/graph.html)
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Neighborhood direction
+        #[arg(long, value_enum, default_value_t = GraphDirArg::Impact)]
+        direction: GraphDirArg,
+        /// Alias for `--direction impact` (blast radius)
+        #[arg(long, default_value_t = false)]
+        impact: bool,
+        /// Only Exact (L0) edges; exclude Heuristic/DynamicCandidate
+        #[arg(long, default_value_t = false)]
+        exact_only: bool,
+        /// Also include DynamicCandidate edges (higher noise)
+        #[arg(long, default_value_t = false)]
+        include_dynamic: bool,
+        /// Union optional macro-expanded sidecar hits (badge origin=macro_expanded)
+        #[arg(long, default_value_t = false)]
+        with_macro: bool,
+    },
+}
+
+/// CLI enum for `graph --direction`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GraphDirArg {
+    /// Outgoing blast radius (default)
+    Impact,
+    /// Direct callers / reference sites
+    Callers,
+    /// Union of impact + callers
+    Both,
+}
+
+impl From<GraphDirArg> for GraphDirection {
+    fn from(v: GraphDirArg) -> Self {
+        match v {
+            GraphDirArg::Impact => GraphDirection::Impact,
+            GraphDirArg::Callers => GraphDirection::Callers,
+            GraphDirArg::Both => GraphDirection::Both,
+        }
+    }
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -574,6 +629,106 @@ pub fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&status)?);
             }
         },
+        Commands::Graph {
+            name,
+            depth,
+            out,
+            direction,
+            impact,
+            exact_only,
+            include_dynamic,
+            with_macro,
+        } => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let direction: GraphDirection = if impact {
+                GraphDirection::Impact
+            } else {
+                direction.into()
+            };
+            let filter = parse_query_flags(exact_only, include_dynamic, false);
+            let flags = GraphFlags {
+                exact_only,
+                include_dynamic,
+                with_macro,
+                sound: false,
+                direction,
+            };
+            // Render cap is MAX_GRAPH_NODES; query limit is slightly higher so BFS
+            // has room before the viz cap truncates.
+            let query_limit = crate::viz::MAX_GRAPH_NODES.saturating_add(50).max(100);
+            let q = Query::new(&store);
+
+            let mut data = match direction {
+                GraphDirection::Callers => {
+                    let hits = q.callers_filtered(&name, query_limit, filter)?;
+                    let mut d = build_callers_graph(&name, &hits, flags.clone());
+                    if with_macro {
+                        if let Some(side) = indexer.open_macro_store()? {
+                            let side_hits = side.callers_filtered(&name, query_limit, filter)?;
+                            add_macro_caller_rows(&mut d, &name, &side_hits);
+                        }
+                    }
+                    d
+                }
+                GraphDirection::Both => {
+                    let impact_hits = q.impact_filtered(&name, depth, query_limit, filter)?;
+                    let callers_hits = q.callers_filtered(&name, query_limit, filter)?;
+                    let a = build_impact_graph(&name, &impact_hits, flags.clone(), depth);
+                    let b = build_callers_graph(&name, &callers_hits, flags.clone());
+                    let mut d = merge_graphs(a, b);
+                    d.depth = depth;
+                    if with_macro {
+                        if let Some(side) = indexer.open_macro_store()? {
+                            let si = side.impact_filtered(&name, depth, query_limit, filter)?;
+                            let sc = side.callers_filtered(&name, query_limit, filter)?;
+                            add_macro_impact_rows(&mut d, &name, &si);
+                            add_macro_caller_rows(&mut d, &name, &sc);
+                        }
+                    }
+                    d
+                }
+                GraphDirection::Impact => {
+                    let hits = q.impact_filtered(&name, depth, query_limit, filter)?;
+                    let mut d = build_impact_graph(&name, &hits, flags.clone(), depth);
+                    if with_macro {
+                        if let Some(side) = indexer.open_macro_store()? {
+                            let side_hits =
+                                side.impact_filtered(&name, depth, query_limit, filter)?;
+                            add_macro_impact_rows(&mut d, &name, &side_hits);
+                        }
+                    }
+                    d
+                }
+            };
+
+            // Optional sound flags are not part of graph CLI today; leave subset_ok unset.
+            let _ = &mut data;
+
+            let out_path = match out {
+                Some(p) => p,
+                None => indexer.root.join(".agentgraph").join("graph.html"),
+            };
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let html = render_graph_html(&data);
+            std::fs::write(&out_path, html)?;
+            println!(
+                "wrote graph → {} ({} nodes / {} edges, direction={}, depth={})",
+                out_path.display(),
+                data.nodes.len(),
+                data.edges.len(),
+                direction.as_str(),
+                depth
+            );
+            if data.nodes.len() <= 1 && data.edges.is_empty() {
+                eprintln!(
+                    "note: no indexed edges for '{name}' — empty graph written \
+                     (L0/L1 candidates only; not a complete runtime graph)"
+                );
+            }
+        }
     }
     Ok(())
 }

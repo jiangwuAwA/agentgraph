@@ -49,6 +49,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **P2 macro sidecar (optional, default OFF):** `index --macro-expanded-root` writes `<root>/.agentgraph/index.macro.db`; `callers`/`impact --with-macro` union sidecar hits tagged `origin=macro_expanded` (+ `at=path:line`). Nested expanded roots (under/equal/containing `--root`) are **rejected before main reindex**; relative expanded roots resolve against `--root` (not cwd). `limit` is per store (~2N union). Stale sidecars: `macro status` sets `expanded_root_missing`; later nesting/junction sets `expanded_root_nested`; sidecar-only S noise is `subset_violation_count` (does not flip main subset). Watch + concurrent sidecar index serialize on WAL/busy_timeout (no corruption). Not sound — see [docs/macro-sidecar.md](docs/macro-sidecar.md).
 
+**HTML graph viz (shipped):** `agentgraph graph <symbol>` writes self-contained offline HTML (default `<root>/.agentgraph/graph.html`); impact BFS primary view; colors by confidence; honesty line “L0/L1 candidates, not a complete runtime graph”; empty neighborhood still writes a page (exit 0 + note). See [docs/graph-html.md](docs/graph-html.md).
+
 ## Commits
 
 - Prefer small, test-backed commits.

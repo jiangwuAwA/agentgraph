@@ -4,10 +4,10 @@
 //! occur is contained in the static over-approximation (`--sound` walk).
 //! Outside S: **no** completeness claim. Violations are reported, not hidden.
 //!
-//! **Language-aware honesty:** AST-modeled S (js/ts/tsx/jsx, python, go) and
-//! the lexical-v1 Rust scanner do **not** carry the same assurance.
-//! CLI/MCP must select the promise string by tier — never emit the AST OK
-//! for a corpus that contains rust (still lexical).
+//! **Language-aware honesty:** AST-modeled S (js/ts/tsx/jsx, python, go, rust)
+//! carries a stronger claim than a lexical scanner would. CLI/MCP select the
+//! promise string by tier. LexicalV1 remains in the enum for API stability;
+//! no currently shipped language selects it.
 
 use serde::{Deserialize, Serialize};
 use tree_sitter::Node;
@@ -19,17 +19,19 @@ use crate::model::{Confidence, Language};
 // Language-aware sound promise (shared by CLI + MCP — single source of truth)
 // ---------------------------------------------------------------------------
 
-/// AST-modeled S (js/ts/tsx/jsx, python, go): full S-qualified OK text.
+/// AST-modeled S (js/ts/tsx/jsx, python, go, rust): full S-qualified OK text.
 /// Still an engineering S gate — **not** ecosystem sound / not a proven
 /// runtime call-graph over-approx.
 pub const SOUND_PROMISE_OK_AST: &str = "S satisfied (AST-modeled subset). Sound walk over-approximates modeled reference edges (direct, literal-key, emit↔on dispatch, DI/route registration). This is NOT a proven runtime call-graph over-approx; registration≠HTTP ServeHTTP. AST scanner is an engineering S gate, not ecosystem sound.";
 
-/// Lexical/scanner v1 (rust): weaker text — scanner is conservative
-/// line-oriented lexical v1, not frozen, and is **not** equal assurance to AST S.
-pub const SOUND_PROMISE_OK_LEXICAL_V1: &str = "S satisfied (scanner tier: lexical v1). Rust S scanner is conservative lexical v1 (not frozen, weaker than AST-modeled S_js/S_py/S_go) — this OK is NOT the same assurance as an AST-modeled subset. Sound walk over-approximates modeled reference edges only; this is NOT a proven runtime call-graph over-approx.";
+/// Lexical/scanner v1 (reserved): weaker text for a future non-AST scanner.
+/// **No currently shipped language selects this tier** (Rust is AST-modeled).
+/// Kept for API stability of `SoundPromiseTier::LexicalV1`.
+pub const SOUND_PROMISE_OK_LEXICAL_V1: &str = "S satisfied (scanner tier: lexical v1). Scanner is conservative lexical v1 (not frozen, weaker than AST-modeled S) — this OK is NOT the same assurance as an AST-modeled subset. Sound walk over-approximates modeled reference edges only; this is NOT a proven runtime call-graph over-approx.";
 
 /// Mixed AST + lexical-v1 corpus: weakest tier governs; name both tiers.
-pub const SOUND_PROMISE_OK_MIXED_LEXICAL_V1: &str = "S satisfied, but the corpus mixes AST-modeled languages with the lexical-v1 Rust scanner. The weakest tier governs: Rust S is conservative lexical v1 (not frozen) — NOT the same assurance as AST-modeled S_js/S_py/S_go. Sound walk over-approximates modeled reference edges only.";
+/// Reserved — no currently shipped language is lexical-v1.
+pub const SOUND_PROMISE_OK_MIXED_LEXICAL_V1: &str = "S satisfied, but the corpus mixes AST-modeled languages with a lexical-v1 scanner. The weakest tier governs: lexical v1 (not frozen) — NOT the same assurance as AST-modeled S. Sound walk over-approximates modeled reference edges only.";
 
 /// Violations present → eligibility claim disabled (unchanged behavior).
 pub const SOUND_PROMISE_DISABLED: &str =
@@ -38,11 +40,13 @@ pub const SOUND_PROMISE_DISABLED: &str =
 /// Which assurance tier applies to a sound query on this corpus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SoundPromiseTier {
-    /// AST-modeled S (js/ts/tsx/jsx, python, go): full S-qualified OK text.
+    /// AST-modeled S (js/ts/tsx/jsx, python, go, rust): full S-qualified OK text.
     AstModeled,
-    /// Lexical/scanner v1 (rust) only: weaker text.
+    /// Lexical/scanner v1 only: weaker text. Reserved — no shipped language
+    /// currently selects this arm.
     LexicalV1,
-    /// Mixed AST + lexical-v1: weakest tier governs.
+    /// Mixed AST + lexical-v1: weakest tier governs. Reserved for future
+    /// non-AST scanners.
     MixedLexicalV1,
     /// Violations present → disabled.
     Disabled,
@@ -61,16 +65,18 @@ impl SoundPromiseTier {
 
 /// Language strings use `Language::as_str()` (from the index `files` table).
 ///
-/// Rust remains lexical-v1: `scan_rust` is still line-oriented. Python/Go
-/// were upgraded to tree-sitter AST scanners and therefore join the AST tier.
-pub fn is_lexical_v1_language(lang: &str) -> bool {
-    matches!(lang, "rust")
+/// **Reserved:** no currently shipped language is lexical-v1. Rust was
+/// upgraded to a tree-sitter AST scanner (`scan_rust`) and joins the AST tier.
+/// This function remains so a future non-AST language can re-enter the
+/// LexicalV1 / MixedLexicalV1 arms without an API break.
+pub fn is_lexical_v1_language(_lang: &str) -> bool {
+    false
 }
 
 pub fn is_ast_modeled_language(lang: &str) -> bool {
     matches!(
         lang,
-        "typescript" | "tsx" | "javascript" | "jsx" | "python" | "go"
+        "typescript" | "tsx" | "javascript" | "jsx" | "python" | "go" | "rust"
     )
 }
 
@@ -78,9 +84,10 @@ pub fn is_ast_modeled_language(lang: &str) -> bool {
 ///
 /// Rules (fail-honest, weakest tier wins):
 /// 1. Any S violation → `Disabled`.
-/// 2. Corpus contains rust **only** → `LexicalV1`.
-/// 3. Corpus mixes AST languages with rust → `MixedLexicalV1`.
-/// 4. Corpus is AST-only (or empty) → `AstModeled`.
+/// 2. Corpus contains a lexical-v1 language **only** → `LexicalV1`
+///    (reserved — no shipped language is currently lexical-v1).
+/// 3. Corpus mixes AST languages with a lexical-v1 language → `MixedLexicalV1`.
+/// 4. Corpus is AST-only (or empty) → `AstModeled` (js/ts/tsx/jsx, python, go, rust).
 pub fn sound_promise_tier(subset_ok: bool, languages: &[String]) -> SoundPromiseTier {
     if !subset_ok {
         return SoundPromiseTier::Disabled;
@@ -1182,25 +1189,131 @@ fn walk_go_s(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetVi
     }
 }
 
+/// True when this node (or a direct / `function_modifiers` child) is `unsafe`.
+fn rs_has_unsafe_token(node: Node) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "unsafe" {
+            return true;
+        }
+        // `unsafe fn`: token lives under `function_modifiers`.
+        if child.kind() == "function_modifiers" {
+            let mut mc = child.walk();
+            let mut found = false;
+            for g in child.children(&mut mc) {
+                if g.kind() == "unsafe" {
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Flatten a scoped identifier / type path to text (`std::mem::transmute`).
+fn rs_path_text(node: Node, source: &str) -> String {
+    snippet_at(source, node).replace([' ', '\n', '\t'], "")
+}
+
 fn scan_rust(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
-    for (idx, raw_line) in source.lines().enumerate() {
-        let line_no = idx + 1;
-        let t = raw_line.trim();
-        if t.starts_with("//") {
-            continue;
+    // AST scanner (tree-sitter-rust). Fail-closed on parse errors.
+    // Comments/strings are not AST items — they no longer false-positive.
+    let Ok(tree) = parser::parse(source, Language::Rust) else {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter failed to parse — cannot certify S",
+        );
+        return;
+    };
+    if tree.root_node().has_error() {
+        push_v(
+            violations,
+            path,
+            1,
+            "parse_error",
+            "tree-sitter ERROR nodes — cannot certify S",
+        );
+        return;
+    }
+    walk_rs_s(tree.root_node(), source, path, violations);
+}
+
+fn walk_rs_s(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
+    let mut cursor = node.walk();
+    let kind = node.kind();
+    let line = line_of_offset(source, node.start_byte());
+    let snippet = snippet_at(source, node).replace('\n', " ");
+
+    match kind {
+        // unsafe { ... }
+        "unsafe_block" => {
+            push_v(violations, path, line, "unsafe", &snippet);
         }
-        // `unsafe {` blocks / fn are outside S_rs v1 (fn-pointer black magic).
-        if t.starts_with("unsafe ")
-            || t.contains(" unsafe ")
-            || t == "unsafe {"
-            || t.starts_with("unsafe {")
-        {
-            // allow `unsafe impl` still flagged — conservative
-            push_v(violations, path, line_no, "unsafe", t);
+        // unsafe fn / unsafe extern fn (modifiers child carries the token).
+        "function_item" | "function_signature_item" => {
+            if rs_has_unsafe_token(node) {
+                push_v(violations, path, line, "unsafe", &snippet);
+            }
         }
-        if t.contains("transmute") {
-            push_v(violations, path, line_no, "transmute", t);
+        // unsafe impl / unsafe trait
+        "impl_item" | "trait_item" => {
+            if rs_has_unsafe_token(node) {
+                push_v(violations, path, line, "unsafe", &snippet);
+            }
         }
+        // asm! / global_asm! (over-flag: any asm macro leaves S).
+        "macro_invocation" => {
+            if let Some(mac) = node.child_by_field_name("macro") {
+                let t = snippet_at(source, mac);
+                let last = t.rsplit("::").next().unwrap_or(t.as_str());
+                if last == "asm" || last == "global_asm" {
+                    push_v(violations, path, line, "asm", &snippet);
+                }
+            }
+        }
+        // transmute calls / paths; std::ptr::* / core::ptr::* (over-flag OK).
+        "identifier" => {
+            let t = snippet_at(source, node);
+            if t == "transmute" {
+                push_v(violations, path, line, "transmute", &snippet);
+            }
+        }
+        "scoped_identifier" => {
+            let text = rs_path_text(node, source);
+            let last = text.rsplit("::").next().unwrap_or(text.as_str());
+            if last == "transmute" || text.ends_with("::mem::transmute") {
+                push_v(violations, path, line, "transmute", &snippet);
+            }
+            if text.starts_with("std::ptr::")
+                || text.starts_with("core::ptr::")
+                || text == "std::ptr"
+                || text == "core::ptr"
+            {
+                push_v(violations, path, line, "std_ptr", &snippet);
+            }
+        }
+        "scoped_use_list" | "use_declaration" => {
+            // use std::ptr / use core::mem::transmute
+            let text = rs_path_text(node, source);
+            if text.contains("std::ptr") || text.contains("core::ptr") {
+                push_v(violations, path, line, "std_ptr", &snippet);
+            }
+            if text.contains("::transmute") || text.ends_with("transmute") {
+                push_v(violations, path, line, "transmute", &snippet);
+            }
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut cursor) {
+        walk_rs_s(child, source, path, violations);
     }
 }
 

@@ -1,8 +1,9 @@
 //! TDD: language-aware sound promise tiers.
 //!
 //! Stop the false-green loop: a single global SOUND_PROMISE_OK must not be
-//! emitted for ALL languages. JS/TS/Python/Go (AST-modeled) vs Rust (lexical v1)
-//! get distinct promise strings; mixed corpora never silently claim AST green.
+//! emitted for ALL languages. All shipped languages (js/ts/tsx/jsx, python,
+//! go, rust) are AST-modeled. LexicalV1 remains in the enum for API stability
+//! but no currently shipped language selects it.
 
 use agentgraph::index::subset::{
     is_ast_modeled_language, is_lexical_v1_language, select_sound_promise, sound_promise_text,
@@ -130,17 +131,42 @@ fn unit_pure_go_selects_ast_tier() {
 }
 
 #[test]
-fn unit_pure_rust_selects_lexical_v1() {
-    // Rust scan_rust is still line-oriented lexical v1.
+fn unit_pure_rust_selects_ast_tier() {
+    // Rust scan_rust is now a tree-sitter AST scanner.
     let langs = vec!["rust".to_string()];
     let tier = sound_promise_tier(true, &langs);
-    assert_eq!(tier, SoundPromiseTier::LexicalV1);
+    assert_eq!(tier, SoundPromiseTier::AstModeled);
     let text = sound_promise_text(tier);
-    assert_eq!(text, SOUND_PROMISE_OK_LEXICAL_V1);
+    assert_eq!(text, SOUND_PROMISE_OK_AST);
     assert!(
-        text.contains("lexical") || text.contains("Lexical"),
-        "lexical tier text must say lexical: {text}"
+        !text.contains("lexical v1"),
+        "rust OK must not claim lexical v1: {text}"
     );
+}
+
+#[test]
+fn unit_lexical_v1_is_reserved_for_future_scanners() {
+    // No shipped language is lexical-v1; LexicalV1 arms remain for API stability.
+    for lang in [
+        "javascript",
+        "typescript",
+        "tsx",
+        "jsx",
+        "python",
+        "go",
+        "rust",
+    ] {
+        assert!(
+            !is_lexical_v1_language(lang),
+            "{lang} must not be lexical_v1"
+        );
+    }
+    // The enum arm still exists and maps to a distinct promise string.
+    assert_eq!(
+        sound_promise_text(SoundPromiseTier::LexicalV1),
+        SOUND_PROMISE_OK_LEXICAL_V1
+    );
+    assert_ne!(SOUND_PROMISE_OK_LEXICAL_V1, SOUND_PROMISE_OK_AST);
 }
 
 #[test]
@@ -153,22 +179,15 @@ fn unit_mixed_js_python_selects_ast_tier() {
 }
 
 #[test]
-fn unit_mixed_js_rust_selects_weakest_lexical_tier() {
+fn unit_mixed_js_rust_selects_ast_tier() {
+    // Both are AST-modeled after the Rust scanner upgrade — no downgrade.
     let langs = vec!["javascript".to_string(), "rust".to_string()];
     let (tier, text) = select_sound_promise(true, &langs);
-    assert_eq!(tier, SoundPromiseTier::MixedLexicalV1);
-    assert_eq!(text, SOUND_PROMISE_OK_MIXED_LEXICAL_V1);
+    assert_eq!(tier, SoundPromiseTier::AstModeled);
+    assert_eq!(text, SOUND_PROMISE_OK_AST);
     assert_ne!(
-        text, SOUND_PROMISE_OK_AST,
-        "mixed must never claim AST-only green"
-    );
-    assert_ne!(
-        text, SOUND_PROMISE_OK_LEXICAL_V1,
-        "mixed text names both tiers"
-    );
-    assert!(
-        text.to_ascii_lowercase().contains("mix"),
-        "mixed text must mention mixed: {text}"
+        text, SOUND_PROMISE_OK_MIXED_LEXICAL_V1,
+        "js+rust is pure AST — must not emit mixed lexical"
     );
 }
 
@@ -193,9 +212,9 @@ fn unit_language_classifiers() {
     assert!(is_ast_modeled_language("jsx"));
     assert!(is_ast_modeled_language("python"));
     assert!(is_ast_modeled_language("go"));
-    assert!(!is_ast_modeled_language("rust"));
+    assert!(is_ast_modeled_language("rust"));
 
-    assert!(is_lexical_v1_language("rust"));
+    assert!(!is_lexical_v1_language("rust"));
     assert!(!is_lexical_v1_language("javascript"));
     assert!(!is_lexical_v1_language("python"));
     assert!(!is_lexical_v1_language("go"));
@@ -241,24 +260,25 @@ fn cli_impact_sound_pure_python_tree_emits_ast_ok() {
     assert_ne!(promise, SOUND_PROMISE_OK_LEXICAL_V1);
 }
 
-// --- CLI: pure Rust tree → LEXICAL_V1 (scan_rust still lexical) -------------
+// --- CLI: pure Rust tree → AST OK (scan_rust is AST-modeled) ----------------
 
 #[test]
-fn cli_impact_sound_pure_rust_tree_emits_lexical_v1() {
+fn cli_impact_sound_pure_rust_tree_emits_ast_ok() {
     let root = temp_root("pure-rs");
     write_rust_auth(&root);
     let v = index_and_impact(&root, "authenticate");
     assert_eq!(v["mode"], "sound");
     assert_eq!(v["subset_ok"], true, "clean rust must be in S: {v}");
-    assert_eq!(v["promise_tier"], "lexical_v1", "{v}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{v}");
     let promise = v["promise"].as_str().unwrap_or("");
     assert_eq!(
-        promise, SOUND_PROMISE_OK_LEXICAL_V1,
-        "pure Rust must emit lexical v1 OK: {v}"
-    );
-    assert_ne!(
         promise, SOUND_PROMISE_OK_AST,
-        "false-green: rust must never get the AST OK string"
+        "pure Rust must emit AST OK: {v}"
+    );
+    assert_ne!(promise, SOUND_PROMISE_OK_LEXICAL_V1);
+    assert!(
+        !promise.contains("lexical v1"),
+        "AST promise must not claim lexical v1: {promise}"
     );
 }
 
@@ -277,23 +297,20 @@ fn cli_impact_sound_mixed_js_python_stays_ast() {
     assert_eq!(promise, SOUND_PROMISE_OK_AST, "{v}");
 }
 
-// --- CLI: mixed JS+Rust → weakest tier, never silent AST --------------------
+// --- CLI: mixed JS+Rust → both AST, no lexical downgrade --------------------
 
 #[test]
-fn cli_impact_sound_mixed_js_rust_never_ast_only_green() {
+fn cli_impact_sound_mixed_js_rust_stays_ast() {
     let root = temp_root("mixed-js-rs");
     write_js_auth(&root);
     write_rust_auth(&root);
     let v = index_and_impact(&root, "authenticate");
     assert_eq!(v["mode"], "sound");
     assert_eq!(v["subset_ok"], true, "{v}");
-    assert_eq!(v["promise_tier"], "mixed_lexical_v1", "{v}");
+    assert_eq!(v["promise_tier"], "ast_modeled", "{v}");
     let promise = v["promise"].as_str().unwrap_or("");
-    assert_eq!(promise, SOUND_PROMISE_OK_MIXED_LEXICAL_V1, "{v}");
-    assert_ne!(
-        promise, SOUND_PROMISE_OK_AST,
-        "mixed corpus must not silently claim AST-only green"
-    );
+    assert_eq!(promise, SOUND_PROMISE_OK_AST, "{v}");
+    assert_ne!(promise, SOUND_PROMISE_OK_MIXED_LEXICAL_V1, "{v}");
 }
 
 // --- CLI: S violation → DISABLED --------------------------------------------

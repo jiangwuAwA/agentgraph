@@ -20,7 +20,8 @@ node scripts/diff_trace.cjs fixtures/eval-l2/s-js-auth/src/auth.js main
 2. Surfaces **S violations** stored at last index (`eval`, `new Function`, `with`, `Proxy`, `Reflect`, template computed keys, Rust `unsafe`/`transmute`, Python `eval`/`exec`).
 3. Sets `subset_ok: false` and a non-claiming `promise` string when any violation exists.
 4. Selects the OK promise by **language tier** (`promise_tier`):
-   AST-modeled (js/ts/python/go) vs lexical-v1 (rust) vs mixed — weakest wins.
+   AST-modeled (js/ts/tsx/jsx, python, go, rust) vs reserved lexical-v1 —
+   weakest wins (no shipped language is currently lexical-v1).
    See [sound-subset.md](sound-subset.md) promise table.
 
 CLI:
@@ -73,8 +74,8 @@ class). Named function expressions now populate `enclosing` so BFS can expand
 ## Explicit non-claims
 
 - No soundness outside S.
-- No completeness for Rust S (v1 conservative lexical scanner — **not** a frozen soundness contract). Lexical-v1 `promise_tier` OK is **not** equal assurance to AST-modeled S_js/S_py/S_go.
-- AST-modeled S (js/ts/python/go) is an engineering gate, **not** ecosystem sound and **not** a proven runtime call-graph over-approx.
+- No completeness for Rust S beyond the AST scanner (engineering gate — **not** a frozen soundness contract). AST-modeled `promise_tier` OK is **not** ecosystem sound / **not** a proven runtime call-graph over-approx.
+- AST-modeled S (js/ts/tsx/jsx, python, go, rust) is an engineering gate, **not** ecosystem sound and **not** a proven runtime call-graph over-approx.
 - Over-reporting is allowed (over-approx).
 - Do not market `--sound` as “zero missed dynamic calls” on arbitrary repos.
 

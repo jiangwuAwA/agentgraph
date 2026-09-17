@@ -341,3 +341,138 @@ fn go_unsafe_selector_leaves_s_without_import_line() {
         r.violations
     );
 }
+
+// --- Rust AST advantages (comments/strings must NOT trigger) -----------------
+
+#[test]
+fn rust_clean_fn_stays_in_s() {
+    let src = r#"
+pub fn authenticate(email: &str, password: &str) -> bool {
+    !email.is_empty() && !password.is_empty()
+}
+
+pub fn login_handler(email: &str, password: &str) -> bool {
+    authenticate(email, password)
+}
+"#;
+    let r = scan_subset(src, Language::Rust, "src/auth.rs");
+    assert!(r.in_subset, "clean Rust stays in S: {:?}", r.violations);
+}
+
+#[test]
+fn rust_comment_mentioning_unsafe_stays_in_s() {
+    // Lexical v1 would flag mid-line / block-comment `unsafe`; AST must not.
+    let src = "fn f() {\n    // never do unsafe { *p } here\n    let _ = 1;\n}\n/* unsafe block comment */\nfn g() {}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(
+        r.in_subset,
+        "comment mentioning unsafe must stay in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn rust_string_with_transmute_stays_in_s() {
+    let src = "fn f() -> &'static str {\n    \"call std::mem::transmute to cast\"\n}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(
+        r.in_subset,
+        "string containing transmute must stay in S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn rust_unsafe_block_leaves_s() {
+    let src = "fn f(p: *const u8) -> u8 {\n    unsafe { *p }\n}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(
+        !r.in_subset,
+        "unsafe block must leave S: {:?}",
+        r.violations
+    );
+    assert!(r.violations.iter().any(|v| v.kind == "unsafe"));
+}
+
+#[test]
+fn rust_unsafe_fn_leaves_s() {
+    let src = "unsafe fn evil(p: *const u8) -> u8 {\n    *p\n}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(!r.in_subset, "unsafe fn must leave S: {:?}", r.violations);
+    assert!(r.violations.iter().any(|v| v.kind == "unsafe"));
+}
+
+#[test]
+fn rust_unsafe_impl_leaves_s() {
+    let src = "struct S;\nunsafe impl Send for S {}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(!r.in_subset, "unsafe impl must leave S: {:?}", r.violations);
+    assert!(r.violations.iter().any(|v| v.kind == "unsafe"));
+}
+
+#[test]
+fn rust_unsafe_trait_leaves_s() {
+    let src = "unsafe trait Marker {}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(
+        !r.in_subset,
+        "unsafe trait must leave S: {:?}",
+        r.violations
+    );
+    assert!(r.violations.iter().any(|v| v.kind == "unsafe"));
+}
+
+#[test]
+fn rust_transmute_call_leaves_s() {
+    for src in [
+        "fn f(x: u32) -> i32 {\n    unsafe { std::mem::transmute(x) }\n}\n",
+        "use std::mem;\nfn f(x: u32) -> i32 {\n    unsafe { mem::transmute(x) }\n}\n",
+        "fn f(x: u32) -> i32 {\n    unsafe { core::mem::transmute(x) }\n}\n",
+    ] {
+        let r = scan_subset(src, Language::Rust, "a.rs");
+        assert!(
+            !r.in_subset,
+            "transmute must leave S: {src} -> {:?}",
+            r.violations
+        );
+        assert!(
+            r.violations
+                .iter()
+                .any(|v| v.kind == "transmute" || v.kind == "unsafe"),
+            "expected transmute or unsafe: {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn rust_asm_macro_leaves_s() {
+    let src = "fn f() {\n    unsafe {\n        std::arch::asm!(\"nop\");\n    }\n}\n";
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(!r.in_subset, "asm! must leave S: {:?}", r.violations);
+}
+
+#[test]
+fn rust_std_ptr_leaves_s() {
+    let src = "fn f(p: *const u8) -> *const u8 {\n    std::ptr::read_volatile(&p)\n}\n";
+    // Over-flag is OK: either std::ptr path or nearby unsafe is enough.
+    // `read_volatile` itself is typically inside unsafe; the path is the signal.
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(
+        !r.in_subset,
+        "std::ptr path should leave S (over-flag OK): {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn rust_parse_error_fails_closed() {
+    let src = "fn f( {\n}\n"; // invalid syntax
+    let r = scan_subset(src, Language::Rust, "a.rs");
+    assert!(!r.in_subset, "parse error must leave S: {:?}", r.violations);
+    assert!(
+        r.violations.iter().any(|v| v.kind == "parse_error"),
+        "expected parse_error violation: {:?}",
+        r.violations
+    );
+}

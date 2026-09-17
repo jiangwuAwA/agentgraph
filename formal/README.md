@@ -9,8 +9,8 @@ Research / quality-gate track. **Does not block releases.**
 | `IncrementalIndex.tla` + `.cfg` | ✅ TLC-checked |
 | TLC run | ✅ **No error** — 568 states, 63 distinct, depth 6 (`tlc-results.txt`) |
 | I1–I3 executable invariants | ✅ `tests/l3_invariants.rs` |
-| I4 small-language soundness | ✅ executable IR + exhaustive/property tests (`tests/l4_mini_lang.rs`, `src/formal/mini_lang.rs`) — **not** Lean |
-| Theorem-level I4 (Lean/Rocq) | ❌ backlog — see [TODO.md](TODO.md) |
+| I4 small-language soundness | ✅ executable IR + exhaustive/property tests (`tests/l4_mini_lang.rs`, `src/formal/mini_lang.rs`) |
+| Theorem-level I4 (Lean 4) | ✅ `formal/lean/` — `runtime_subset_static`, `lake build` green (stdlib only, no mathlib). See [lean/README.md](lean/README.md) |
 
 ## Running TLC
 
@@ -38,7 +38,7 @@ Last successful run summary is in [tlc-results.txt](tlc-results.txt).
 | **I3** | `impact(s,d)` = depth-≤d callers (per expansion rules) | `tests/l3_invariants.rs` |
 | **I4** | Mini-language runtime calls ⊆ static call-closure | `tests/l4_mini_lang.rs` (bounded exhaustive) |
 
-## I4 mini-language (executable formal)
+## I4 mini-language (executable formal + Lean)
 
 `src/formal/mini_lang.rs` defines a tiny imperative IR:
 
@@ -50,7 +50,9 @@ Semantics: small-step interpreter collecting runtime call edges.
 Property: for every generated program in the bounded space,
 `runtime_edges ⊆ static_closure` (over-approx allowed).
 
-This is **not** a Lean/Rocq development. A theorem-prover port remains optional.
+The same containment property is **machine-checked in Lean 4** under
+[`formal/lean/`](lean/README.md) (`MiniLang.runtime_subset_static`).
+This is still **not** a theorem about JavaScript/Python/Go or L2 `--sound`.
 
 ## Non-goals
 

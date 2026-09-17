@@ -1,0 +1,7 @@
+name = "MiniLang"
+version = "0.1.0"
+defaultTargets = ["MiniLang"]
+
+# Stdlib only — no mathlib. Keep the toolchain pinned via lean-toolchain.
+[[lean_lib]]
+name = "MiniLang"

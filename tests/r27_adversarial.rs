@@ -178,12 +178,7 @@ fn relative_expanded_root_resolves_against_project_root() {
     let idx4 = run_in(
         &other,
         &root,
-        &[
-            "index",
-            "--force",
-            "--macro-expanded-root",
-            &rel_sibling_s,
-        ],
+        &["index", "--force", "--macro-expanded-root", &rel_sibling_s],
     );
     assert!(
         idx4.status.success(),

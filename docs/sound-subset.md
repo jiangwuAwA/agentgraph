@@ -94,10 +94,11 @@ AST walks** that fail-closed on parse errors (`has_error` → violation).
 Comments and strings do **not** trigger (AST advantage over lexical).
 
 **Go (S_go)** leaves S on:
-cgo `import "C"`, `//go:linkname`, `import "unsafe"` / `import "reflect"`,
+cgo `import "C"`, `//go:linkname`, `//export` (cgo export directive),
+`import "unsafe"` / `import "reflect"`,
 `unsafe.` / `reflect.` selectors, `plugin.Open` / `syscall.NewCallback`.
-Comments alone do not flag (except `//go:linkname`, a significant compiler
-directive). Parse errors fail closed.
+Comments alone do not flag (except `//go:linkname` / `//export`, significant
+compiler directives). Parse errors fail closed.
 
 Python, Go, and Rust join the `ast_modeled` promise tier. This is still an
 engineering S gate — **not** ecosystem sound.

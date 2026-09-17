@@ -10,10 +10,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "agentgraph-r23-{}-{tag}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("agentgraph-r23-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("src")).unwrap();
     dir
@@ -54,7 +51,9 @@ fn oversized_source_s_violation_survives_index() {
     let store = indexer.open_store().unwrap();
     let viols = store.subset_violations().unwrap();
     assert!(
-        viols.iter().any(|v| v.kind == "parse_error" && v.path.contains("big.ts")),
+        viols
+            .iter()
+            .any(|v| v.kind == "parse_error" && v.path.contains("big.ts")),
         "oversized source must keep an S violation after index; got {viols:?}"
     );
 
@@ -63,7 +62,9 @@ fn oversized_source_s_violation_survives_index() {
     let store = indexer.open_store().unwrap();
     let viols2 = store.subset_violations().unwrap();
     assert!(
-        viols2.iter().any(|v| v.kind == "parse_error" && v.path.contains("big.ts")),
+        viols2
+            .iter()
+            .any(|v| v.kind == "parse_error" && v.path.contains("big.ts")),
         "oversized S violation must survive a second index; got {viols2:?}"
     );
 }
@@ -87,7 +88,9 @@ fn minified_bundle_s_violation_survives_index() {
     let store = indexer.open_store().unwrap();
     let viols = store.subset_violations().unwrap();
     assert!(
-        viols.iter().any(|v| v.kind == "parse_error" && v.path.contains("app.min.js")),
+        viols
+            .iter()
+            .any(|v| v.kind == "parse_error" && v.path.contains("app.min.js")),
         "minified bundle must keep an S violation; got {viols:?}"
     );
 
@@ -95,7 +98,9 @@ fn minified_bundle_s_violation_survives_index() {
     let store = indexer.open_store().unwrap();
     let viols2 = store.subset_violations().unwrap();
     assert!(
-        viols2.iter().any(|v| v.kind == "parse_error" && v.path.contains("app.min.js")),
+        viols2
+            .iter()
+            .any(|v| v.kind == "parse_error" && v.path.contains("app.min.js")),
         "minified S violation must survive a second index; got {viols2:?}"
     );
 }
@@ -188,8 +193,14 @@ function trigger() {
         .filter(|i| i.depth == 1)
         .map(|i| i.path.as_str())
         .collect();
-    assert!(d1_paths.contains("src/a.py"), "py helper call site: {impact:?}");
-    assert!(d1_paths.contains("src/b.ts"), "ts helper call site: {impact:?}");
+    assert!(
+        d1_paths.contains("src/a.py"),
+        "py helper call site: {impact:?}"
+    );
+    assert!(
+        d1_paths.contains("src/b.ts"),
+        "ts helper call site: {impact:?}"
+    );
 
     // Service.run is a same-language expandable enclosing for the TS helper
     // call. Impact must include depth-2 nodes under Service / run.
@@ -280,9 +291,7 @@ export function loginHandler() { createUser("a","b"); }
 #[test]
 fn importers_accepts_dot_slash_prefix() {
     let (_db, store) = seed_importer_store("imp-dot");
-    let hits = store
-        .importers_of_file("./src/auth.ts", 20)
-        .unwrap();
+    let hits = store.importers_of_file("./src/auth.ts", 20).unwrap();
     assert!(
         !hits.is_empty(),
         "importers must accept ./src/auth.ts (CLI/Windows common form)"
@@ -323,7 +332,10 @@ fn e2e_importers_accepts_absolute_path_under_root() {
         .expect("abs under root");
     assert_eq!(lookup, "src/auth.ts");
     let hits = store.importers_of_file(&lookup, 20).unwrap();
-    assert!(!hits.is_empty(), "abs-under-root importers lookup; got {hits:?}");
+    assert!(
+        !hits.is_empty(),
+        "abs-under-root importers lookup; got {hits:?}"
+    );
 }
 
 // ── Surface: export file_uri percent-encoding ─────────────────────────
@@ -333,8 +345,7 @@ fn file_uri_percent_encodes_spaces_and_specials() {
     let root = Path::new("C:/My Project/app");
     let uri = file_uri(root, "src/my file.ts");
     assert_eq!(
-        uri,
-        "file:///C:/My%20Project/app/src/my%20file.ts",
+        uri, "file:///C:/My%20Project/app/src/my%20file.ts",
         "file_uri must percent-encode spaces (RFC 8089 / URI)"
     );
 

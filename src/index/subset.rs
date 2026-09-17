@@ -1134,9 +1134,14 @@ fn walk_py_s(
     }
 }
 
-/// `//go:linkname` is a significant comment (compiler directive).
+/// `//go:linkname` and `//export` are significant cgo/compiler directives.
+/// `//export Foo` exports a Go symbol to C — same escape class as linkname.
 fn go_comment_is_linkname(text: &str) -> bool {
-    text.contains("go:linkname")
+    let t = text.trim_start();
+    t.contains("go:linkname")
+        || t.starts_with("//export ")
+        || t.starts_with("//export\t")
+        || t == "//export"
 }
 
 fn scan_go(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {

@@ -97,7 +97,11 @@ impl Indexer {
         // but are NOT in `files` (walker skips them). They must stay in the
         // keep-set — otherwise prune_missing CASCADE-deletes the violation rows
         // in the same pass and `--sound` wrongly claims in_subset=true.
-        for p in collected.oversized_paths.iter().chain(collected.minified_paths.iter()) {
+        for p in collected
+            .oversized_paths
+            .iter()
+            .chain(collected.minified_paths.iter())
+        {
             known.insert(p.clone());
         }
 
@@ -117,6 +121,10 @@ impl Indexer {
             lang: Language,
         }
         let mut candidates = Vec::new();
+        // R24: unreadable / non-UTF-8 sources must mint parse_error (keep-set
+        // already holds them via walker; without a violation `--sound` claims
+        // in_subset=true for a file that was never certified).
+        let mut read_or_utf8_failed: Vec<String> = Vec::new();
         for f in &collected.files {
             let Some(lang) = Language::from_path(&f.rel) else {
                 continue;
@@ -139,9 +147,12 @@ impl Indexer {
             });
         }
 
-        // Parallel read+hash (P0-2).
+        // Parallel read+hash (P0-2). Err carries (rel, message) so R24 can mint
+        // a parse_error without re-parsing a formatted skip line.
         #[allow(clippy::type_complexity)]
-        let hashed: Vec<Result<(String, String, i64, i64, Language, Vec<u8>), String>> = candidates
+        let hashed: Vec<
+            Result<(String, String, i64, i64, Language, Vec<u8>), (String, String)>,
+        > = candidates
             .into_par_iter()
             .map(|c| match std::fs::read(&c.path) {
                 Ok(bytes) => {
@@ -150,15 +161,16 @@ impl Indexer {
                     let hash = format!("{:x}", hasher.finalize());
                     Ok((c.rel, hash, c.mtime_ns, c.size, c.lang, bytes))
                 }
-                Err(e) => Err(format!("{}: {e}", c.rel)),
+                Err(e) => Err((c.rel, format!("{e}"))),
             })
             .collect();
 
         for item in hashed {
             match item {
-                Err(msg) => {
-                    eprintln!("skip {msg}");
+                Err((rel, e)) => {
+                    eprintln!("skip {rel}: {e}");
                     failed_read += 1;
+                    read_or_utf8_failed.push(rel);
                 }
                 Ok((rel, hash, mtime_ns, size, lang, bytes)) => {
                     if !force {
@@ -176,6 +188,7 @@ impl Indexer {
                         Err(_) => {
                             eprintln!("skip {rel}: not valid UTF-8");
                             failed_read += 1;
+                            read_or_utf8_failed.push(rel);
                             continue;
                         }
                     };
@@ -192,6 +205,11 @@ impl Indexer {
         }
         let hash_ms = t_hash.elapsed().as_millis();
 
+        // R24: unreadable / non-UTF-8 sources mint parse_error (not silent).
+        for p in &read_or_utf8_failed {
+            let _ = store.record_parse_error(p, "read/UTF-8 failure — cannot certify S");
+        }
+
         // R13 M3: oversized / minified sources mint S violations (not silent).
         for p in &collected.oversized_paths {
             let _ = store.record_parse_error(p, "oversized source (>1.5MiB) not certified in S");
@@ -206,6 +224,8 @@ impl Indexer {
 
         // P0-3: nothing dirty → skip transaction + full resolve.
         // Still repair dispatch if a prior run left dispatch_dirty (C2).
+        // R24: also early-out when the only work was minting parse_error rows
+        // for read/UTF-8 failures (they are already written above).
         if !force && to_parse.is_empty() && deleted.is_empty() {
             if store.dispatch_dirty()? {
                 store.link_event_dispatch()?;
@@ -422,6 +442,19 @@ impl Indexer {
                 .map(|d| d.as_nanos() as i64)
                 .unwrap_or(0);
             let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+            // R24: watch path must honor the same size / .min. gates as full
+            // index. A file that grows past 1.5MiB (or is renamed to *.min.*)
+            // must mint an S violation — not be fully parsed and certified.
+            if size > 1_500_000 {
+                let _ =
+                    store.record_parse_error(&rel, "oversized source (>1.5MiB) not certified in S");
+                continue;
+            }
+            if rel.contains(".min.") {
+                let _ =
+                    store.record_parse_error(&rel, "minified bundle (.min.) not certified in S");
+                continue;
+            }
             // mtime short-circuit (same as full index); AGENTGRAPH_TRUST_MTIME=0 forces hash.
             if trust_mtime() {
                 if let Ok(Some(prev)) = store.file_meta(&rel) {
@@ -451,7 +484,9 @@ impl Indexer {
             let source = match String::from_utf8(bytes) {
                 Ok(s) => s,
                 Err(_) => {
+                    eprintln!("skip {rel}: not valid UTF-8");
                     failed_read += 1;
+                    let _ = store.record_parse_error(&rel, "read/UTF-8 failure — cannot certify S");
                     continue;
                 }
             };
@@ -465,6 +500,9 @@ impl Indexer {
             });
         }
 
+        // Nothing dirty on the event paths themselves: uncertified / failed
+        // rows were already written above. Sibling oversized/minified only
+        // need minting when some other file is dirty (walker runs below).
         if to_parse.is_empty() && deleted.is_empty() {
             if store.dispatch_dirty()? {
                 store.link_event_dispatch()?;
@@ -481,8 +519,20 @@ impl Indexer {
         let collected = walker::collect_source_files_with_stats(&self.root)?;
         let mut known: std::collections::HashSet<String> =
             collected.files.iter().map(|f| f.rel.clone()).collect();
-        for p in collected.oversized_paths.iter().chain(collected.minified_paths.iter()) {
+        for p in collected
+            .oversized_paths
+            .iter()
+            .chain(collected.minified_paths.iter())
+        {
             known.insert(p.clone());
+        }
+        // R24: mint oversized/minified violations on the watch path (full index
+        // already does this; scoped index only kept them in the prune set).
+        for p in &collected.oversized_paths {
+            let _ = store.record_parse_error(p, "oversized source (>1.5MiB) not certified in S");
+        }
+        for p in &collected.minified_paths {
+            let _ = store.record_parse_error(p, "minified bundle (.min.) not certified in S");
         }
 
         let mut dirty_paths: Vec<String> = Vec::new();
@@ -512,7 +562,12 @@ impl Indexer {
                         }
                     }
                 }
-                Err(e) => eprintln!("parse fail {}: {e:#}", fw.rel),
+                Err(e) => {
+                    eprintln!("parse fail {}: {e:#}", fw.rel);
+                    // R24: parse failure on the watch path must not leave the
+                    // previous symbols/violations as if the file were still OK.
+                    store.record_parse_error(&fw.rel, &format!("{e:#}"))?;
+                }
             }
         }
         // Always prune against the live tree walk, not only when the event

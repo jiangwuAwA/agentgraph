@@ -26,16 +26,13 @@ jobs:
         run: cargo test --test e2e_cli -- --nocapture
       - name: Official scip CLI lint (linux)
         if: runner.os == 'Linux'
+        env:
+          # Pinned scip-linux-amd64 v0.10.0 (fail-closed checksum).
+          SCIP_SHA256: eeb28ebbff443c01609fb1691809958f3f0c7a8651af689a5bc8560061cd8ab0
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/scip.tgz https://github.com/scip-code/scip/releases/download/v0.10.0/scip-linux-amd64.tar.gz
-          # Pin checksum when SCIP_SHA256 secret/env is set (fail-closed).
-          if [ -n "${SCIP_SHA256:-}" ]; then
-            echo "${SCIP_SHA256}  /tmp/scip.tgz" | sha256sum -c -
-          else
-            echo "SCIP_SHA256 not set; recording artifact hash for pinning:"
-            sha256sum /tmp/scip.tgz
-          fi
+          echo "${SCIP_SHA256}  /tmp/scip.tgz" | sha256sum -c -
           tar -xzf /tmp/scip.tgz -C /tmp
           sudo install -m 755 /tmp/scip /usr/local/bin/scip
           cargo run --quiet -- --root fixtures/sample-app index --force

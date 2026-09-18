@@ -529,11 +529,16 @@ pub fn build_who_calls_payload(
 }
 
 /// Shared blast_radius args (CLI + MCP).
+///
+/// P2-1: `include_macro` is tri-state:
+/// - `Some(true)` — explicit `--include-macro` / MCP `include_macro: true`
+/// - `Some(false)` — explicit `--no-include-macro` / MCP `include_macro: false`
+/// - `None` — not explicit; resolve from repo/project `macro_default` config
 pub struct BlastRadiusArgs {
     pub symbol: String,
     pub depth: usize,
     pub limit: usize,
-    pub include_macro: bool,
+    pub include_macro: Option<bool>,
     pub root_id: Option<String>,
 }
 
@@ -547,7 +552,7 @@ pub struct WhoCallsArgs {
 
 /// Macro sidecar is per-root. Workspace multi-root + include_macro without a
 /// single root filter is refused (same policy as CLI `--with-macro`).
-fn refuse_macro_workspace(
+pub fn refuse_macro_workspace(
     store: &Store,
     include_macro: bool,
     root_filter: Option<&str>,
@@ -625,7 +630,29 @@ pub fn run_blast_radius(
         }
     };
 
-    let mut include_macro = args.include_macro;
+    // P2-1: CLI/MCP explicit wins; else repo/project macro_default may request.
+    let mut cfg_roots: Vec<PathBuf> = vec![indexer.root.clone()];
+    if let Ok(ws) = store.workspace_roots_meta() {
+        // Prefer the filtered workspace root's config when a single root is selected.
+        if let Some(rf_id) = rf {
+            if let Some(r) = ws.iter().find(|r| r.id == rf_id) {
+                if !r.path.is_empty() {
+                    cfg_roots.insert(0, PathBuf::from(&r.path));
+                }
+            }
+        }
+        for r in ws.into_iter().filter(|r| !r.path.is_empty()) {
+            let p = PathBuf::from(r.path);
+            if !cfg_roots.contains(&p) {
+                cfg_roots.push(p);
+            }
+        }
+    }
+    let macro_cfg = crate::config::load_macro_default_config_for_roots(&cfg_roots);
+    let (request_macro, cfg_success_reason) =
+        crate::config::resolve_macro_include_request(args.include_macro, &macro_cfg);
+
+    let mut include_macro = request_macro;
     let mut include_macro_reason: Option<String> = None;
     let mut stale: Option<bool> = None;
 
@@ -640,6 +667,9 @@ pub fn run_blast_radius(
             if !ok {
                 include_macro = false;
                 include_macro_reason = reason;
+            } else {
+                // Allowed: CLI explicit keeps reason null; repo config tags source.
+                include_macro_reason = cfg_success_reason;
             }
         }
     }

@@ -3,7 +3,71 @@
 **Status:** productized **opt-in** dual-index path (Track M1): path map + de-dup + fingerprint/stale + rebuild.  
 **Not** a sound expand-graph. Origin stays **`macro_expanded`** (non-sound).  
 **Default product path remains source L0/L1** (and L2 `--sound` on the main index only).  
-Related: [product-boundary-migration.md](product-boundary-migration.md) §Track M1, [eval-macro-expand.md](eval-macro-expand.md), [sound-subset.md](sound-subset.md).
+**Global `--with-macro` / recipe `include_macro` default remains OFF.**  
+Related: [product-boundary-migration.md](product-boundary-migration.md) §Track M1, [eval-macro-expand.md](eval-macro-expand.md), [sound-subset.md](sound-subset.md), [agent-recipes.md](agent-recipes.md).
+
+---
+
+## Repo/project macro default (P2-1)
+
+Operators may opt **this repository** into macro candidates on recipe auto-paths
+without turning on a silent global `--with-macro`.
+
+### Config resolution (primary = `.agentgraph/config.toml`)
+
+| Priority | Source | Example |
+|---|---|---|
+| 1 (highest) | CLI / MCP explicit | `blast-radius … --include-macro` / `--no-include-macro`; MCP `include_macro: true\|false`; graph `--with-macro` / `--no-with-macro` |
+| 2 | Env | `AGENTGRAPH_MACRO_DEFAULT` set to `off` / `if_fresh` / `on` |
+| 3 | Primary file | `<root>/.agentgraph/config.toml` |
+| 4 | Fallback file | `<root>/agentgraph.toml` |
+| 5 (lowest) | Builtin product default | **`off`** — never auto-include |
+
+Field:
+
+```toml
+# <root>/.agentgraph/config.toml
+macro_default = "off" | "if_fresh" | "on"
+```
+
+| Policy value | Recipe / graph auto-path behavior |
+|---|---|
+| **`off`** (default) | No auto-include. Global product default — **never** claim global macro on. |
+| **`if_fresh`** | When sidecar **exists && !stale && !nested && expanded_root present** and the window is **not** sound → `include_macro=true` with `include_macro_reason=repo_config_if_fresh`. |
+| **`on`** | Same gates as `if_fresh`. Success reason is `repo_config_on`. **Still refuses** when sidecar missing / stale / nested / expanded_root missing, or under a sound window. |
+
+Invalid env/file values fall through to the next source (a typo never turns macro on).
+
+### Honesty gates (unchanged)
+
+- Sound window + macro remain **mutually exclusive** (macro edges are not sound-certified).
+- `decide_include_macro` still refuses missing / stale / nested / missing expanded_root.
+- Raw `callers` / `impact --with-macro` stay **explicit opt-in** unless the operator passes the flag; P2-1 auto paths are **only** `blast_radius` and `graph` recipes when config requests include.
+- Workspace multi-root without a single `root_id` / `--workspace-root` filter still refuses macro union.
+
+### `macro status` shows effective config
+
+`agentgraph macro status` / MCP `macro_status` add:
+
+| Key | Meaning |
+|---|---|
+| `macro_default` | Effective policy: `off` / `if_fresh` / `on` |
+| `macro_default_source` | `builtin_default` / `env:AGENTGRAPH_MACRO_DEFAULT` / `file:<path>` |
+| `macro_default_requests_include` | Whether policy may auto-request include |
+| `macro_default_note` | Honesty one-liner (global default remains OFF) |
+
+Example:
+
+```toml
+# repo opt-in: blast_radius / graph may include fresh sidecar candidates
+macro_default = "if_fresh"
+```
+
+```bash
+AGENTGRAPH_MACRO_DEFAULT=off agentgraph blast-radius helper   # env wins over file
+agentgraph blast-radius helper --no-include-macro             # CLI wins over env/file
+agentgraph blast-radius helper --include-macro                # explicit include (still health-gated)
+```
 
 ---
 
@@ -105,7 +169,11 @@ agentgraph macro status
     "main_rows": 0,
     "sidecar_rows": 0
   },
-  "rebuild_policy": "manual"
+  "rebuild_policy": "manual",
+  "macro_default": "if_fresh",
+  "macro_default_source": "file:.agentgraph/config.toml",
+  "macro_default_requests_include": true,
+  "macro_default_note": "global product default remains OFF; …"
 }
 ```
 
@@ -258,6 +326,7 @@ The spike ([eval-macro-expand.md](eval-macro-expand.md)) showed expanded trees m
 - `tests/macro_dedup.rs` — full §1.4 table + `--no-macro-dedup` + status fields + **M1 e2e golden** (`e2e_golden_l0_miss_expand_finds_mapped_source_crate_path`: L0 miss → expand `fmt`/`clone` → `mapped_path=crates/demo/src/lib.rs` → source Exact kept on de-dup)
 - `tests/macro_rebuild.rs` — fingerprint/stale/rebuild idempotence + nested still rejects
 - `tests/macro_sidecar.rs` — absent-sidecar grace; union tagging; no subset_ok
+- `tests/macro_default_config.rs` — **P2-1** repo `macro_default` (off default, env override, file if_fresh + fresh/stale, CLI explicit wins, sound window still refuses, status config source)
 - `tests/r26_adversarial.rs` / `r27` / `r28` — nesting, relative roots, MCP schema, help text
 - `tests/graph_html.rs` — MACRO badge + mapped source path + `--sound` mutex
 - `tests/e2e_cli.rs` — flag matrix; sound+with_macro still fails

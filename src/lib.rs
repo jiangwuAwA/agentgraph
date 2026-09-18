@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod config;
 pub mod formal;
 pub mod index;
 pub mod mcp;

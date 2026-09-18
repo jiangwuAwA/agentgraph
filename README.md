@@ -8,11 +8,16 @@ Agent-native code understanding: **symbol graph, call graph, impact analysis** �
 
 Not another embedding RAG. When an agent needs *who calls this*, *what breaks if I change this*, or *which files matter*, it needs **structural facts**, not similar text chunks.
 
-| Approach | Problem |
+### Positioning (one-liner narrative)
+
+| Approach | vs agentgraph |
 |---|---|
-| Chunk + embed RAG | Loses call/import structure |
-| CodeQL / Sourcegraph | Heavy, enterprise-oriented, awkward for agents to call |
-| Raw LSP | Built for IDE hover, not multi-hop agent reasoning |
+| Chunk + embed RAG | Loses call / import structure — similar text is not a call graph |
+| CodeQL / enterprise platforms | Heavier to install and host; agentgraph is **CLI + MCP first** for agent hosts |
+| Bare LSP | Hover / goto-oriented — not multi-hop blast-radius or agent recipes |
+| Raw SCIP export | Interop format only — agentgraph **adds** L1/L2 honesty fields (`window` / `subset_ok` / `note`) + recipes + watch |
+
+**Honesty:** this is a positioning table for agent tooling, **not** a soundness ranking. agentgraph reports indexed L0/L1 candidates (S-qualified edges only when `subset_ok`) — **not** a complete runtime graph, **not** ecosystem sound, **not** production sound. Public structure-fact scores: [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md). 5-minute cold start: [docs/onboarding.md](docs/onboarding.md).
 
 **Pipeline:** tree-sitter parse → SQLite symbol/reference store → query API for agents.
 
@@ -51,10 +56,11 @@ agentgraph graph <sym> --depth 2    # MCP: graph → offline HTML + honesty fiel
 - Onboarding kit / MCP host snippets — [docs/onboarding.md](docs/onboarding.md) · [examples/mcp-claude.json](examples/mcp-claude.json)
 - Flags, windows, recipes — [Queries](#queries) below · [docs/agent-recipes.md](docs/agent-recipes.md)
 - Workspace multi-root — [docs/workspace.md](docs/workspace.md)
-- Macro sidecar (default OFF) — [docs/macro-sidecar.md](docs/macro-sidecar.md)
+- Macro sidecar (default OFF; optional repo `macro_default` in `.agentgraph/config.toml`) — [docs/macro-sidecar.md](docs/macro-sidecar.md)
 - Sound subset / S gate — [docs/sound-subset.md](docs/sound-subset.md)
 - Noise / implementors — [docs/noise-governance.md](docs/noise-governance.md)
 - Public Agent code-change task evals — [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
+- CI blast-radius comment **demo** (non-required) — [docs/ci-blast-radius-demo.md](docs/ci-blast-radius-demo.md)
 
 ## Quick start
 

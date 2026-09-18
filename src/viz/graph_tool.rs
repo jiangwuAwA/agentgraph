@@ -37,7 +37,8 @@ pub struct GraphHtmlArgs {
     pub depth: usize,
     pub direction: GraphDirection,
     pub sound: bool,
-    pub with_macro: bool,
+    /// P2-1 tri-state: `Some(true/false)` explicit; `None` resolve repo config.
+    pub with_macro: Option<bool>,
     pub exact_only: bool,
     pub include_dynamic: bool,
     pub include_recommendation: bool,
@@ -54,7 +55,7 @@ impl Default for GraphHtmlArgs {
             depth: 3,
             direction: GraphDirection::Impact,
             sound: false,
-            with_macro: false,
+            with_macro: None,
             exact_only: false,
             include_dynamic: false,
             include_recommendation: true,
@@ -83,6 +84,10 @@ pub struct GraphHtmlPayloadInput<'a> {
     pub recommendation: Option<&'a str>,
     pub path: Option<&'a str>,
     pub note: &'a str,
+    /// P2-1: effective include_macro (alias of with_macro after gates).
+    pub include_macro: bool,
+    /// P2-1: `repo_config_if_fresh` / `repo_config_on` / refusal reason / null.
+    pub include_macro_reason: Option<&'a str>,
 }
 
 /// Build the locked MCP `graph` JSON payload from rendered HTML + honesty meta.
@@ -99,6 +104,8 @@ pub fn build_graph_html_payload(input: GraphHtmlPayloadInput<'_>) -> Value {
         recommendation,
         path,
         note,
+        include_macro,
+        include_macro_reason,
     } = input;
     let html_bytes = html.len();
     let sha256 = sha256_hex(html.as_bytes());
@@ -129,6 +136,11 @@ pub fn build_graph_html_payload(input: GraphHtmlPayloadInput<'_>) -> Value {
         "max_nodes": data.max_nodes,
         "sound": data.flags.sound,
         "with_macro": data.flags.with_macro,
+        "include_macro": include_macro,
+        "include_macro_reason": match include_macro_reason {
+            Some(r) => Value::String(r.to_string()),
+            None => Value::Null,
+        },
         "exact_only": data.flags.exact_only,
         "include_dynamic": data.flags.include_dynamic,
         "root_filter": data.root_filter.clone().map(Value::String).unwrap_or(Value::Null),
@@ -439,7 +451,22 @@ pub fn run_graph_html(
     let direction = args.direction;
     let qlim = query_limit();
 
-    if args.sound && args.with_macro {
+    // P2-1: explicit with_macro wins; None → repo/project macro_default.
+    let mut cfg_roots: Vec<PathBuf> = vec![indexer.root.clone()];
+    if let Ok(ws) = store.workspace_roots_meta() {
+        if let Some(rf_id) = rf {
+            if let Some(r) = ws.iter().find(|r| r.id == rf_id) {
+                if !r.path.is_empty() {
+                    cfg_roots.insert(0, PathBuf::from(&r.path));
+                }
+            }
+        }
+    }
+    let macro_cfg = crate::config::load_macro_default_config_for_roots(&cfg_roots);
+    let (request_macro, cfg_reason) =
+        crate::config::resolve_macro_include_request(args.with_macro, &macro_cfg);
+
+    if args.sound && args.with_macro == Some(true) {
         bail!(
             "sound is mutually exclusive with with_macro \
              (macro sidecar is not sound-certified)"
@@ -451,16 +478,6 @@ pub fn run_graph_html(
              (sound walk uses its own eligibility filter)"
         );
     }
-    if args.with_macro {
-        let roots = store.workspace_roots_meta().unwrap_or_default();
-        let multi = roots.iter().filter(|r| !r.id.is_empty()).count() > 1;
-        if multi && rf.is_none() {
-            bail!(
-                "with_macro + workspace multi-root requires a single root_id filter \
-                 (macro sidecar is per-root)"
-            );
-        }
-    }
 
     let violations = store.subset_violations_in(rf)?;
     let subset_ok = violations.is_empty();
@@ -470,8 +487,48 @@ pub fn run_graph_html(
 
     let decision = decide_graph_window(args.sound, args.auto_window, subset_ok, rf);
 
-    // Macro never under a sound walk.
-    let with_macro = args.with_macro && !decision.use_sound;
+    // Macro never under a sound walk. Auto-config is refused (not a hard error).
+    let mut include_macro_reason = cfg_reason;
+    let mut request = request_macro;
+    if request && decision.use_sound {
+        request = false;
+        include_macro_reason = Some(
+            "include_macro refused: sound window selected; macro sidecar is not sound-certified (mutually exclusive)"
+                .to_string(),
+        );
+    } else if request && !decision.use_sound {
+        if args.with_macro == Some(true) {
+            // Explicit true: keep hard multi-root error (parity with CLI).
+            let roots = store.workspace_roots_meta().unwrap_or_default();
+            let multi = roots.iter().filter(|r| !r.id.is_empty()).count() > 1;
+            if multi && rf.is_none() {
+                bail!(
+                    "with_macro + workspace multi-root requires a single root_id filter \
+                     (macro sidecar is per-root)"
+                );
+            }
+        } else if let Some(ws_reason) =
+            crate::query::recipes::refuse_macro_workspace(store, true, rf)
+        {
+            // Auto path multi-root without filter → refuse (graph still returns).
+            request = false;
+            include_macro_reason = Some(ws_reason);
+        }
+        if request {
+            let status = indexer.macro_status()?;
+            let (ok, reason) =
+                crate::query::recipes::decide_include_macro(true, Some(&status), false);
+            if !ok {
+                request = false;
+                include_macro_reason = reason;
+            } else if args.with_macro == Some(true) {
+                // Explicit CLI/MCP success keeps reason null.
+                include_macro_reason = None;
+            }
+            // Auto path keeps cfg_reason (repo_config_if_fresh / repo_config_on).
+        }
+    }
+    let with_macro = request;
 
     let filter = parse_query_flags(args.exact_only, args.include_dynamic, false);
     // Page flags: sound=true when a sound walk was used (including disabled UX).
@@ -590,5 +647,7 @@ pub fn run_graph_html(
         recommendation: recommendation.as_deref(),
         path: path.as_deref(),
         note: GRAPH_HTML_NOTE,
+        include_macro: with_macro,
+        include_macro_reason: include_macro_reason.as_deref(),
     }))
 }

@@ -143,9 +143,14 @@ pub enum Commands {
         /// Cap impact nodes
         #[arg(long, default_value_t = 100)]
         limit: usize,
-        /// Include macro sidecar only when safe (exists && !stale && !nested)
+        /// Explicitly include macro sidecar when safe (exists && !stale && !nested).
+        /// Wins over repo `macro_default` config when set.
         #[arg(long, default_value_t = false)]
         include_macro: bool,
+        /// Explicitly disable macro include for this call (wins over repo config).
+        /// Global default remains OFF when neither flag is set and no repo config opts in.
+        #[arg(long, default_value_t = false)]
+        no_include_macro: bool,
     },
     /// High-level who-calls recipe: implementors separated by default; --noisy merges
     ///
@@ -308,9 +313,13 @@ pub enum Commands {
         /// Also include DynamicCandidate edges (higher noise)
         #[arg(long, default_value_t = false)]
         include_dynamic: bool,
-        /// Union optional macro-expanded sidecar hits (MACRO badge + mapped path)
+        /// Union optional macro-expanded sidecar hits (MACRO badge + mapped path).
+        /// When omitted, repo/project `macro_default` may auto-enable if_fresh (P2-1).
         #[arg(long, default_value_t = false)]
         with_macro: bool,
+        /// Explicitly disable macro sidecar union for this graph (wins over repo config).
+        #[arg(long, default_value_t = false)]
+        no_with_macro: bool,
         /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
         #[arg(long, default_value_t = false)]
         no_macro_dedup: bool,
@@ -863,7 +872,21 @@ pub fn run(cli: Cli) -> Result<()> {
             depth,
             limit,
             include_macro,
+            no_include_macro,
         } => {
+            if include_macro && no_include_macro {
+                bail!(
+                    "--include-macro and --no-include-macro are mutually exclusive \
+                     (pick one; omit both to use repo macro_default config — global default OFF)"
+                );
+            }
+            let include_macro_cli = if include_macro {
+                Some(true)
+            } else if no_include_macro {
+                Some(false)
+            } else {
+                None
+            };
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
@@ -871,7 +894,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 symbol: name,
                 depth,
                 limit,
-                include_macro,
+                include_macro: include_macro_cli,
                 root_id: root_filter.clone(),
             };
             let payload = crate::query::recipes::run_blast_radius(
@@ -1296,6 +1319,29 @@ pub fn run(cli: Cli) -> Result<()> {
                         .or_insert(serde_json::json!(status.stale));
                     obj.entry("baseline_stale")
                         .or_insert(serde_json::json!(status.baseline_stale));
+                    // P2-1: effective repo/project macro_default + config source.
+                    let macro_cfg = crate::config::load_macro_default_config(&indexer.root);
+                    obj.insert(
+                        "macro_default".into(),
+                        serde_json::json!(macro_cfg.policy.as_str()),
+                    );
+                    obj.insert(
+                        "macro_default_source".into(),
+                        serde_json::json!(macro_cfg.source_label()),
+                    );
+                    obj.insert(
+                        "macro_default_requests_include".into(),
+                        serde_json::json!(macro_cfg.requests_include()),
+                    );
+                    obj.insert(
+                        "macro_default_note".into(),
+                        serde_json::json!(
+                            "global product default remains OFF; repo config may enable blast_radius/graph \
+                             auto-include only when a fresh non-stale non-nested sidecar exists; \
+                             CLI --include-macro / --no-include-macro win when explicit; \
+                             sound window still refuses macro (not sound-certified)"
+                        ),
+                    );
                 }
                 warn_stale_flags(status.baseline_stale, status.stale, "macro status");
                 println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -1326,6 +1372,7 @@ pub fn run(cli: Cli) -> Result<()> {
             exact_only,
             include_dynamic,
             with_macro,
+            no_with_macro,
             no_macro_dedup,
             sound,
         } => {
@@ -1333,7 +1380,20 @@ pub fn run(cli: Cli) -> Result<()> {
             store.ensure_indexed()?;
             let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
             let rf = root_filter.as_deref();
-            if sound && with_macro {
+            if with_macro && no_with_macro {
+                bail!(
+                    "--with-macro and --no-with-macro are mutually exclusive \
+                     (omit both to use repo macro_default config — global default OFF)"
+                );
+            }
+            let with_macro_cli = if with_macro {
+                Some(true)
+            } else if no_with_macro {
+                Some(false)
+            } else {
+                None
+            };
+            if sound && with_macro_cli == Some(true) {
                 bail!(
                     "--sound is mutually exclusive with --with-macro \
                      (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
@@ -1345,7 +1405,61 @@ pub fn run(cli: Cli) -> Result<()> {
                      (sound walk uses its own eligibility filter)"
                 );
             }
+            // P2-1: resolve repo macro_default when CLI is not explicit.
+            let mut cfg_roots: Vec<PathBuf> = vec![indexer.root.clone()];
+            if let Ok(ws) = store.workspace_roots_meta() {
+                if let Some(rf_id) = rf {
+                    if let Some(r) = ws.iter().find(|r| r.id == rf_id) {
+                        if !r.path.is_empty() {
+                            cfg_roots.insert(0, PathBuf::from(&r.path));
+                        }
+                    }
+                }
+            }
+            let macro_cfg = crate::config::load_macro_default_config_for_roots(&cfg_roots);
+            let (mut with_macro, cfg_reason) =
+                crate::config::resolve_macro_include_request(with_macro_cli, &macro_cfg);
+            let mut include_macro_reason = cfg_reason;
+            if sound {
+                // Auto-config may never combine with a sound walk.
+                if with_macro {
+                    with_macro = false;
+                    include_macro_reason = Some(
+                        "include_macro refused: sound window selected; macro sidecar is not sound-certified (mutually exclusive)"
+                            .into(),
+                    );
+                }
+            } else if with_macro {
+                // Health gates for auto or explicit include (sound walk already excluded).
+                let roots = store.workspace_roots_meta().unwrap_or_default();
+                let multi = roots.iter().filter(|r| !r.id.is_empty()).count() > 1;
+                if multi && rf.is_none() && with_macro_cli != Some(true) {
+                    // Auto path: refuse instead of fail-closed CLI error.
+                    with_macro = false;
+                    include_macro_reason = Some(
+                        "include_macro refused: workspace multi-root requires a single root_id filter (macro sidecar is per-root)"
+                            .into(),
+                    );
+                } else if !(multi && rf.is_none()) {
+                    let status = indexer.macro_status()?;
+                    let (ok, reason) =
+                        crate::query::recipes::decide_include_macro(true, Some(&status), false);
+                    if !ok {
+                        with_macro = false;
+                        include_macro_reason = reason;
+                    } else if with_macro_cli == Some(true) {
+                        // Explicit CLI success keeps reason null (stable key behavior).
+                        include_macro_reason = None;
+                    }
+                }
+            }
             guard_macro_workspace(&store, with_macro, rf)?;
+            if with_macro {
+                eprintln!(
+                    "note: graph include_macro=true ({}); sidecar union is optional candidates — not sound-certified",
+                    include_macro_reason.as_deref().unwrap_or("explicit CLI/MCP")
+                );
+            }
             let direction: GraphDirection = if impact {
                 GraphDirection::Impact
             } else {

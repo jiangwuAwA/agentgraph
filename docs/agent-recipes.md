@@ -9,7 +9,8 @@ Related: [onboarding.md](onboarding.md) (5-min install → MCP `blast_radius`),
 [sound-subset.md](sound-subset.md), [workspace.md](workspace.md),
 [graph-diff.md](graph-diff.md), [eval-stock-boundary.md](eval-stock-boundary.md),
 [eval-agent-tasks.md](eval-agent-tasks.md) (public code-change task scores),
-[agent-goldens.md](agent-goldens.md) (P1-3 golden suites — stable-key release gate).
+[agent-goldens.md](agent-goldens.md) (P1-3 golden suites — stable-key release gate),
+[ci-blast-radius-demo.md](ci-blast-radius-demo.md) (P2-2 CI blast-radius comment **demo**).
 
 ---
 
@@ -116,6 +117,7 @@ agentgraph who-calls <sym>
 | Dirty union | **Never** labeled `window=sound` (weakest root wins) |
 | `who-calls` behavior | Default separates implementors + demotes high-freq names; `--noisy` merges |
 | `include_macro` behavior | Only when sidecar exists && !stale && !nested; refused under sound window |
+| `include_macro` P2-1 repo config | When CLI/MCP omit the flag, repo/project `macro_default` may auto-request: primary file `.agentgraph/config.toml` (fallback `agentgraph.toml`), field `macro_default = "off"\|"if_fresh"\|"on"`; env `AGENTGRAPH_MACRO_DEFAULT` overrides file. Success auto reason: `repo_config_if_fresh` / `repo_config_on`. **Global default remains OFF** — never claim global macro on. Explicit `--include-macro` / `--no-include-macro` (MCP `include_macro`) wins over config. Sound window still refuses. See [macro-sidecar.md](macro-sidecar.md). |
 | Honesty | `note` always: not a complete runtime graph |
 
 Helpers live in `agentgraph::query::recipes` (`decide_blast_window`,
@@ -165,6 +167,7 @@ agentgraph graph <sym> --depth 3 --out graph.html   # CLI file write
 | Window | `sound=true` + `subset_ok` → `window=sound`; `sound=true` + dirty S → `window=disabled` + honest disabled HTML + `recommendation` (never labeled OK sound) |
 | `auto_window` flag | Reuses blast_radius decision: sound only when `subset_ok`; else `window=default` — never blind recall |
 | Mutex | `sound` + `with_macro` rejected (also sound vs `exact_only` / `include_dynamic`) |
+| P2-1 repo macro_default | Omitted `with_macro` resolves from repo config (`if_fresh` may auto-include a fresh sidecar; reason `repo_config_if_fresh`). Explicit `with_macro`/`include_macro` wins. Sound walk still refuses macro. Payload adds `include_macro` + `include_macro_reason`. Global default remains **OFF**. |
 | Honesty | `note` always: not a complete runtime graph; `recommendation` when `include_recommendation` is true (default) |
 
 Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
@@ -180,3 +183,35 @@ Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
   never as the recipe default. Never invent zero-miss.
 - **Macro sidecar:** optional, per-root, not sound. `callers --with-macro`
   unions candidates only after `macro status` shows `sidecar_exists=true`.
+  **P2-1:** a repo may set `.agentgraph/config.toml` `macro_default = "if_fresh"`
+  so `blast_radius` / `graph` auto-paths include a **fresh** sidecar
+  (`include_macro_reason=repo_config_if_fresh`). **Global default remains OFF**;
+  env `AGENTGRAPH_MACRO_DEFAULT` overrides the file; explicit CLI flags win.
+  Sound window still refuses macro. See [macro-sidecar.md](macro-sidecar.md).
+
+---
+
+## CI blast-radius comment demo (P2-2)
+
+Demo-only pattern — **not** a required product-quality gate and **not** a
+soundness claim. Full adaptation guide for monorepos:
+[ci-blast-radius-demo.md](ci-blast-radius-demo.md).
+
+| Piece | Path |
+|---|---|
+| Live workflow (this repo) | [`.github/workflows/blast-radius-demo.yml`](../.github/workflows/blast-radius-demo.yml) |
+| Copyable template | [`examples/ci/blast-radius.yml`](../examples/ci/blast-radius.yml) |
+| Markdown helper / local smoke | `scripts/ci_blast_radius_markdown.py` · `scripts/ci_blast_radius_demo.sh` |
+
+```text
+agentgraph --root <fixture> index --force
+agentgraph --root <fixture> blast-radius <symbol> --depth 3
+agentgraph --root <fixture> who-calls <symbol>
+# markdown → $GITHUB_STEP_SUMMARY
+# optional PR comment — soft-fail when github.token lacks write permission
+```
+
+Always echo `window` / `subset_ok` / `promise_tier` / `recommendation` /
+`note` in the comment. Do **not** install expand tooling for this demo.
+Do **not** promote a monorepo job to required without measuring noise on that
+tree first.

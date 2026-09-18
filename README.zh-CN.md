@@ -8,11 +8,16 @@
 
 不是又一个 embedding RAG。Agent 需要知道「谁在调它」「改这里会坏什么」「该读哪些文件」时，要的是**结构化事实**，不是相似文本片段。
 
-| 方案 | 问题 |
+### 定位（一句话竞争叙事）
+
+| 方案 | vs agentgraph |
 |---|---|
-| 切块 + embedding RAG | 丢失调用/导入结构 |
-| CodeQL / Sourcegraph | 过重、偏企业，Agent 不好直接调用 |
-| 裸 LSP | 为 IDE hover 设计，不适合多跳推理 |
+| 切块 + embedding RAG | 丢失调用 / 导入结构 —— 相似文本不是调用图 |
+| CodeQL / 企业级平台 | 安装与托管更重；agentgraph 以 **CLI + MCP 优先**，方便 Agent 宿主直接调用 |
+| 裸 LSP | 为 IDE hover/goto 设计 —— 不是多跳爆炸半径或 Agent 配方 |
+| Raw SCIP 导出 | 只是互通格式 —— agentgraph **补充** L1/L2 诚实字段（`window` / `subset_ok` / `note`）+ 配方 + watch |
+
+**诚实说明：** 这是 Agent 工具定位表，**不是** sound 能力排行。agentgraph 给出的是已索引的 L0/L1 候选边（仅当 `subset_ok` 时才有 S 限定的已建模边）—— **不是**完整运行时图，**不是**生态 sound，**不是** production sound。公开结构化任务分数：[docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)。5 分钟冷启动：[docs/onboarding.md](docs/onboarding.md)。
 
 **流水线：** tree-sitter 解析 → SQLite 符号/引用库 → 面向 Agent 的查询 API。
 
@@ -55,7 +60,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
 - Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
 - 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)
 - 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
-- 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
+- CI 爆炸半径注释 **demo**（非 required）—— [docs/ci-blast-radius-demo.md](docs/ci-blast-radius-demo.md)
 
 ## 快速开始
 

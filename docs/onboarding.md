@@ -276,6 +276,14 @@ Read `sound_candidates[]` / `recommendation` from `workspace status` /
 `recommendation` / `sound_candidates` — do **not** treat the answer as a
 runtime proof. Macro sidecar (`--with-macro`) stays **default OFF** and is
 **not** sound-certified; it is mutually exclusive with `--sound`.
+**P2-1 repo opt-in (not global):** a repository may set
+`.agentgraph/config.toml` → `macro_default = "if_fresh"` so
+`blast_radius` / `graph` auto-paths include macro candidates **only** when a
+fresh non-stale non-nested sidecar exists (`include_macro_reason=repo_config_if_fresh`).
+Env `AGENTGRAPH_MACRO_DEFAULT` overrides the file; CLI
+`--include-macro` / `--no-include-macro` wins when explicit.
+**The product global default remains OFF** — never assume macro is on.
+See [macro-sidecar.md](macro-sidecar.md).
 
 More: [sound-subset.md](sound-subset.md) ·
 [noise-governance.md](noise-governance.md) ·

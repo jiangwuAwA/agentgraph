@@ -204,6 +204,8 @@ fn include_recommendation_false_does_not_leak_into_html() {
         recommendation: None,
         path: None,
         note: agentgraph::viz::GRAPH_HTML_NOTE,
+        include_macro: false,
+        include_macro_reason: None,
     });
     assert!(payload["recommendation"].is_null());
     let page = payload["html"].as_str().unwrap();

@@ -240,6 +240,7 @@ DEFAULT_DOCS = [
     "docs/eval-stock-s-map.md",
     "docs/eval-agent-tasks.md",
     "docs/agent-goldens.md",
+    "docs/ci-blast-radius-demo.md",
     "docs/product-boundary-migration.md",
     "formal/TODO.md",
 ]
@@ -257,6 +258,7 @@ DEFAULT_FLAG_DOCS = [
     "docs/onboarding.md",
     "docs/agent-recipes.md",
     "docs/eval-agent-tasks.md",
+    "docs/ci-blast-radius-demo.md",
 ]
 
 

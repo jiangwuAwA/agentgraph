@@ -141,7 +141,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "blast_radius",
-                "description": "High-level blast-radius recipe (agent-friendly). Auto confidence window: sound when the selected store/root is subset_ok (S-qualified modeled edges); otherwise default Exact+Heuristic impact — never blind recall. Response always includes nodes (edge_role tagged), window (sound|default), promise_tier, subset_ok, sound_candidates[] (stable key; eligible roots first when window is default), stale (macro sidecar if relevant), include_macro + include_macro_reason, recommendation (short zh/en sentence; when window is default/disabled it names next legal scoped-sound commands e.g. impact <sym> --sound --workspace-root <id>, or honest no-eligible-root guidance — never blind --recall), note (not a complete runtime graph). include_macro=true is accepted only when macro sidecar exists && !stale && !nested; otherwise refused with a reason in the payload. Optional workspace_db / root_id filter (default off).",
+                "description": "High-level blast-radius recipe (agent-friendly). Auto confidence window: sound when the selected store/root is subset_ok (S-qualified modeled edges); otherwise default Exact+Heuristic impact — never blind recall. Response always includes nodes (edge_role tagged), window (sound|default), promise_tier, subset_ok, sound_candidates[] (stable key; eligible roots first when window is default), stale (macro sidecar if relevant), include_macro + include_macro_reason, recommendation (short zh/en sentence; when window is default/disabled it names next legal scoped-sound commands e.g. impact <sym> --sound --workspace-root <id>, or honest no-eligible-root guidance — never blind --recall), note (not a complete runtime graph). include_macro=true is accepted only when macro sidecar exists && !stale && !nested; otherwise refused with a reason in the payload. P2-1: when include_macro is omitted, repo/project macro_default (file/env) may auto-enable if_fresh (reason repo_config_if_fresh); global default remains OFF. Explicit include_macro true/false wins over config. Optional workspace_db / root_id filter (default off).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -149,7 +149,7 @@ fn tools_list() -> Value {
                         "name": {"type": "string", "description": "Alias for symbol (CLI parity)"},
                         "depth": {"type": "integer", "default": 3},
                         "limit": {"type": "integer", "default": 100},
-                        "include_macro": {"type": "boolean", "default": false, "description": "Include macro sidecar only when safe; refused with reason otherwise. Mutually exclusive with a sound window (not sound-certified)."},
+                        "include_macro": {"type": "boolean", "description": "Explicit include_macro. Omit to resolve from repo/project macro_default (P2-1; global default OFF). true/false wins over config. When true, only accepted when macro sidecar exists && !stale && !nested; refused with reason otherwise. Mutually exclusive with a sound window (not sound-certified)."},
                         "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional; multi-root)"},
                         "root_id": {"type": "string", "description": "Filter rows to this workspace root_id (optional; default = union all roots)"}
                     },
@@ -666,10 +666,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .ok_or_else(|| anyhow::anyhow!("symbol (or name) required"))?;
                 let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
                 let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
-                let include_macro = args
-                    .get("include_macro")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let include_macro = args.get("include_macro").and_then(|v| v.as_bool());
                 let (indexer, root_filter) = open_mcp_store(&root, &args)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
@@ -707,11 +704,11 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         )
                     })?;
                 let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
-                let with_macro = args
+                // P2-1: tri-state — explicit with_macro/include_macro wins; absent → repo config.
+                let with_macro_arg = args
                     .get("with_macro")
                     .or_else(|| args.get("include_macro"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                    .and_then(|v| v.as_bool());
                 let exact_only = args
                     .get("exact_only")
                     .and_then(|v| v.as_bool())
@@ -740,7 +737,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     depth,
                     direction,
                     sound,
-                    with_macro,
+                    with_macro: with_macro_arg,
                     exact_only,
                     include_dynamic,
                     include_recommendation,
@@ -908,7 +905,23 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let indexer = Indexer::new(&root)?;
                 let status = indexer.macro_status()?;
                 // P5 honesty flags already on MacroSidecarStatus (sidecar_* + baseline_stale).
-                Ok(ok_text(serde_json::to_string_pretty(&status)?))
+                let mut payload = serde_json::to_value(&status)?;
+                if let Some(obj) = payload.as_object_mut() {
+                    let macro_cfg = crate::config::load_macro_default_config(&indexer.root);
+                    obj.insert(
+                        "macro_default".into(),
+                        serde_json::json!(macro_cfg.policy.as_str()),
+                    );
+                    obj.insert(
+                        "macro_default_source".into(),
+                        serde_json::json!(macro_cfg.source_label()),
+                    );
+                    obj.insert(
+                        "macro_default_requests_include".into(),
+                        serde_json::json!(macro_cfg.requests_include()),
+                    );
+                }
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
             "macro_rebuild" => {
                 let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(true);

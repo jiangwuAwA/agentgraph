@@ -1,0 +1,106 @@
+# Copyable P2-2 template: blast-radius comment in CI (demo, not required).
+#
+# Drop this file into a monorepo as `.github/workflows/blast-radius.yml` and
+# adjust FIXTURE / SYMBOL / path filters. Full adaptation notes:
+#   docs/ci-blast-radius-demo.md
+#
+# This example is **not** wired into this repository's required CI.
+# The live demo workflow for this repo is:
+#   .github/workflows/blast-radius-demo.yml
+#
+# Commands used below are real agentgraph CLI surface:
+#   agentgraph --root <dir> index --force
+#   agentgraph --root <dir> blast-radius <symbol> --depth 3
+#   agentgraph --root <dir> who-calls <symbol>
+# Honesty fields on the payload: window / subset_ok / promise_tier /
+# recommendation / note (note = not a complete runtime graph).
+
+name: agentgraph blast-radius (example)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      # Point these at the packages you care about in YOUR monorepo.
+      - "src/**"
+      - "packages/**"
+      - "fixtures/eval-agent-goldens/clean-ts/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  blast-radius:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install agentgraph — pick ONE path:
+      # (A) build from this source tree
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --bin agentgraph
+      # (B) prebuilt release (after a v* tag exists) — preferred in a monorepo
+      #     curl -fsSL https://raw.githubusercontent.com/jiangwuAwA/agentgraph/master/install.sh | bash
+      # Do **not** install cargo-expand / nightly expand for this demo.
+
+      - name: Index + recipe query
+        id: ag
+        shell: bash
+        env:
+          # Monorepo: set to the package root (or workspace root) you index.
+          FIXTURE: fixtures/eval-agent-goldens/clean-ts
+          SYMBOL: createUser
+          WHO_SYMBOL: validateEmail
+        run: |
+          set -euo pipefail
+          AG="${GITHUB_WORKSPACE}/target/release/agentgraph"
+          if [ ! -x "$AG" ]; then
+            AG="$(command -v agentgraph)"
+          fi
+          "$AG" --root "$FIXTURE" index --force
+          "$AG" --root "$FIXTURE" blast-radius "$SYMBOL" --depth 3 > blast-radius.json
+          "$AG" --root "$FIXTURE" who-calls "$WHO_SYMBOL" > who-calls.json
+          if [ -f scripts/ci_blast_radius_markdown.py ]; then
+            python3 scripts/ci_blast_radius_markdown.py \
+              --fixture "$FIXTURE" \
+              --symbol "$SYMBOL" \
+              --who-symbol "$WHO_SYMBOL" \
+              --blast blast-radius.json \
+              --who-calls who-calls.json \
+              --command "agentgraph --root $FIXTURE index --force" \
+              --command "agentgraph --root $FIXTURE blast-radius $SYMBOL --depth 3" \
+              --command "agentgraph --root $FIXTURE who-calls $WHO_SYMBOL" \
+              --out blast-radius-summary.md
+          else
+            {
+              echo "### agentgraph blast-radius"
+              echo ""
+              echo '```json'
+              cat blast-radius.json
+              echo '```'
+            } > blast-radius-summary.md
+          fi
+          cat blast-radius-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: PR comment (soft-fail)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          # Soft-fail always: forks / missing write permission must not block PRs.
+          [ -n "${GH_TOKEN:-}" ] || { echo "no token — skip"; exit 0; }
+          [ -n "${PR_NUMBER:-}" ] || { echo "no PR number — skip"; exit 0; }
+          {
+            echo "<!-- agentgraph-blast-radius-demo -->"
+            echo "### agentgraph blast-radius (demo, non-required)"
+            echo ""
+            cat blast-radius-summary.md
+          } > pr-comment-body.md
+          gh pr comment "$PR_NUMBER" --body-file pr-comment-body.md \
+            || echo "PR comment failed — soft-fail (permission/API)."
+          exit 0

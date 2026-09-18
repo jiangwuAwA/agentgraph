@@ -1,0 +1,165 @@
+# P2-2 CI blast-radius comment demo — **demo only, not required**.
+#
+# Purpose: show how an agentgraph `blast-radius` / `who-calls` recipe payload
+# can be written to `$GITHUB_STEP_SUMMARY` and (optionally) posted as a PR
+# comment when a public fixture changes.
+#
+# Honesty: results are indexed L0/L1 candidates (S-qualified only when
+# `subset_ok`). This workflow does **not** gate product quality and does
+# **not** claim a complete runtime graph. Do not add expand / cargo-expand
+# install steps — macro sidecar remains optional and default OFF.
+#
+# Adapt for a real monorepo: docs/ci-blast-radius-demo.md
+# Template (copyable): examples/ci/blast-radius.yml
+
+name: Blast radius demo (P2-2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: Public fixture directory to index
+        required: false
+        default: fixtures/eval-agent-goldens/clean-ts
+      symbol:
+        description: Symbol for blast-radius
+        required: false
+        default: createUser
+      who_symbol:
+        description: Symbol for who-calls
+        required: false
+        default: validateEmail
+  pull_request:
+    paths:
+      - "fixtures/eval-agent-goldens/clean-ts/**"
+      - "fixtures/eval-agent-tasks/ts-nest-user-repo/**"
+      - ".github/workflows/blast-radius-demo.yml"
+      - "examples/ci/blast-radius.yml"
+      - "scripts/ci_blast_radius_markdown.py"
+
+# Demo job: contents read is enough for checkout + build.
+# pull-requests write is requested for the optional PR comment; the comment
+# step soft-fails when the token lacks permission (fork PRs, restricted repos).
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  blast-radius-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Resolve inputs
+        id: inp
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FIXTURE="fixtures/eval-agent-goldens/clean-ts"
+            SYMBOL="createUser"
+            WHO="validateEmail"
+          else
+            FIXTURE="${{ github.event.inputs.fixture }}"
+            SYMBOL="${{ github.event.inputs.symbol }}"
+            WHO="${{ github.event.inputs.who_symbol }}"
+          fi
+          if [ ! -d "$FIXTURE" ]; then
+            echo "fixture not found: $FIXTURE" >&2
+            exit 1
+          fi
+          echo "fixture=$FIXTURE" >> "$GITHUB_OUTPUT"
+          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
+          echo "who_symbol=$WHO" >> "$GITHUB_OUTPUT"
+          echo "Using fixture=$FIXTURE symbol=$SYMBOL who=$WHO"
+
+      - name: Build agentgraph (release, no expand install)
+        run: cargo build --release --bin agentgraph
+
+      - name: Index fixture + blast-radius / who-calls
+        shell: bash
+        env:
+          FIXTURE: ${{ steps.inp.outputs.fixture }}
+          SYMBOL: ${{ steps.inp.outputs.symbol }}
+          WHO: ${{ steps.inp.outputs.who_symbol }}
+        run: |
+          set -euo pipefail
+          AG="$GITHUB_WORKSPACE/target/release/agentgraph"
+          "$AG" --version
+          "$AG" --root "$FIXTURE" index --force
+          "$AG" --root "$FIXTURE" blast-radius "$SYMBOL" --depth 3 > blast-radius.json
+          "$AG" --root "$FIXTURE" who-calls "$WHO" > who-calls.json
+          echo "--- blast-radius.json head ---"
+          head -c 2000 blast-radius.json || true
+          echo ""
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          br = json.loads(Path("blast-radius.json").read_text(encoding="utf-8"))
+          for key in ("window", "subset_ok", "promise_tier", "recommendation", "note"):
+              if key not in br or br.get(key) in (None, ""):
+                  raise SystemExit(f"blast-radius payload missing {key}")
+          print("honesty keys ok:", br.get("window"), br.get("subset_ok"), br.get("promise_tier"))
+          PY
+
+      - name: Write markdown to $GITHUB_STEP_SUMMARY
+        shell: bash
+        env:
+          FIXTURE: ${{ steps.inp.outputs.fixture }}
+          SYMBOL: ${{ steps.inp.outputs.symbol }}
+          WHO: ${{ steps.inp.outputs.who_symbol }}
+        run: |
+          set -euo pipefail
+          AG_LABEL="agentgraph --root $FIXTURE"
+          python3 scripts/ci_blast_radius_markdown.py \
+            --fixture "$FIXTURE" \
+            --symbol "$SYMBOL" \
+            --who-symbol "$WHO" \
+            --blast blast-radius.json \
+            --who-calls who-calls.json \
+            --command "agentgraph --root $FIXTURE index --force" \
+            --command "agentgraph --root $FIXTURE blast-radius $SYMBOL --depth 3" \
+            --command "agentgraph --root $FIXTURE who-calls $WHO" \
+            --out blast-radius-summary.md
+          cat blast-radius-summary.md >> "$GITHUB_STEP_SUMMARY"
+          echo "summary written ($AG_LABEL)"
+
+      - name: Optional PR comment (soft-fail without permission)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          # Always keep the job green: missing token / write permission / API
+          # errors must not fail this **demo** workflow.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "No github.token — skip PR comment (soft-fail)."
+            exit 0
+          fi
+          if [ -z "${PR_NUMBER:-}" ]; then
+            echo "No pull_request.number — skip PR comment (soft-fail)."
+            exit 0
+          fi
+          {
+            echo "<!-- agentgraph-blast-radius-demo -->"
+            cat blast-radius-summary.md
+          } > pr-comment-body.md
+          if command -v gh >/dev/null 2>&1; then
+            if gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file pr-comment-body.md; then
+              echo "PR comment posted on #$PR_NUMBER"
+            else
+              echo "PR comment failed (permission/API) — soft-fail."
+            fi
+          else
+            echo "gh CLI not available — skip PR comment (soft-fail)."
+          fi
+          exit 0

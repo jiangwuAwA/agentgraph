@@ -106,12 +106,13 @@
 
 ## P2 — 增长与差异化（不挡 P0）
 
-| ID | 任务 | 说明 | 估 |
-|---|---|---|---|
+| ID | 任务 | 说明 | 估 | 状态 |
+|---|---|---|---|---|
 | **P2-1** | 仓库级 macro 默认配置 | 项目/env 打开「有 fresh sidecar 则 blast_radius 可 include」；**全局仍 OFF** | 2–3 天 |
-| **P2-2** | CI 爆炸半径注释 demo | GitHub Action 样例：PR 触发 `blast_radius` → 评论；不进 required 也可 | 2–4 天 |
-| **P2-3** | 更多 L1 规则（有 eval 才做） | 仅当 golden 提升 + 噪声可控 | 按包 |
-| **P2-4** | 对外一句话竞争叙事 | README 对比表收束：vs RAG / CodeQL / LSP / bare SCIP | 1 天 |
+| | **状态** | **done (this slice):** `.agentgraph/config.toml` / `agentgraph.toml` field `macro_default=off\|if_fresh\|on`; env `AGENTGRAPH_MACRO_DEFAULT` overrides file; CLI `--include-macro` / `--no-include-macro` wins when explicit. `if_fresh` + fresh sidecar → `include_macro=true` + `include_macro_reason=repo_config_if_fresh`. Sound/stale/nested/missing still refuse. `macro status` shows `macro_default_source`. Global default remains **OFF**. Tests: `tests/macro_default_config.rs`. | open（并行轨） |
+| **P2-2** | CI 爆炸半径注释 demo | GitHub Action 样例：PR 触发 `blast_radius` → 评论；不进 required 也可 | 2–4 天 | **done (demo slice):** `.github/workflows/blast-radius-demo.yml` + `examples/ci/blast-radius.yml` + `scripts/ci_blast_radius_markdown.py` + [ci-blast-radius-demo.md](ci-blast-radius-demo.md)。Step summary + soft-fail PR comment；无 expand install；非 required。 |
+| **P2-3** | 更多 L1 规则（有 eval 才做） | 仅当 golden 提升 + 噪声可控 | 按包 | open（eval-gated） |
+| **P2-4** | 对外一句话竞争叙事 | README 对比表收束：vs RAG / CodeQL / LSP / bare SCIP | 1 天 | **done:** README en/zh「Positioning / 定位」表（Chunk RAG / CodeQL enterprise / bare LSP / raw SCIP）+ 诚实非声称；链接 [eval-agent-tasks.md](eval-agent-tasks.md) + [onboarding.md](onboarding.md)；docs_claims 绿。 |
 
 ### 明确不做（近两个季度）
 

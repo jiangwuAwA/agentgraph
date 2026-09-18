@@ -457,6 +457,8 @@ fn unit_graph_html_payload_has_honesty_fields() {
         recommendation: Some("subset_ok: sound window over S-qualified edges"),
         path: None,
         note: agentgraph::viz::GRAPH_HTML_NOTE,
+        include_macro: false,
+        include_macro_reason: None,
     });
     assert_eq!(payload["tool"], "graph");
     assert_eq!(payload["symbol"], "createUser");
@@ -500,6 +502,8 @@ fn unit_graph_html_escapes_untrusted_symbol() {
         recommendation: Some("sound disabled"),
         path: None,
         note: agentgraph::viz::GRAPH_HTML_NOTE,
+        include_macro: false,
+        include_macro_reason: None,
     });
     // JSON field itself holds the raw symbol (JSON-safe); HTML is escaped.
     assert_eq!(payload["symbol"], evil);
@@ -520,6 +524,8 @@ fn unit_include_recommendation_omitted_when_false() {
         recommendation: None,
         path: None,
         note: agentgraph::viz::GRAPH_HTML_NOTE,
+        include_macro: false,
+        include_macro_reason: None,
     });
     assert!(payload["recommendation"].is_null());
 }

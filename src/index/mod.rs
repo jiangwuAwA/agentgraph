@@ -9,6 +9,7 @@ pub mod rules;
 pub mod store;
 pub mod subset;
 pub mod walker;
+pub mod workspace;
 
 use anyhow::Result;
 use rayon::prelude::*;
@@ -87,6 +88,16 @@ impl Indexer {
     pub fn new(root: impl AsRef<Path>) -> Result<Self> {
         let root = parser::normalize_root(&root.as_ref().canonicalize()?);
         let db_path = root.join(".agentgraph").join("index.db");
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        Ok(Self { root, db_path })
+    }
+
+    /// Indexer bound to an explicit shared SQLite path (workspace multi-root).
+    pub fn with_db_path(root: impl AsRef<Path>, db_path: impl AsRef<Path>) -> Result<Self> {
+        let root = parser::normalize_root(&root.as_ref().canonicalize()?);
+        let db_path = db_path.as_ref().to_path_buf();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -381,8 +392,16 @@ impl Indexer {
     /// Perf-plan P0: mtime/size short-circuit, parallel hash, dirty early-out,
     /// incremental sid relink. Content hash remains the source of truth when
     /// metadata mismatches.
+    ///
+    /// Classic single-root path: `root_id = ""`.
     pub fn index(&self, force: bool) -> Result<IndexStats> {
+        self.index_as(force, "")
+    }
+
+    /// Workspace multi-root: stamp rows with `root_id` and scope path ops to it.
+    pub fn index_as(&self, force: bool, root_id: &str) -> Result<IndexStats> {
         let mut store = self.open_store()?;
+        store.set_write_root(root_id);
         let t0 = std::time::Instant::now();
         let collected = walker::collect_source_files_with_stats(&self.root)?;
         let walk_ms = t0.elapsed().as_millis();
@@ -545,7 +564,7 @@ impl Indexer {
                 meta_skipped, stats.symbols, stats.references
             );
             // M4: full index (including noop) refreshes the diff baseline snapshot.
-            let _ = diff::write_index_snapshot(&self.root, &store);
+            let _ = diff::write_index_snapshot_for_root(&self.root, &store, root_id);
             return Ok(stats);
         }
 
@@ -692,7 +711,7 @@ impl Indexer {
         );
         eprintln!("resolved_symbol_id on {linked} ref(s); upgraded {upgraded} qualifier(s)");
         // M4: dual sidecar snapshot + meta.index_seq for `agentgraph diff`.
-        if let Err(e) = diff::write_index_snapshot(&self.root, &store) {
+        if let Err(e) = diff::write_index_snapshot_for_root(&self.root, &store, root_id) {
             eprintln!("warn: failed to write refs snapshot: {e:#}");
         }
         Ok(stats)

@@ -65,6 +65,8 @@ fn sample_data() -> GraphVizData {
             enclosing: Some("createUser".into()),
             resolved: Some("helper".into()),
             confidence: Confidence::Exact,
+            root_id: String::new(),
+            edge_role: None,
         },
         ImpactNode {
             name: "createUser".into(),
@@ -75,6 +77,8 @@ fn sample_data() -> GraphVizData {
             enclosing: Some("loginHandler".into()),
             resolved: Some("createUser".into()),
             confidence: Confidence::Heuristic,
+            root_id: String::new(),
+            edge_role: None,
         },
     ];
     build_impact_graph("helper", &impact, sample_flags(), 2)
@@ -121,12 +125,14 @@ fn html_escapes_script_in_symbol_and_path() {
             line: Some(1),
             origin: None,
             is_query: false,
+            role: "call",
         }],
         edges: vec![GraphEdge {
             from: "q".into(),
             to: "n1".into(),
             confidence: "exact",
             kind: "call",
+            role: "call",
         }],
         truncated: false,
         max_nodes: MAX_GRAPH_NODES,
@@ -216,6 +222,7 @@ fn node_cap_truncates_with_notice() {
         line: None,
         origin: None,
         is_query: true,
+        role: "call",
     }];
     for i in 0..(MAX_GRAPH_NODES + 40) {
         nodes.push(GraphNode {
@@ -227,6 +234,7 @@ fn node_cap_truncates_with_notice() {
             line: None,
             origin: None,
             is_query: false,
+            role: "call",
         });
     }
     let data = GraphVizData {
@@ -447,6 +455,7 @@ fn reference_record_callers_builder_renders() {
         qualifier: None,
         confidence: Confidence::Exact,
         evidence: None,
+        root_id: String::new(),
     }];
     let data = agentgraph::viz::build_callers_graph("helper", &refs, sample_flags());
     let html = render_graph_html(&data);

@@ -49,9 +49,66 @@ Earlier “p95 4.2ms / 0.21ms” figures mixed helpers or omitted hot — **inva
 - First schema prepare after `open` is amortized on cold path (per-sample open cost is included in cold timing — conservative).
 - CLI process-spawn timing is **not** query latency — use `bench-query`.
 
+## M4 diff / S-recert budgets (Track M4-P)
+
+**Scope:** product paths that are **not** the callers/impact query SLO above —
+CLI `agentgraph diff` wall-clock, and dirty-file S re-certification after
+watch / path-scoped reindex. These are **SLO-style soft budgets** on a named
+fixture + machine, **not** production guarantees.
+
+**Fixture:** 200 synthetic TypeScript files (same shape as
+`scripts/gen_fixture.ps1 -N 200`: `pkg*/f*.ts` with `helperN` / `mainN`).
+**Machine for the numbers below:** Windows 11 10.0.26200, x86_64,
+Intel64 Family 6 Model 158, 8 logical CPUs, release build (LTO). Debug CI
+runners are slower; the test asserts **loose** ceilings only.
+
+### Budgets + this machine
+
+| Path | Loose CI budget | This machine (release, n=200) |
+|---|---:|---|
+| CLI `diff` cold (1st process after index; **process spawn included**) | **< 2s** | 201 ms |
+| CLI `diff` warm (20 samples, process spawn included) | **p95 < 2s** | p50 194 ms / **p95 214 ms** / max 226 ms |
+| In-process `run_diff` warm (no CLI spawn) | record only | p50 **6.3 ms** / p95 **9.7 ms** |
+| S re-cert `refresh_subset_for_paths` (dirty paths) | **< 500 ms** for n≤10 | n=1 **0.95 ms** / n=5 **4.4 ms** / n=10 **7.3 ms** |
+| `index_paths` dirty end-to-end (extract + subset meta + recert hook) | **< 2s** for n≤10 | n=1 **22 ms** / n=5 **26 ms** / n=10 **27 ms** |
+| Full-corpus `scan_subset` (what full `index` pays for every file) | smoke only | n=200 **75 ms** |
+
+**Reading the table honestly:**
+
+- CLI `diff` wall-clock is dominated by **process start** (image load, AV,
+  open store + read snapshot). In-process `run_diff` is the algorithm cost
+  (~6–10 ms warm on this fixture). Do **not** present CLI wall-clock as
+  “graph-diff latency” without saying spawn is included.
+- Dirty S re-cert is **per dirty path**, not a full-corpus rescan. On this
+  fixture, `refresh_subset_for_paths` on 10 files is ~10× cheaper than a full
+  200-file `scan_subset`. Full `index` still runs the corpus-wide scan.
+- These numbers are **fixture + machine local**. They are not “p95 always
+  &lt; X ms on production.” Synthetic files are small and uniform; real repos
+  have larger ASTs, more languages, and cold antivirus paths.
+
+### Reproduce
+
+```bash
+# soft gate (loose ceilings + prints p50/p95; writes target/perf_m4_diff_bench.md)
+cargo test --release --test perf_m4_diff -- --nocapture
+cargo test --test perf_m4_diff -- --nocapture   # debug CI profile
+
+# manual CLI path
+powershell -File scripts/gen_fixture.ps1 -N 200
+agentgraph --root <fixture> index --force
+agentgraph --root <fixture> diff                 # wall-clock includes process spawn
+# dirty a few files, then path-scoped reindex (watch / programmatic index_paths)
+agentgraph --root <fixture> subset               # reads stored violations (not a rescan)
+```
+
+CI test: `tests/perf_m4_diff.rs`. Budgets asserted there: CLI `diff` cold/warm
+p95 &lt; 2s; `refresh_subset_for_paths` max &lt; 500 ms; `index_paths` dirty max
+&lt; 2s. Full-corpus scan is smoke-only (&lt; 30s).
+
 ## Related
 
 - Index incremental SLO: [perf-plan.md](perf-plan.md)
 - L2 S-sound: [sound-subset.md](sound-subset.md)
+- Indexed-edge diff semantics: [graph-diff.md](graph-diff.md)
 - mtime escape hatch: `AGENTGRAPH_TRUST_MTIME=0` forces content-hash every file.
 

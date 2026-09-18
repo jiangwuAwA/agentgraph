@@ -140,6 +140,40 @@ Also clean and useful: `auth`, `trading`, `pipeline`, `execution-traits`, `commo
 
 **Do not treat Default `callers <std-ish name>` as a call graph.** Prefer `--exact-only` or qualified impact. L1 is **implementor / registration candidates**, not a rewrite of L0.
 
+### Noise governance after L1 cut (query-time separation + high-freq demote)
+
+Same private store; **no store rewrite** — default `callers` now separates
+implementors and caps high-frequency names (docs/noise-governance.md).
+
+| name | default payload | `callers[]` | `implementors[]` | `implementor_count` | truncated |
+|---|---|---:|---:|---:|---|
+| `fmt` | wrapped object | 40 (Exact call/import + registration) | **20** (cap) | **75** | true |
+| `drop` | wrapped object | 50 | **20** | **37** | true |
+| `default` | wrapped object | 50 | **20** | **48** | true |
+| `fmt --exact-only` | plain array | 40 | — | 0 | — |
+
+Reading after the cut:
+
+- Default is **no longer a 75-row mixed implementor flood** — implementors live
+  in a separate `implementors[]` section with `edge_role=implementor`.
+- High-frequency names (`fmt`/`drop`/`default`) cap implementors at 20 +
+  `implementors_truncated=true` while keeping `implementor_count` honest.
+- Exact user/import rows stay in `callers[]` and are **not dropped**.
+- `--include-implementors` restores merge-all (old noisy shape + role tags).
+- Store still holds every edge; `impact` still expands implementors for blast
+  radius (rows tagged `edge_role`).
+
+Reproduce (operator, private corpus):
+
+```powershell
+cargo run -- --root D:\projects\eval-corpus\stock-trading-app callers fmt
+cargo run -- --root D:\projects\eval-corpus\stock-trading-app callers fmt --exact-only
+cargo run -- --root D:\projects\eval-corpus\stock-trading-app callers fmt --include-implementors
+```
+
+Public fixture regression: `tests/noise_roles.rs`.
+
+
 ### What L1 did **not** invent
 
 - Pure direct-call symbols (`decide`, `evolve`, `normalize_freq`, `last_return`, `registered_strategies`) stay L0-complete.

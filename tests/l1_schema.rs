@@ -208,6 +208,7 @@ fn reference_record_serializes_confidence() {
             rule_id: "ts.di.register".into(),
             snippet: "x".into(),
         }),
+        root_id: String::new(),
     };
     let v = serde_json::to_value(&r).unwrap();
     assert_eq!(v["confidence"], "heuristic");

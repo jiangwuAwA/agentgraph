@@ -20,9 +20,27 @@ pub struct Cli {
     /// Project root to index (defaults to cwd)
     #[arg(long, global = true)]
     pub root: Option<PathBuf>,
+    /// Workspace manifest JSON: `{ "roots": [{"id","path"},…] }` or array of paths.
+    /// Shared store defaults to `<manifest_dir>/.agentgraph/index.db`.
+    #[arg(long, global = true)]
+    pub workspace: Option<PathBuf>,
+    /// Workspace project root (repeatable). On `index`: roots to ingest.
+    /// On queries: filter rows to that `root_id`.
+    #[arg(long, global = true)]
+    pub workspace_root: Vec<PathBuf>,
+    /// Explicit shared workspace SQLite path (overrides manifest/first-root defaults).
+    #[arg(long, global = true)]
+    pub workspace_db: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: Commands,
+}
+
+/// `agentgraph workspace …` (Track M4-W multi-root status).
+#[derive(Subcommand, Debug)]
+pub enum WorkspaceCmd {
+    /// Print per-root workspace index status (root_id, counts, subset violations)
+    Status,
 }
 
 /// Optional P2 macro-expanded sidecar (CLI default OFF). Track M1: path map,
@@ -41,7 +59,8 @@ pub enum MacroCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Build or refresh the local index (incremental by content hash)
+    /// Build or refresh the local index (incremental by content hash).
+    /// Multi-root: `index --workspace <manifest.json>` or repeated `--workspace-root <dir>`.
     Index {
         /// Re-parse every file even if unchanged
         #[arg(long)]
@@ -50,6 +69,11 @@ pub enum Commands {
         /// `.agentgraph/index.macro.db` (does not replace the main index)
         #[arg(long)]
         macro_expanded_root: Option<PathBuf>,
+    },
+    /// Workspace multi-root commands (single SQLite store + root_id)
+    Workspace {
+        #[command(subcommand)]
+        command: WorkspaceCmd,
     },
     /// Show index statistics
     Stats,
@@ -90,6 +114,16 @@ pub enum Commands {
         /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
         #[arg(long, default_value_t = false)]
         no_macro_dedup: bool,
+        /// Noise governance: merge implementor edges into the callers array
+        /// (old noisy default). Mutually exclusive with --implementors-only.
+        /// Default (without this flag) separates `{callers, implementors}` when
+        /// any implementor is present; plain array when none.
+        #[arg(long, default_value_t = false)]
+        include_implementors: bool,
+        /// Noise governance: return only implementor/registration-implementor
+        /// edges (trait/interface impls). Mutually exclusive with --include-implementors.
+        #[arg(long, default_value_t = false)]
+        implementors_only: bool,
     },
     /// Blast radius: who transitively depends on this symbol
     Impact {
@@ -264,40 +298,14 @@ impl From<GraphDirArg> for GraphDirection {
     }
 }
 
-/// Build main callers rows as JSON (`at=path:line`, no origin tag).
+/// Build main callers rows as JSON (`at=path:line` + `edge_role`).
 fn main_callers_json(hits: &[crate::model::ReferenceRecord]) -> Vec<serde_json::Value> {
-    hits.iter()
-        .map(|r| {
-            let mut v = serde_json::to_value(r).unwrap_or_default();
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert(
-                    "at".into(),
-                    serde_json::json!(format!("{}:{}", r.path, r.line)),
-                );
-            }
-            v
-        })
-        .collect()
+    hits.iter().map(|r| r.to_query_json()).collect()
 }
 
 /// Build main impact rows as JSON (`at=path:line`).
 fn main_impact_json(hits: &[crate::model::ImpactNode]) -> Vec<serde_json::Value> {
-    hits.iter()
-        .map(|n| {
-            let mut v = serde_json::to_value(n).unwrap_or_default();
-            if let Some(obj) = v.as_object_mut() {
-                obj.insert(
-                    "at".into(),
-                    serde_json::json!(format!("{}:{}", n.path, r_line(n))),
-                );
-            }
-            v
-        })
-        .collect()
-}
-
-fn r_line(n: &crate::model::ImpactNode) -> usize {
-    n.line
+    hits.iter().map(|n| n.to_query_json()).collect()
 }
 
 /// Extract sidecar union rows from a with-macro payload (array or wrapped object).
@@ -310,18 +318,106 @@ pub fn union_rows_payload(v: &serde_json::Value) -> Option<&serde_json::Value> {
     }
 }
 
+/// Resolve which store the CLI should open for this invocation.
+fn resolve_cli_db(
+    root: &std::path::Path,
+    workspace: Option<&PathBuf>,
+    workspace_db: Option<&PathBuf>,
+    workspace_root: &[PathBuf],
+) -> Result<PathBuf> {
+    crate::index::workspace::resolve_db_path(
+        workspace.map(|p| p.as_path()),
+        workspace_db.map(|p| p.as_path()),
+        workspace_root,
+        root,
+    )
+}
+
+/// Root_id filter for queries (empty vec → union all roots, rows still tagged).
+fn resolve_query_root_filter(
+    store: &crate::index::store::Store,
+    workspace_root: &[PathBuf],
+) -> Result<Option<String>> {
+    if workspace_root.is_empty() {
+        return Ok(None);
+    }
+    let ids = crate::index::workspace::resolve_filter_root_ids(store, workspace_root)?;
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    if ids.len() == 1 {
+        return Ok(Some(ids.into_iter().next().unwrap()));
+    }
+    // Multiple roots selected → union (no SQL filter); rows carry root_id.
+    Ok(None)
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let root = match cli.root {
         Some(r) => r,
         None => std::env::current_dir()?,
     };
-    let indexer = Indexer::new(&root)?;
+    let workspace_flag = cli.workspace.clone();
+    let workspace_roots = cli.workspace_root.clone();
+    let workspace_db_flag = cli.workspace_db.clone();
+    let workspace_mode =
+        workspace_flag.is_some() || workspace_db_flag.is_some() || !workspace_roots.is_empty();
+
+    // Workspace index/status/queries open the **shared** store, not --root/.agentgraph
+    // (unless --root is the only handle and no workspace flags are set).
+    let db_path = resolve_cli_db(
+        &root,
+        workspace_flag.as_ref(),
+        workspace_db_flag.as_ref(),
+        &workspace_roots,
+    )?;
+    let indexer = {
+        let mut ix = Indexer::new(&root)?;
+        if workspace_mode {
+            ix.db_path = db_path.clone();
+        }
+        ix
+    };
 
     match cli.command {
+        Commands::Workspace { command } => match command {
+            WorkspaceCmd::Status => {
+                let db = if workspace_mode {
+                    db_path.clone()
+                } else {
+                    indexer.db_path.clone()
+                };
+                let status = crate::index::workspace::workspace_status(&db)?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            }
+        },
         Commands::Index {
             force,
             macro_expanded_root,
         } => {
+            // Multi-root workspace index path (M4-W).
+            // Trigger: --workspace manifest and/or any --workspace-root.
+            if workspace_flag.is_some() || !workspace_roots.is_empty() {
+                if macro_expanded_root.is_some() {
+                    bail!(
+                        "index --workspace / --workspace-root cannot be combined with --macro-expanded-root                          (macro sidecar is per-root; index each root separately for sidecars)"
+                    );
+                }
+                let roots = if let Some(manifest) = workspace_flag.as_ref() {
+                    crate::index::workspace::parse_manifest(manifest)?
+                } else {
+                    crate::index::workspace::roots_from_dirs(&workspace_roots)?
+                };
+                let (roots, warnings) =
+                    crate::index::workspace::finalize_roots_with_warnings(roots)?;
+                for w in &warnings {
+                    eprintln!("warn: {w}");
+                }
+                let result =
+                    crate::index::workspace::index_workspace(&roots, &db_path, force, &warnings)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                return Ok(());
+            }
             if let Some(exp) = macro_expanded_root {
                 // Validate nesting BEFORE main index — a nested expanded tree would
                 // otherwise be ingested by the main walker in the same command.
@@ -343,20 +439,31 @@ pub fn run(cli: Cli) -> Result<()> {
             }
         }
         Commands::Stats => {
-            let stats = indexer.stats()?;
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let mut stats = store.stats(&indexer.root.to_string_lossy())?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            if let Some(rid) = &root_filter {
+                if let Some(br) = stats.by_root.iter().find(|b| &b.root_id == rid) {
+                    stats.files = br.files;
+                    stats.symbols = br.symbols;
+                    stats.references = br.references;
+                }
+                stats.root = format!("{}#{}", stats.root, rid);
+            }
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Commands::Find { name, limit, fuzzy } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rf = root_filter.as_deref();
             let hits = if fuzzy {
-                // Explicit --fuzzy: substring search only.
-                store.find_symbol_fuzzy(&name, limit)?
+                store.find_symbol_fuzzy_in(&name, limit, rf)?
             } else {
-                // Exact first; if empty, automatic fuzzy fallback with a stderr note.
-                let exact = store.find_symbol_exact(&name, limit)?;
+                let exact = store.find_symbol_exact_in(&name, limit, rf)?;
                 if exact.is_empty() {
-                    let fuzzy_hits = store.find_symbol_fuzzy(&name, limit)?;
+                    let fuzzy_hits = store.find_symbol_fuzzy_in(&name, limit, rf)?;
                     if !fuzzy_hits.is_empty() {
                         eprintln!(
                             "note: no exact match for '{name}'; showing fuzzy results (pass --fuzzy to skip exact)"
@@ -381,9 +488,18 @@ pub fn run(cli: Cli) -> Result<()> {
             sound,
             with_macro,
             no_macro_dedup,
+            include_implementors,
+            implementors_only,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rf = root_filter.as_deref();
+            let role_mode = crate::query::parse_callers_role_mode(
+                exact_only,
+                include_implementors,
+                implementors_only,
+            )?;
             if sound && with_macro {
                 bail!(
                     "--sound is mutually exclusive with --with-macro \
@@ -397,24 +513,19 @@ pub fn run(cli: Cli) -> Result<()> {
                          (sound walk uses its own eligibility filter)"
                     );
                 }
-                let (hits, violations) = store.callers_sound(&name, limit)?;
+                if include_implementors || implementors_only {
+                    bail!(
+                        "--sound is mutually exclusive with --include-implementors / --implementors-only \
+                         (sound walk uses its own eligibility filter; roles are tagged on impact/HTML)"
+                    );
+                }
+                let (hits, violations) = store.callers_sound_in(&name, limit, rf)?;
                 let subset_ok = violations.is_empty();
                 let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
                 let (promise_tier, promise) =
                     crate::index::subset::select_sound_promise(subset_ok, &languages);
-                let mapped: Vec<serde_json::Value> = hits
-                    .into_iter()
-                    .map(|r| {
-                        let mut v = serde_json::to_value(&r).unwrap_or_default();
-                        if let Some(obj) = v.as_object_mut() {
-                            obj.insert(
-                                "at".into(),
-                                serde_json::json!(format!("{}:{}", r.path, r.line)),
-                            );
-                        }
-                        v
-                    })
-                    .collect();
+                let mapped: Vec<serde_json::Value> =
+                    hits.iter().map(|r| r.to_query_json()).collect();
                 // S-qualified modeled edges; disabled when S violated.
                 // Promise tier is language-aware (AST vs lexical v1 vs mixed).
                 let payload = serde_json::json!({
@@ -429,15 +540,22 @@ pub fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 return Ok(());
             }
-            let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
-            let hits = q.callers_filtered(&name, limit, filter)?;
+            // Widened fetch so role partition does not starve Exact calls.
+            let hits = store.callers_for_roles(&name, limit, filter, rf)?;
+            let role_payload =
+                crate::query::build_callers_payload(&name, hits.clone(), limit, role_mode);
             let main_rows = main_callers_json(&hits);
 
             // M1: --exact-only --with-macro → ignore sidecar (spec §1.4).
             let ignore_sidecar = exact_only;
             if with_macro && ignore_sidecar {
-                println!("{}", serde_json::to_string_pretty(&main_rows)?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&crate::query::build_callers_payload(
+                        &name, hits, limit, role_mode,
+                    ))?
+                );
                 return Ok(());
             }
             if with_macro {
@@ -462,6 +580,7 @@ pub fn run(cli: Cli) -> Result<()> {
                         .clone()
                         .map(PathBuf::from)
                         .unwrap_or_else(|| indexer.root.clone());
+                    // Union against role-tagged main rows (edge_role + at).
                     let (rows, stats) = union_callers(
                         main_rows,
                         &side_hits,
@@ -478,14 +597,15 @@ pub fn run(cli: Cli) -> Result<()> {
                         "origin": "macro_expanded",
                         "path_map_present": path_map_present,
                         "dedup_stats": stats,
-                        "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup",
+                        "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup; main rows carry edge_role",
                     });
                     println!("{}", serde_json::to_string_pretty(&payload)?);
                     return Ok(());
                 }
-                // Absent sidecar → empty union (graceful; plain array, no error).
+                // Absent sidecar → fall through to role payload.
             }
-            println!("{}", serde_json::to_string_pretty(&main_rows)?);
+            println!("{}", serde_json::to_string_pretty(&role_payload)?);
+            let _ = main_rows; // used above when with_macro sidecar present
         }
         Commands::Impact {
             name,
@@ -500,6 +620,8 @@ pub fn run(cli: Cli) -> Result<()> {
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rf = root_filter.as_deref();
             if sound && with_macro {
                 bail!(
                     "--sound is mutually exclusive with --with-macro \
@@ -512,7 +634,7 @@ pub fn run(cli: Cli) -> Result<()> {
                         "--sound is mutually exclusive with --exact-only / --include-dynamic / --recall"
                     );
                 }
-                let (hits, violations) = store.impact_sound(&name, depth, limit)?;
+                let (hits, violations) = store.impact_sound_in(&name, depth, limit, rf)?;
                 let subset_ok = violations.is_empty();
                 let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
                 let (promise_tier, promise) =
@@ -529,9 +651,8 @@ pub fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 return Ok(());
             }
-            let q = Query::new(&store);
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
-            let hits = q.impact_filtered(&name, depth, limit, filter)?;
+            let hits = store.impact_filtered_in(&name, depth, limit, filter, rf)?;
 
             let ignore_sidecar = exact_only;
             if with_macro && ignore_sidecar {
@@ -671,10 +792,24 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Subset => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            let violations = store.subset_violations()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rf = root_filter.as_deref();
+            let violations = store.subset_violations_in(rf)?;
             let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
             let (promise_tier, promise) =
                 crate::index::subset::select_sound_promise(violations.is_empty(), &languages);
+            let per_root: Vec<serde_json::Value> = store
+                .root_status_rows()?
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "root_id": r.id,
+                        "path": r.path,
+                        "subset_ok": r.subset_violations == 0,
+                        "subset_violations": r.subset_violations,
+                    })
+                })
+                .collect();
             let payload = serde_json::json!({
                 "in_subset": violations.is_empty(),
                 "violation_count": violations.len(),
@@ -682,7 +817,9 @@ pub fn run(cli: Cli) -> Result<()> {
                 "promise_tier": promise_tier.as_str(),
                 "promise": promise,
                 "promise_languages": languages,
-                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1)",
+                "root_id": root_filter,
+                "by_root": if per_root.is_empty() { serde_json::Value::Null } else { serde_json::json!(per_root) },
+                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1); workspace union subset_ok = weakest selected root",
             });
             println!("{}", serde_json::to_string_pretty(&payload)?);
             if !violations.is_empty() {
@@ -697,19 +834,31 @@ pub fn run(cli: Cli) -> Result<()> {
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            let d = crate::index::diff::run_diff(
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rid = root_filter.clone().unwrap_or_default();
+            let d = crate::index::diff::run_diff_for_root(
                 &indexer.root,
                 &store,
                 exact_only,
                 limit,
                 snapshot.as_deref(),
+                &rid,
             )?;
             if write_snapshot {
-                let snap = crate::index::diff::write_baseline_snapshot(&indexer.root, &store)?;
+                let snap = crate::index::diff::write_baseline_snapshot_for_root(
+                    &indexer.root,
+                    &store,
+                    &rid,
+                )?;
                 eprintln!(
-                    "wrote baseline snapshot ({} edges, index_seq={})",
+                    "wrote baseline snapshot ({} edges, index_seq={}, root_id={})",
                     snap.edges.len(),
-                    snap.index_seq
+                    snap.index_seq,
+                    if rid.is_empty() {
+                        "(all)".to_string()
+                    } else {
+                        rid.clone()
+                    }
                 );
             }
             println!("{}", serde_json::to_string_pretty(&d)?);

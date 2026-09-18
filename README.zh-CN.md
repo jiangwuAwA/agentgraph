@@ -45,7 +45,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 | 命令 | 用途 |
 |---|---|
 | `find` | 符号定义（精确；`--fuzzy` 为 LIKE 模糊） |
-| `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`） |
+| `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`、**`edge_role`**）。默认在存在 implementor 时返回 `{callers, implementors, …}` 分离噪声；高频名 demote —— [docs/noise-governance.md](docs/noise-governance.md) |
 | `impact` | 真 BFS 爆炸半径（默认 Exact+Heuristic） |
 | `graph` | 离线自包含 HTML 代码图；`--sound` 仅渲染 sound-eligible 边并展示 `subset_ok`/`promise_tier` —— 见 [docs/graph-html.md](docs/graph-html.md) |
 | `diff` | 相对 `index` 时写入的快照基线，做**已索引边集合差**（非运行时调用图 diff）—— 见 [docs/graph-diff.md](docs/graph-diff.md) |
@@ -54,7 +54,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 
 `callers` / `impact`（以及 MCP 工具）的 confidence 窗口：
 
-- 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
+- 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）。**噪声治理：** 行内带 `edge_role`（`call`|`implementor`|`registration`|`dynamic`）；存在 implementor 时 `callers` 返回 `{callers, implementors, implementor_count, implementors_truncated, truncated, note}`（零 implementor 时仍为纯数组）。`--include-implementors` 合并；`--implementors-only` 仅实现边；高频名（`fmt`/`drop`/`clone`/…）implementor 截断到 20。存储保留全部边；`impact` 仍展开 implementor（已打标）。见 [docs/noise-governance.md](docs/noise-governance.md)。
 - `--exact-only`：仅 L0 语法确定边
 - `--include-dynamic` / **`--recall`**：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
 - `--sound`（L2，S 限定）：在 `subset_ok` 时对**已建模**引用边（直接调用、字面量键、**emit↔on 派发**、DI/路由注册）做 over-approx；注册 ≠ HTTP ServeHTTP。见 [docs/sound-subset.md](docs/sound-subset.md)。查询 p95：[docs/eval-query-p95.md](docs/eval-query-p95.md)。**承诺档位：** 已交付语言（js/ts/tsx/jsx/python/go/rust）均为 **`ast_modeled`**（tree-sitter AST S 门，工程子集，**不是**生态 sound）。仅类型位置的 `typeof Function` 留在 S 内；对 `Function`/`eval` 的**值使用**会离开 S。

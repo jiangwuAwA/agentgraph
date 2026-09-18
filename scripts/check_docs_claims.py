@@ -228,6 +228,7 @@ DEFAULT_DOCS = [
     "docs/macro-sidecar.md",
     "docs/graph-html.md",
     "docs/graph-diff.md",
+    "docs/workspace.md",
     "docs/eval-l1.md",
     "docs/eval-l2.md",
     "docs/eval-large-repo.md",
@@ -246,6 +247,7 @@ DEFAULT_FLAG_DOCS = [
     "AGENTS.md",
     "docs/graph-html.md",
     "docs/graph-diff.md",
+    "docs/workspace.md",
     "docs/macro-sidecar.md",
     "docs/sound-subset.md",
 ]
@@ -453,9 +455,21 @@ def parse_clap_cli(cli_src: str) -> Tuple[Set[str], Set[str]]:
             if "macro" in commands or True:
                 commands.add(f"macro {sub}")
 
+    ws_body = enum_body(cli_src, "WorkspaceCmd")
+    if ws_body:
+        for m in re.finditer(
+            r"(?m)^[ \t]{2,8}([A-Z][A-Za-z0-9]*)\s*(?:\{|,|$)",
+            ws_body,
+        ):
+            sub = _kebab(m.group(1))
+            commands.add(sub)
+            commands.add(f"workspace {sub}")
+
     # Ensure compound forms commonly documented
     commands.add("macro")
     commands.add("macro status")
+    commands.add("workspace")
+    commands.add("workspace status")
     return flags, commands
 
 
@@ -465,7 +479,7 @@ _AGENTGRAPH_CMD_RE = re.compile(
 )
 _TABLE_CMD_RE = re.compile(r"(?m)^\|\s*`([a-z][a-z0-9-]*(?:\s+[a-z][a-z0-9-]*)?)`\s*\|")
 _BACKTICK_CMD_RE = re.compile(
-    r"`(macro status|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp|diff)`"
+    r"`(macro status|workspace status|workspace|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp|diff)`"
 )
 
 
@@ -492,7 +506,7 @@ def extract_doc_cli_mentions(text: str) -> Tuple[Set[str], Set[str]]:
                     # might be value for --root / --out / --depth
                     flag = tok[2:].lower()
                     flags.add(flag)
-                    if flag in {"root", "out", "depth", "limit", "interval", "format", "prefix", "samples", "direction"}:
+                    if flag in {"root", "out", "depth", "limit", "interval", "format", "prefix", "samples", "direction", "workspace", "workspace-root", "workspace-db"}:
                         i += 2
                         continue
                 else:
@@ -507,10 +521,15 @@ def extract_doc_cli_mentions(text: str) -> Tuple[Set[str], Set[str]]:
                 commands.add(f"macro {tokens[i + 1].lower()}")
                 i += 2
                 continue
+            if cmd == "workspace" and i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                commands.add("workspace")
+                commands.add(f"workspace {tokens[i + 1].lower()}")
+                i += 2
+                continue
             if cmd in {
                 "index", "stats", "find", "callers", "impact", "related",
                 "importers", "enrich", "watch", "subset", "export", "mcp",
-                "bench-query", "macro", "graph", "diff",
+                "bench-query", "macro", "graph", "diff", "workspace",
             }:
                 commands.add(cmd)
             i += 1

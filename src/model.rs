@@ -139,6 +139,9 @@ pub struct SymbolRecord {
     pub end_col: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_type: Option<String>,
+    /// Workspace multi-root id. Empty for classic single-root stores.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
 }
 
 /// How sure we are that a ref edge is real.
@@ -209,6 +212,131 @@ pub struct Evidence {
     pub snippet: String,
 }
 
+/// Query-time edge role for noise governance (L1 callers vs implementors).
+///
+/// Classified from `confidence` + `evidence.rule_id` — **no DB migration**.
+/// Store keeps all edges; `impact` still expands implementor edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeRole {
+    /// Default Exact / unknown-reference edge (direct call / import / define).
+    #[default]
+    Call,
+    /// Trait / interface implementor side (`impl Trait for Type`, dyn method).
+    Implementor,
+    /// DI / Nest / inventory / linkme / framework registration site.
+    Registration,
+    /// DynamicCandidate / reflection / string-key family.
+    Dynamic,
+}
+
+impl EdgeRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EdgeRole::Call => "call",
+            EdgeRole::Implementor => "implementor",
+            EdgeRole::Registration => "registration",
+            EdgeRole::Dynamic => "dynamic",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "implementor" => EdgeRole::Implementor,
+            "registration" => EdgeRole::Registration,
+            "dynamic" => EdgeRole::Dynamic,
+            _ => EdgeRole::Call,
+        }
+    }
+}
+
+/// L1 rule ids that emit **implementor** edges (not call sites).
+const IMPLEMENTOR_RULES: &[&str] = &[
+    "rs.di.impl_trait",
+    "rs.di.dyn_trait_method",
+    "go.di.interface_impl",
+    "go.di.interface_impl_v2",
+    "go.di.interface_assert",
+];
+
+/// L1 rule ids that emit **registration** / inventory / nest / framework edges.
+const REGISTRATION_RULES: &[&str] = &[
+    "ts.di.register",
+    "ts.di.bind",
+    "ts.di.to",
+    "ts.di.decorator",
+    "ts.nest.module_providers",
+    "ts.nest.module_controllers",
+    "ts.nest.module_imports",
+    "ts.nest.module_exports",
+    "ts.nest.ctor_inject",
+    "ts.event.subscribe",
+    "ts.event.dispatch",
+    "ts.framework.register",
+    "py.di.depends",
+    "py.di.inject",
+    "py.di.entry_points",
+    "py.framework.init_subclass",
+    "go.di.handler_map",
+    "go.di.route_register",
+    "rs.di.inventory_submit",
+    "rs.di.linkme_distributed_slice",
+];
+
+/// Classify a ref edge into an [`EdgeRole`] at query time.
+///
+/// Mapping table (locked by `tests/noise_roles.rs`):
+/// - implementor: `rs.di.impl_trait`, `rs.di.dyn_trait_method`, `go.di.interface_impl*`
+/// - registration: nest / inventory / linkme / framework / DI register
+/// - dynamic: any DynamicCandidate confidence
+/// - call: default Exact (and unknown Heuristic ids — still references, not implementors)
+pub fn edge_role_for(confidence: Confidence, rule_id: Option<&str>) -> EdgeRole {
+    if matches!(confidence, Confidence::DynamicCandidate) {
+        return EdgeRole::Dynamic;
+    }
+    if let Some(rid) = rule_id {
+        if IMPLEMENTOR_RULES.contains(&rid) {
+            return EdgeRole::Implementor;
+        }
+        if REGISTRATION_RULES.contains(&rid) {
+            return EdgeRole::Registration;
+        }
+    }
+    EdgeRole::Call
+}
+
+/// High-frequency method names that flood `callers` via implementor edges
+/// (Display/Debug/Clone/Drop/… + generic service names). Constant for now;
+/// configurable list is backlog (docs/noise-governance.md).
+pub const HIGH_FREQ_NAMES: &[&str] = &[
+    "fmt",
+    "debug",
+    "clone",
+    "drop",
+    "default",
+    "eq",
+    "hash",
+    "new",
+    "into",
+    "from",
+    "as_ref",
+    "to_string",
+    "get",
+    "set",
+    "call",
+    "execute",
+    "run",
+    "handle",
+];
+
+/// Cap on the `implementors` section for [`HIGH_FREQ_NAMES`] under default `callers`.
+pub const HIGH_FREQ_IMPLEMENTOR_CAP: usize = 20;
+
+/// True when `name` is in the high-frequency demote set (ASCII case-insensitive).
+pub fn is_high_freq_name(name: &str) -> bool {
+    HIGH_FREQ_NAMES.iter().any(|n| n.eq_ignore_ascii_case(name))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferenceRecord {
     pub name: String,
@@ -226,6 +354,35 @@ pub struct ReferenceRecord {
     pub confidence: Confidence,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<Evidence>,
+    /// Workspace multi-root id. Empty for classic single-root stores.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
+}
+
+impl ReferenceRecord {
+    /// Query-time edge role (not persisted; derived from confidence + evidence).
+    pub fn edge_role(&self) -> EdgeRole {
+        edge_role_for(
+            self.confidence,
+            self.evidence.as_ref().map(|e| e.rule_id.as_str()),
+        )
+    }
+
+    /// JSON row for callers/impact payloads (`at=path:line` + `edge_role`).
+    pub fn to_query_json(&self) -> serde_json::Value {
+        let mut v = serde_json::to_value(self).unwrap_or_default();
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "at".into(),
+                serde_json::json!(format!("{}:{}", self.path, self.line)),
+            );
+            obj.insert(
+                "edge_role".into(),
+                serde_json::json!(self.edge_role().as_str()),
+            );
+        }
+        v
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,6 +408,70 @@ pub struct IndexStats {
     /// Edge counts by confidence (`exact` / `heuristic` / `dynamic_candidate`).
     #[serde(default)]
     pub refs_by_confidence: Vec<(String, usize)>,
+    /// Per-root counts when the store holds a multi-root workspace (M4-W).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub by_root: Vec<RootIndexStats>,
+}
+
+/// Per-root index counters (workspace multi-root).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RootIndexStats {
+    pub root_id: String,
+    pub files: usize,
+    pub symbols: usize,
+    pub references: usize,
+    #[serde(default)]
+    pub subset_violations: usize,
+}
+
+/// One project root inside a workspace manifest / `--workspace-root` list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceRootInfo {
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub files: usize,
+    #[serde(default)]
+    pub symbols: usize,
+    #[serde(default)]
+    pub references: usize,
+    #[serde(default)]
+    pub subset_violations: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<Vec<String>>,
+}
+
+/// `agentgraph workspace status` / MCP `workspace_status` payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceStatus {
+    pub db_path: String,
+    #[serde(default)]
+    pub workspace: bool,
+    #[serde(default)]
+    pub roots: Vec<WorkspaceRootInfo>,
+    #[serde(default)]
+    pub files: usize,
+    #[serde(default)]
+    pub symbols: usize,
+    #[serde(default)]
+    pub references: usize,
+    #[serde(default)]
+    pub note: String,
+}
+
+/// Result of `index --workspace` / `--workspace-root`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceIndexResult {
+    pub db_path: String,
+    pub roots: Vec<WorkspaceRootInfo>,
+    pub files: usize,
+    pub symbols: usize,
+    pub references: usize,
+    pub languages: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +487,26 @@ pub struct ImpactNode {
     pub resolved: Option<String>,
     #[serde(default)]
     pub confidence: Confidence,
+    /// Workspace multi-root id. Empty for classic single-root stores.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
+    /// Query-time edge role (noise governance). Optional for legacy JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge_role: Option<EdgeRole>,
+}
+
+impl ImpactNode {
+    /// JSON row for impact payloads (`at=path:line`; `edge_role` when known).
+    pub fn to_query_json(&self) -> serde_json::Value {
+        let mut v = serde_json::to_value(self).unwrap_or_default();
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "at".into(),
+                serde_json::json!(format!("{}:{}", self.path, self.line)),
+            );
+        }
+        v
+    }
 }
 
 /// Query-time sidecar de-dup counters (Track M1). Serde-default for old JSON.

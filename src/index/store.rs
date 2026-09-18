@@ -31,8 +31,10 @@ fn confidence_where(filter: ConfidenceFilter) -> &'static str {
 
 #[derive(Default)]
 struct QueryCache {
-    callers: HashMap<(String, usize, u8), Vec<ReferenceRecord>>,
-    impact: HashMap<(String, usize, usize, u8), Vec<ImpactNode>>,
+    /// (name, limit, filter_key, root_id) — root_id `""` = union all roots.
+    callers: HashMap<(String, usize, u8, String), Vec<ReferenceRecord>>,
+    /// (name, depth, limit, filter_key, root_id)
+    impact: HashMap<(String, usize, usize, u8, String), Vec<ImpactNode>>,
     hits: u64,
     misses: u64,
     max_entries: usize,
@@ -69,6 +71,8 @@ pub struct Store {
     cache: RefCell<QueryCache>,
     /// True when refs/symbols may have stale `resolved_symbol_id` after partial relink.
     sid_dirty: std::cell::Cell<bool>,
+    /// `root_id` stamped on path-scoped writes (workspace multi-root). Default `""`.
+    write_root: std::cell::RefCell<String>,
 }
 
 /// File freshness metadata (content hash + mtime/size short-circuit).
@@ -79,28 +83,101 @@ pub struct FileMetaRow {
     pub size: i64,
 }
 
+/// Default `root_id` for classic single-root stores (back-compat).
+pub const DEFAULT_ROOT_ID: &str = "";
+
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path).with_context(|| format!("open db {}", path.display()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
-            PRAGMA foreign_keys = ON;
+            PRAGMA foreign_keys = OFF;
             PRAGMA synchronous = NORMAL;
             PRAGMA busy_timeout = 5000;
             PRAGMA cache_size = -64000;
             PRAGMA temp_store = MEMORY;
+            "#,
+        )?;
+        Self::ensure_schema(&conn)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+             CREATE INDEX IF NOT EXISTS idx_symbols_qname ON symbols(qualified_name);
+             CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
+             CREATE INDEX IF NOT EXISTS idx_symbols_root_path ON symbols(root_id, path);
+             CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
+             CREATE INDEX IF NOT EXISTS idx_refs_path ON refs(path);
+             CREATE INDEX IF NOT EXISTS idx_refs_root_path ON refs(root_id, path);
+             CREATE INDEX IF NOT EXISTS idx_subset_path ON subset_violations(path);
+             CREATE INDEX IF NOT EXISTS idx_subset_root_path ON subset_violations(root_id, path);
+             CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
+             CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
+             CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);
+             CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);
+             CREATE INDEX IF NOT EXISTS idx_refs_qual_name ON refs(qual_name);
+             CREATE INDEX IF NOT EXISTS idx_refs_rule_id ON refs(rule_id);",
+        )?;
+        Ok(Self {
+            conn,
+            cache: RefCell::new(QueryCache::new()),
+            sid_dirty: std::cell::Cell::new(false),
+            write_root: std::cell::RefCell::new(DEFAULT_ROOT_ID.to_string()),
+        })
+    }
+
+    /// Current write `root_id` (workspace multi-root; `""` = single-root default).
+    pub fn write_root(&self) -> String {
+        self.write_root.borrow().clone()
+    }
+
+    /// Set write `root_id` for subsequent path-scoped row operations.
+    pub fn set_write_root(&mut self, root_id: &str) {
+        *self.write_root.borrow_mut() = root_id.to_string();
+    }
+
+    /// Create/migrate schema so `files`/`symbols`/`refs`/`subset_violations` carry `root_id`.
+    ///
+    /// Fresh DBs get composite PK `(root_id, path)` on `files`. Legacy DBs
+    /// (path-only PK) are rebuilt in-place; existing rows default `root_id=''`.
+    fn ensure_schema(conn: &Connection) -> Result<()> {
+        let files_sql: Option<String> = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='files'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()?;
+        let legacy = match &files_sql {
+            None => false,
+            Some(sql) => {
+                let lower = sql.to_lowercase();
+                !lower.contains("root_id")
+            }
+        };
+        if legacy {
+            Self::migrate_v2_root_id(conn)?;
+        }
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS files (
-                path TEXT PRIMARY KEY,
+                root_id TEXT NOT NULL DEFAULT '',
+                path TEXT NOT NULL,
                 hash TEXT NOT NULL,
                 language TEXT NOT NULL,
                 mtime_ns INTEGER NOT NULL DEFAULT 0,
-                size INTEGER NOT NULL DEFAULT 0
+                size INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (root_id, path)
             );
 
             CREATE TABLE IF NOT EXISTS symbols (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                root_id TEXT NOT NULL DEFAULT '',
                 path TEXT NOT NULL,
                 name TEXT NOT NULL,
                 qualified_name TEXT NOT NULL,
@@ -112,11 +189,12 @@ impl Store {
                 start_col INTEGER NOT NULL DEFAULT 0,
                 end_col INTEGER NOT NULL DEFAULT 0,
                 return_type TEXT,
-                FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
+                FOREIGN KEY(root_id, path) REFERENCES files(root_id, path) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS refs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                root_id TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 path TEXT NOT NULL,
@@ -130,31 +208,38 @@ impl Store {
                 evidence TEXT,
                 qual_name TEXT,
                 rule_id TEXT,
-                FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
+                pre_qual TEXT,
+                FOREIGN KEY(root_id, path) REFERENCES files(root_id, path) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS subset_violations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                root_id TEXT NOT NULL DEFAULT '',
                 path TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 line INTEGER NOT NULL,
                 snippet TEXT NOT NULL,
-                FOREIGN KEY(path) REFERENCES files(path) ON DELETE CASCADE
+                FOREIGN KEY(root_id, path) REFERENCES files(root_id, path) ON DELETE CASCADE
             );
-
-            CREATE TABLE IF NOT EXISTS meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
-            CREATE INDEX IF NOT EXISTS idx_symbols_qname ON symbols(qualified_name);
-            CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
-            CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
-            CREATE INDEX IF NOT EXISTS idx_refs_path ON refs(path);
-            CREATE INDEX IF NOT EXISTS idx_subset_path ON subset_violations(path);
             "#,
         )?;
+        // Belt-and-suspenders ALTERs for partially upgraded DBs.
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE symbols ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE refs ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE subset_violations ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+            [],
+        );
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN description TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN module TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
@@ -175,11 +260,16 @@ impl Store {
         );
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN qual_name TEXT", []);
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN rule_id TEXT", []);
-        // R8: original qualifier before Exact upgrade (for revoke when factory collides).
         let _ = conn.execute("ALTER TABLE refs ADD COLUMN pre_qual TEXT", []);
-        // Backfill: pre-L1 rows are Exact by definition.
         let _ = conn.execute(
             "UPDATE refs SET confidence = 'exact' WHERE confidence IS NULL",
+            [],
+        );
+        let _ = conn.execute("UPDATE files SET root_id = '' WHERE root_id IS NULL", []);
+        let _ = conn.execute("UPDATE symbols SET root_id = '' WHERE root_id IS NULL", []);
+        let _ = conn.execute("UPDATE refs SET root_id = '' WHERE root_id IS NULL", []);
+        let _ = conn.execute(
+            "UPDATE subset_violations SET root_id = '' WHERE root_id IS NULL",
             [],
         );
         let _ = conn.execute(
@@ -191,27 +281,191 @@ impl Store {
             [],
         );
         let _ = conn.execute("ALTER TABLE symbols ADD COLUMN return_type TEXT", []);
-        conn.execute_batch(
-            "CREATE INDEX IF NOT EXISTS idx_refs_resolved ON refs(resolved);
-             CREATE INDEX IF NOT EXISTS idx_refs_resolved_kind ON refs(resolved, kind);
-             CREATE INDEX IF NOT EXISTS idx_refs_kind ON refs(kind);
-             CREATE INDEX IF NOT EXISTS idx_refs_rsid ON refs(resolved_symbol_id);
-             CREATE INDEX IF NOT EXISTS idx_refs_qual_name ON refs(qual_name);
-             CREATE INDEX IF NOT EXISTS idx_refs_rule_id ON refs(rule_id);",
-        )?;
-        Ok(Self {
-            conn,
-            cache: RefCell::new(QueryCache::new()),
-            sid_dirty: std::cell::Cell::new(false),
-        })
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '2')",
+            [],
+        );
+        Ok(())
+    }
+
+    /// Rebuild legacy tables so `files` PK becomes `(root_id, path)` (Track M4-W).
+    fn migrate_v2_root_id(conn: &Connection) -> Result<()> {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<()> {
+            // meta may be missing on a true v1 DB; migrate stamps schema_version there.
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )",
+            )?;
+            // Pre-ALTER optional columns so legacy SELECTs in the rebuild see them
+            // (M4-W stabilization: ensure_schema ALTERs run *after* this path).
+            let _ = conn.execute(
+                "ALTER TABLE files ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE files ADD COLUMN size INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE symbols ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute("ALTER TABLE symbols ADD COLUMN description TEXT", []);
+            let _ = conn.execute(
+                "ALTER TABLE symbols ADD COLUMN start_col INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            let _ = conn.execute(
+                "ALTER TABLE symbols ADD COLUMN end_col INTEGER NOT NULL DEFAULT 0",
+                [],
+            );
+            let _ = conn.execute("ALTER TABLE symbols ADD COLUMN return_type TEXT", []);
+            let _ = conn.execute(
+                "ALTER TABLE refs ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN module TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN qualifier TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN resolved_symbol_id INTEGER", []);
+            let _ = conn.execute(
+                "ALTER TABLE refs ADD COLUMN confidence TEXT NOT NULL DEFAULT 'exact'",
+                [],
+            );
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN evidence TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN qual_name TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN rule_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE refs ADD COLUMN pre_qual TEXT", []);
+            // Legacy DBs may lack subset_violations entirely.
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS subset_violations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    snippet TEXT NOT NULL
+                )",
+            )?;
+            let _ = conn.execute(
+                "ALTER TABLE subset_violations ADD COLUMN root_id TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+
+            conn.execute_batch(
+                r#"
+                CREATE TABLE files_v2 (
+                    root_id TEXT NOT NULL DEFAULT '',
+                    path TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    mtime_ns INTEGER NOT NULL DEFAULT 0,
+                    size INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (root_id, path)
+                );
+                INSERT INTO files_v2(root_id, path, hash, language, mtime_ns, size)
+                    SELECT COALESCE(root_id,''), path, hash, language,
+                           COALESCE(mtime_ns,0), COALESCE(size,0)
+                    FROM files;
+                DROP TABLE files;
+                ALTER TABLE files_v2 RENAME TO files;
+
+                CREATE TABLE symbols_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    root_id TEXT NOT NULL DEFAULT '',
+                    path TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    qualified_name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    start_line INTEGER NOT NULL,
+                    end_line INTEGER NOT NULL,
+                    parent TEXT,
+                    description TEXT,
+                    start_col INTEGER NOT NULL DEFAULT 0,
+                    end_col INTEGER NOT NULL DEFAULT 0,
+                    return_type TEXT
+                );
+                INSERT INTO symbols_v2(id, root_id, path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col, return_type)
+                    SELECT id, COALESCE(root_id,''), path, name, qualified_name, kind, start_line, end_line,
+                           parent, description,
+                           COALESCE(start_col,0), COALESCE(end_col,0), return_type
+                    FROM symbols;
+                DROP TABLE symbols;
+                ALTER TABLE symbols_v2 RENAME TO symbols;
+
+                CREATE TABLE refs_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    root_id TEXT NOT NULL DEFAULT '',
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    enclosing TEXT,
+                    module TEXT,
+                    resolved TEXT,
+                    qualifier TEXT,
+                    resolved_symbol_id INTEGER,
+                    confidence TEXT NOT NULL DEFAULT 'exact',
+                    evidence TEXT,
+                    qual_name TEXT,
+                    rule_id TEXT,
+                    pre_qual TEXT
+                );
+                INSERT INTO refs_v2(id, root_id, name, kind, path, line, enclosing, module, resolved, qualifier, resolved_symbol_id, confidence, evidence, qual_name, rule_id, pre_qual)
+                    SELECT id, COALESCE(root_id,''), name, kind, path, line, enclosing, module, resolved, qualifier,
+                           resolved_symbol_id,
+                           COALESCE(confidence,'exact'),
+                           evidence, qual_name, rule_id, pre_qual
+                    FROM refs;
+                DROP TABLE refs;
+                ALTER TABLE refs_v2 RENAME TO refs;
+
+                CREATE TABLE subset_violations_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    root_id TEXT NOT NULL DEFAULT '',
+                    path TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    line INTEGER NOT NULL,
+                    snippet TEXT NOT NULL
+                );
+                INSERT INTO subset_violations_v2(id, root_id, path, kind, line, snippet)
+                    SELECT id, COALESCE(root_id,''), path, kind, line, snippet
+                    FROM subset_violations;
+                DROP TABLE subset_violations;
+                ALTER TABLE subset_violations_v2 RENAME TO subset_violations;
+                "#,
+            )?;
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', '2')",
+                [],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
     }
 
     pub fn file_hash(&self, path: &str) -> Result<Option<String>> {
+        let wr = self.write_root();
         let row = self
             .conn
             .query_row(
-                "SELECT hash FROM files WHERE path = ?1",
-                params![path],
+                "SELECT hash FROM files WHERE path = ?1 AND root_id = ?2",
+                params![path, wr],
                 |r| r.get::<_, String>(0),
             )
             .optional()?;
@@ -220,11 +474,12 @@ impl Store {
 
     /// Hash + mtime/size for short-circuit skip (perf-plan P0-1).
     pub fn file_meta(&self, path: &str) -> Result<Option<FileMetaRow>> {
+        let wr = self.write_root();
         let row = self
             .conn
             .query_row(
-                "SELECT hash, mtime_ns, size FROM files WHERE path = ?1",
-                params![path],
+                "SELECT hash, mtime_ns, size FROM files WHERE path = ?1 AND root_id = ?2",
+                params![path, wr],
                 |r| {
                     Ok(FileMetaRow {
                         hash: r.get(0)?,
@@ -237,10 +492,13 @@ impl Store {
         Ok(row)
     }
 
-    /// All indexed relative paths (for delete detection / early-out).
+    /// All indexed relative paths for the current write root (delete detection).
     pub fn list_paths(&self) -> Result<std::collections::HashSet<String>> {
-        let mut stmt = self.conn.prepare("SELECT path FROM files")?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let wr = self.write_root();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM files WHERE root_id = ?1")?;
+        let rows = stmt.query_map(params![wr], |r| r.get::<_, String>(0))?;
         let mut set = std::collections::HashSet::new();
         for p in rows {
             set.insert(p?);
@@ -286,9 +544,10 @@ impl Store {
 
     /// Refresh mtime/size after a content-hash match (next noop can short-circuit).
     pub fn update_file_meta(&mut self, path: &str, mtime_ns: i64, size: i64) -> Result<()> {
+        let wr = self.write_root();
         self.conn.execute(
-            "UPDATE files SET mtime_ns = ?1, size = ?2 WHERE path = ?3",
-            params![mtime_ns, size, path],
+            "UPDATE files SET mtime_ns = ?1, size = ?2 WHERE path = ?3 AND root_id = ?4",
+            params![mtime_ns, size, path, wr],
         )?;
         Ok(())
     }
@@ -350,17 +609,38 @@ impl Store {
         Ok(n > 0)
     }
 
-    /// Language of the file at `path`, if known.
+    /// Language of the file at `path` within `root_id` (`None` = any / write root).
     pub fn file_language(&self, path: &str) -> Result<Option<String>> {
+        self.file_language_in(path, None)
+    }
+
+    pub fn file_language_in(&self, path: &str, root_id: Option<&str>) -> Result<Option<String>> {
+        let wr = self.write_root();
+        let rid = root_id.unwrap_or(wr.as_str());
         let row = self
             .conn
             .query_row(
-                "SELECT language FROM files WHERE path = ?1",
-                params![path],
+                "SELECT language FROM files WHERE path = ?1 AND root_id = ?2",
+                params![path, rid],
                 |r| r.get::<_, String>(0),
             )
             .optional()?;
-        Ok(row)
+        if row.is_some() {
+            return Ok(row);
+        }
+        // Union queries may cite a path from another root — fall back to any match.
+        if root_id.is_none() {
+            let any = self
+                .conn
+                .query_row(
+                    "SELECT language FROM files WHERE path = ?1 ORDER BY root_id LIMIT 1",
+                    params![path],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()?;
+            return Ok(any);
+        }
+        Ok(None)
     }
 
     /// Replace file rows without S-violation payload (tests / legacy).
@@ -419,14 +699,15 @@ impl Store {
         self.sid_dirty.set(true);
         self.set_meta("sid_dirty", "1")?;
         self.set_meta("dispatch_dirty", "1")?;
+        let wr = self.write_root();
         // Preserve LLM descriptions for symbols that still exist with same qualified_name.
         let mut old_desc: HashMap<String, String> = HashMap::new();
         {
             let mut stmt = self.conn.prepare(
                 "SELECT qualified_name, description FROM symbols
-                 WHERE path = ?1 AND description IS NOT NULL AND description != ''",
+                 WHERE path = ?1 AND root_id = ?2 AND description IS NOT NULL AND description != ''",
             )?;
-            let rows = stmt.query_map(params![path], |r| {
+            let rows = stmt.query_map(params![path, wr], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             })?;
             for row in rows {
@@ -435,40 +716,64 @@ impl Store {
             }
         }
 
-        self.conn
-            .execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
-        self.conn
-            .execute("DELETE FROM refs WHERE path = ?1", params![path])?;
         self.conn.execute(
-            "DELETE FROM subset_violations WHERE path = ?1",
-            params![path],
+            "DELETE FROM symbols WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
         )?;
         self.conn.execute(
-            "INSERT INTO files(path, hash, language, mtime_ns, size) VALUES(?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(path) DO UPDATE SET
+            "DELETE FROM refs WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
+        )?;
+        self.conn.execute(
+            "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
+        )?;
+        // M4-W migration reclaim: named workspace root takes over legacy '' rows.
+        if !wr.is_empty() {
+            self.conn.execute(
+                "DELETE FROM files WHERE path = ?1 AND root_id = ''",
+                params![path],
+            )?;
+            self.conn.execute(
+                "DELETE FROM symbols WHERE path = ?1 AND root_id = ''",
+                params![path],
+            )?;
+            self.conn.execute(
+                "DELETE FROM refs WHERE path = ?1 AND root_id = ''",
+                params![path],
+            )?;
+            self.conn.execute(
+                "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ''",
+                params![path],
+            )?;
+        }
+        self.conn.execute(
+            "INSERT INTO files(root_id, path, hash, language, mtime_ns, size) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(root_id, path) DO UPDATE SET
                hash = excluded.hash,
                language = excluded.language,
                mtime_ns = excluded.mtime_ns,
                size = excluded.size",
-            params![path, hash, language, mtime_ns, size],
+            params![wr, path, hash, language, mtime_ns, size],
         )?;
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO subset_violations(path, kind, line, snippet)
-                 VALUES(?1, ?2, ?3, ?4)",
+                "INSERT INTO subset_violations(root_id, path, kind, line, snippet)
+                 VALUES(?1, ?2, ?3, ?4, ?5)",
             )?;
             for v in &subset.violations {
-                stmt.execute(params![path, v.kind, v.line as i64, v.snippet])?;
+                stmt.execute(params![wr, path, v.kind, v.line as i64, v.snippet])?;
             }
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO symbols(path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col, return_type)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO symbols(root_id, path, name, qualified_name, kind, start_line, end_line, parent, description, start_col, end_col, return_type)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             for s in &extracted.symbols {
                 let desc = old_desc.get(&s.qualified_name).cloned();
                 stmt.execute(params![
+                    wr,
                     path,
                     s.name,
                     s.qualified_name,
@@ -485,8 +790,8 @@ impl Store {
         }
         {
             let mut stmt = self.conn.prepare(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO refs(root_id, name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             )?;
             for r in &extracted.references {
                 let evidence_json = r
@@ -499,6 +804,7 @@ impl Store {
                     _ => None,
                 };
                 stmt.execute(params![
+                    wr,
                     r.name,
                     r.kind.as_str(),
                     path,
@@ -517,24 +823,28 @@ impl Store {
         Ok(())
     }
 
+    /// Prune missing paths under the **current write root** only (workspace-safe).
     pub fn prune_missing(&mut self, keep_paths: &[String]) -> Result<()> {
+        let wr = self.write_root();
         let existing: Vec<String> = {
-            let mut stmt = self.conn.prepare("SELECT path FROM files")?;
-            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT path FROM files WHERE root_id = ?1")?;
+            let rows = stmt.query_map(params![wr], |r| r.get::<_, String>(0))?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
         let keep: std::collections::HashSet<&str> = keep_paths.iter().map(|s| s.as_str()).collect();
         let mut deleted = false;
         for path in existing {
             if !keep.contains(path.as_str()) {
-                // M4: drop S violations explicitly (FK cascade is ON, but keep
-                // prune fail-safe so deleted files cannot leave subset debt).
                 self.conn.execute(
-                    "DELETE FROM subset_violations WHERE path = ?1",
-                    params![path],
+                    "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ?2",
+                    params![path, wr],
                 )?;
-                self.conn
-                    .execute("DELETE FROM files WHERE path = ?1", params![path])?;
+                self.conn.execute(
+                    "DELETE FROM files WHERE path = ?1 AND root_id = ?2",
+                    params![path, wr],
+                )?;
                 deleted = true;
             }
         }
@@ -580,6 +890,40 @@ impl Store {
         for row in rows {
             refs_by_confidence.push(row?);
         }
+        let mut by_root = Vec::new();
+        {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT root_id, COUNT(*) FROM files GROUP BY root_id ORDER BY root_id")?;
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize))
+            })?;
+            for row in rows {
+                let (rid, nfiles) = row?;
+                let nsym: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM symbols WHERE root_id = ?1",
+                    params![rid],
+                    |r| r.get(0),
+                )?;
+                let nref: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM refs WHERE root_id = ?1",
+                    params![rid],
+                    |r| r.get(0),
+                )?;
+                let nviol: i64 = self.conn.query_row(
+                    "SELECT COUNT(*) FROM subset_violations WHERE root_id = ?1",
+                    params![rid],
+                    |r| r.get(0),
+                )?;
+                by_root.push(crate::model::RootIndexStats {
+                    root_id: rid,
+                    files: nfiles,
+                    symbols: nsym as usize,
+                    references: nref as usize,
+                    subset_violations: nviol as usize,
+                });
+            }
+        }
         Ok(IndexStats {
             files: files as usize,
             symbols: symbols as usize,
@@ -592,6 +936,11 @@ impl Store {
             oversized_files: 0,
             noise_skipped_files: 0,
             refs_by_confidence,
+            by_root: if by_root.iter().any(|r| !r.root_id.is_empty()) || by_root.len() > 1 {
+                by_root
+            } else {
+                Vec::new()
+            },
         })
     }
 
@@ -601,19 +950,34 @@ impl Store {
             .replace('_', "\\_")
     }
 
-    /// Exact match on symbol name or qualified_name (no LIKE).
+    /// Exact match on symbol name or qualified_name (no LIKE). Union all roots.
     pub fn find_symbol_exact(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
+        self.find_symbol_exact_in(name, limit, None)
+    }
+
+    /// Exact match; `root_id=Some` scopes to one workspace root.
+    pub fn find_symbol_exact_in(
+        &self,
+        name: &str,
+        limit: usize,
+        root_id: Option<&str>,
+    ) -> Result<Vec<SymbolRecord>> {
+        let root_sql = match root_id {
+            None => "1=1".to_string(),
+            Some(_) => "s.root_id = ?3".to_string(),
+        };
+        let sql = format!(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type, s.root_id
              FROM symbols s
-             JOIN files f ON f.path = s.path
-             WHERE s.name = ?1 OR s.qualified_name = ?1
+             JOIN files f ON f.path = s.path AND f.root_id = s.root_id
+             WHERE (s.name = ?1 OR s.qualified_name = ?1) AND {root_sql}
              ORDER BY
                CASE WHEN s.name = ?1 THEN 0 ELSE 1 END,
-               s.path, s.start_line
-             LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![name, limit as i64], |r| {
+               s.root_id, s.path, s.start_line
+             LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let map_row = |r: &rusqlite::Row<'_>| -> rusqlite::Result<SymbolRecord> {
             Ok(SymbolRecord {
                 id: r.get(0)?,
                 name: r.get(1)?,
@@ -628,23 +992,42 @@ impl Store {
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
                 return_type: r.get(12)?,
+                root_id: r.get::<_, Option<String>>(13)?.unwrap_or_default(),
             })
-        })?;
+        };
+        let rows = match root_id {
+            None => stmt.query_map(params![name, limit as i64], map_row)?,
+            Some(rid) => stmt.query_map(params![name, limit as i64, rid], map_row)?,
+        };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Substring (LIKE) fuzzy match on symbol name only.
+    /// Substring (LIKE) fuzzy match on symbol name only. Union all roots.
     pub fn find_symbol_fuzzy(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
+        self.find_symbol_fuzzy_in(name, limit, None)
+    }
+
+    pub fn find_symbol_fuzzy_in(
+        &self,
+        name: &str,
+        limit: usize,
+        root_id: Option<&str>,
+    ) -> Result<Vec<SymbolRecord>> {
+        let root_sql = match root_id {
+            None => "1=1".to_string(),
+            Some(_) => "s.root_id = ?3".to_string(),
+        };
+        let sql = format!(
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type, s.root_id
              FROM symbols s
-             JOIN files f ON f.path = s.path
-             WHERE s.name LIKE ?1 ESCAPE '\\'
-             ORDER BY s.path, s.start_line
-             LIMIT ?2",
-        )?;
+             JOIN files f ON f.path = s.path AND f.root_id = s.root_id
+             WHERE s.name LIKE ?1 ESCAPE '\\' AND {root_sql}
+             ORDER BY s.root_id, s.path, s.start_line
+             LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
         let pattern = format!("%{}%", Self::escape_like(name));
-        let rows = stmt.query_map(params![pattern, limit as i64], |r| {
+        let map_row = |r: &rusqlite::Row<'_>| -> rusqlite::Result<SymbolRecord> {
             Ok(SymbolRecord {
                 id: r.get(0)?,
                 name: r.get(1)?,
@@ -659,21 +1042,26 @@ impl Store {
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
                 return_type: r.get(12)?,
+                root_id: r.get::<_, Option<String>>(13)?.unwrap_or_default(),
             })
-        })?;
+        };
+        let rows = match root_id {
+            None => stmt.query_map(params![pattern, limit as i64], map_row)?,
+            Some(rid) => stmt.query_map(params![pattern, limit as i64, rid], map_row)?,
+        };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Combined exact + fuzzy (legacy behavior; prefer exact/fuzzy split in new code).
     pub fn find_symbol(&self, name: &str, limit: usize) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type, s.root_id
              FROM symbols s
-             JOIN files f ON f.path = s.path
+             JOIN files f ON f.path = s.path AND f.root_id = s.root_id
              WHERE s.name = ?1 OR s.qualified_name = ?1 OR s.name LIKE ?2 ESCAPE '\\'
              ORDER BY
                CASE WHEN s.name = ?1 THEN 0 WHEN s.qualified_name = ?1 THEN 1 ELSE 2 END,
-               s.path, s.start_line
+               s.root_id, s.path, s.start_line
              LIMIT ?3",
         )?;
         let pattern = format!("%{}%", Self::escape_like(name));
@@ -692,6 +1080,7 @@ impl Store {
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
                 return_type: r.get(12)?,
+                root_id: r.get::<_, Option<String>>(13)?.unwrap_or_default(),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -715,43 +1104,76 @@ impl Store {
         limit: usize,
         filter: ConfidenceFilter,
     ) -> Result<Vec<ReferenceRecord>> {
+        self.callers_filtered_in(name, limit, filter, None)
+    }
+
+    /// Fetch callers rows for role-separated payload building.
+    ///
+    /// Uses a widened fetch cap so Exact calls are not starved by a flood of
+    /// implementor edges under a single shared SQL LIMIT (noise governance).
+    pub fn callers_for_roles(
+        &self,
+        name: &str,
+        limit: usize,
+        filter: ConfidenceFilter,
+        root_id: Option<&str>,
+    ) -> Result<Vec<ReferenceRecord>> {
+        let fetch = crate::query::role_fetch_cap(limit);
+        self.callers_filtered_in(name, fetch, filter, root_id)
+    }
+
+    pub fn callers_filtered_in(
+        &self,
+        name: &str,
+        limit: usize,
+        filter: ConfidenceFilter,
+        root_id: Option<&str>,
+    ) -> Result<Vec<ReferenceRecord>> {
         let fk = filter_key(filter);
+        let rk = root_id.unwrap_or("").to_string();
         {
             let mut c = self.cache.borrow_mut();
-            if let Some(v) = c.callers.get(&(name.to_string(), limit, fk)).cloned() {
+            if let Some(v) = c
+                .callers
+                .get(&(name.to_string(), limit, fk, rk.clone()))
+                .cloned()
+            {
                 c.note_hit();
                 return Ok(v);
             }
             c.note_miss();
         }
-        let result = self.callers_uncached(name, limit, filter)?;
+        let result = self.callers_uncached_opt(name, Some(limit), filter, root_id)?;
         {
             let mut c = self.cache.borrow_mut();
             if QueryCache::evict_if_needed(c.callers.len(), c.max_entries) {
                 c.callers.clear();
             }
             c.callers
-                .insert((name.to_string(), limit, fk), result.clone());
+                .insert((name.to_string(), limit, fk, rk), result.clone());
         }
         Ok(result)
     }
 
+    /// `limit: None` omits SQL LIMIT (used by sound walk so post-filter cannot
+    /// under-approx via early truncation — C5). `root_id` scopes to one
+    /// workspace root; `None` unions all roots.
+    #[allow(dead_code)]
     fn callers_uncached(
         &self,
         name: &str,
         limit: usize,
         filter: ConfidenceFilter,
     ) -> Result<Vec<ReferenceRecord>> {
-        self.callers_uncached_opt(name, Some(limit), filter)
+        self.callers_uncached_opt(name, Some(limit), filter, None)
     }
 
-    /// Same as `callers_uncached` but `limit: None` omits SQL LIMIT (used by
-    /// sound walk so post-filter cannot under-approx via early truncation — C5).
     fn callers_uncached_opt(
         &self,
         name: &str,
         limit: Option<usize>,
         filter: ConfidenceFilter,
+        root_id: Option<&str>,
     ) -> Result<Vec<ReferenceRecord>> {
         // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
@@ -770,24 +1192,25 @@ impl Store {
 
         let conf = confidence_where(filter);
         let limit_sql = if limit.is_some() { " LIMIT ?2" } else { "" };
+        let root_sql = match root_id {
+            None => "1=1".to_string(),
+            Some(_) => "root_id = ?3".to_string(),
+        };
         let sql = if qual_dot.is_empty() {
             format!(
-                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
-                 FROM refs WHERE name = ?1 AND {conf}
-                 ORDER BY path, line{limit_sql}"
+                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
+                 FROM refs WHERE name = ?1 AND {conf} AND {root_sql}
+                 ORDER BY root_id, path, line{limit_sql}"
             )
         } else {
-            // Qualified form + literal dotted ref name (M3-C entry_points groups
-            // are stored as name="myapp.plugins" with qualifier=NULL). Match either
-            // qualifier.name or the full string as the ref's bare name.
             format!(
-                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
+                "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
                  FROM refs
                  WHERE (qual_name = ?1 OR name = ?1
                         OR (qualifier || '.' || name) = ?1
                         OR (qualifier || '::' || name) = ?1)
-                   AND {conf}
-                 ORDER BY path, line{limit_sql}"
+                   AND {conf} AND {root_sql}
+                 ORDER BY root_id, path, line{limit_sql}"
             )
         };
         let mut stmt = self.conn.prepare(&sql)?;
@@ -796,9 +1219,11 @@ impl Store {
         } else {
             &qual_dot
         };
-        let rows = match limit {
-            Some(l) => stmt.query_map(params![key, l as i64], map_ref)?,
-            None => stmt.query_map(params![key], map_ref)?,
+        let rows = match (limit, root_id) {
+            (Some(l), Some(rid)) => stmt.query_map(params![key, l as i64, rid], map_ref)?,
+            (Some(l), None) => stmt.query_map(params![key, l as i64], map_ref)?,
+            (None, Some(rid)) => stmt.query_map(params![key, rid], map_ref)?,
+            (None, None) => stmt.query_map(params![key], map_ref)?,
         };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
@@ -850,17 +1275,20 @@ impl Store {
             self.conn.execute_batch("BEGIN IMMEDIATE")?;
         }
         let result = (|| -> Result<usize> {
-            self.conn
-                .execute("DELETE FROM refs WHERE rule_id = 'ts.event.dispatch'", [])?;
+            let wr = self.write_root();
+            self.conn.execute(
+                "DELETE FROM refs WHERE rule_id = 'ts.event.dispatch' AND root_id = ?1",
+                params![wr],
+            )?;
 
-            // (enclosing_or_empty, path, line, event)
+            // (enclosing_or_empty, path, line, event) — per write root in workspace.
             let emits: Vec<(String, String, i64, String)> = {
                 let mut stmt = self.conn.prepare(
                     "SELECT COALESCE(enclosing,''), path, line, module FROM refs
                      WHERE module IS NOT NULL AND module != ''
-                       AND rule_id = 'ts.event.emit'",
+                       AND rule_id = 'ts.event.emit' AND root_id = ?1",
                 )?;
-                let rows = stmt.query_map([], |r| {
+                let rows = stmt.query_map(params![wr], |r| {
                     Ok((
                         r.get::<_, String>(0)?,
                         r.get::<_, String>(1)?,
@@ -875,10 +1303,11 @@ impl Store {
                 let mut stmt = self.conn.prepare(
                     "SELECT name, module FROM refs
                      WHERE module IS NOT NULL AND module != ''
-                       AND rule_id = 'ts.event.subscribe'",
+                       AND rule_id = 'ts.event.subscribe' AND root_id = ?1",
                 )?;
-                let rows =
-                    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                let rows = stmt.query_map(params![wr], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })?;
                 for row in rows {
                     let (name, evt) = row?;
                     let list = handlers.entry(evt).or_default();
@@ -890,8 +1319,8 @@ impl Store {
 
             let mut created = 0usize;
             let mut stmt = self.conn.prepare_cached(
-                "INSERT INTO refs(name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
-                 VALUES(?1, 'call', ?2, ?3, ?4, ?5, NULL, NULL, 'heuristic', ?6, NULL, 'ts.event.dispatch')",
+                "INSERT INTO refs(root_id, name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, qual_name, rule_id)
+                 VALUES(?1, ?2, 'call', ?3, ?4, ?5, ?6, NULL, NULL, 'heuristic', ?7, NULL, 'ts.event.dispatch')",
             )?;
             for (enclosing, path, line, evt) in emits {
                 let Some(hs) = handlers.get(&evt) else {
@@ -903,7 +1332,7 @@ impl Store {
                         "snippet": format!("emit('{evt}') → {h}"),
                     })
                     .to_string();
-                    stmt.execute(params![h, path, line, enclosing, evt, evidence])?;
+                    stmt.execute(params![wr, h, path, line, enclosing, evt, evidence])?;
                     created += 1;
                 }
             }
@@ -992,19 +1421,20 @@ impl Store {
             )?;
             // Snapshot current symbol ids on dirty paths, then NULL those + refs pointing at them.
             let mut old_ids: Vec<i64> = Vec::new();
+            let wr = self.write_root();
             for p in dirty_paths {
                 let mut stmt = self
                     .conn
-                    .prepare("SELECT id FROM symbols WHERE path = ?1")?;
-                let rows = stmt.query_map(params![p], |r| r.get::<_, i64>(0))?;
+                    .prepare("SELECT id FROM symbols WHERE path = ?1 AND root_id = ?2")?;
+                let rows = stmt.query_map(params![p, wr], |r| r.get::<_, i64>(0))?;
                 for id in rows {
                     old_ids.push(id?);
                 }
             }
             for p in dirty_paths {
                 self.conn.execute(
-                    "UPDATE refs SET resolved_symbol_id = NULL WHERE path = ?1",
-                    params![p],
+                    "UPDATE refs SET resolved_symbol_id = NULL WHERE path = ?1 AND root_id = ?2",
+                    params![p, wr],
                 )?;
             }
             for id in &old_ids {
@@ -1018,8 +1448,8 @@ impl Store {
             for p in dirty_paths {
                 self.conn.execute(
                     "UPDATE refs SET resolved_symbol_id = NULL
-                     WHERE name IN (SELECT name FROM symbols WHERE path = ?1)",
-                    params![p],
+                     WHERE name IN (SELECT name FROM symbols WHERE path = ?1 AND root_id = ?2)",
+                    params![p, wr],
                 )?;
             }
         }
@@ -1031,19 +1461,21 @@ impl Store {
             name: String,
             qname: String,
             path: String,
+            root_id: String,
         }
         let mut by_qname: HashMap<String, Vec<Sym>> = HashMap::new();
         let mut by_name: HashMap<String, Vec<Sym>> = HashMap::new();
         {
             let mut stmt = self
                 .conn
-                .prepare("SELECT id, name, qualified_name, path FROM symbols")?;
+                .prepare("SELECT id, name, qualified_name, path, root_id FROM symbols")?;
             let rows = stmt.query_map([], |r| {
                 Ok(Sym {
                     id: r.get(0)?,
                     name: r.get(1)?,
                     qname: r.get(2)?,
                     path: r.get(3)?,
+                    root_id: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
                 })
             })?;
             for row in rows {
@@ -1053,29 +1485,38 @@ impl Store {
                     name: s.name.clone(),
                     qname: s.qname.clone(),
                     path: s.path.clone(),
+                    root_id: s.root_id.clone(),
                 });
                 by_qname.entry(s.qname.clone()).or_default().push(Sym {
                     id: s.id,
                     name: s.name.clone(),
                     qname: s.qname.clone(),
                     path: s.path.clone(),
+                    root_id: s.root_id.clone(),
                 });
             }
         }
 
-        let pick = |cands: &Vec<Sym>, path: &str| -> Option<i64> {
-            // Prefer same path, then lexicographically smallest path.
+        let wr = self.write_root();
+        let pick = |cands: &Vec<Sym>, path: &str, ref_root: &str| -> Option<i64> {
+            // Prefer same root_id, then same path, then lexicographically smallest path.
             let mut best: Option<&Sym> = None;
             for c in cands {
                 let better = match best {
                     None => true,
                     Some(b) => {
-                        let b_same = b.path == path;
-                        let c_same = c.path == path;
-                        if c_same != b_same {
-                            c_same
+                        let b_root = b.root_id == ref_root || b.root_id == wr;
+                        let c_root = c.root_id == ref_root || c.root_id == wr;
+                        if c_root != b_root {
+                            c_root
                         } else {
-                            c.path < b.path
+                            let b_same = b.path == path && b.root_id == ref_root;
+                            let c_same = c.path == path && c.root_id == ref_root;
+                            if c_same != b_same {
+                                c_same
+                            } else {
+                                c.path < b.path
+                            }
                         }
                     }
                 };
@@ -1086,9 +1527,9 @@ impl Store {
             best.map(|c| c.id)
         };
 
-        let pending: Vec<(i64, String, Option<String>, String)> = {
+        let pending: Vec<(i64, String, Option<String>, String, String)> = {
             let mut stmt = self.conn.prepare(
-                "SELECT id, name, qualifier, path FROM refs WHERE resolved_symbol_id IS NULL",
+                "SELECT id, name, qualifier, path, root_id FROM refs WHERE resolved_symbol_id IS NULL",
             )?;
             let rows = stmt.query_map([], |r| {
                 Ok((
@@ -1096,31 +1537,32 @@ impl Store {
                     r.get::<_, String>(1)?,
                     r.get::<_, Option<String>>(2)?,
                     r.get::<_, String>(3)?,
+                    r.get::<_, Option<String>>(4)?.unwrap_or_default(),
                 ))
             })?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
 
         let mut updates: Vec<(i64, i64)> = Vec::with_capacity(pending.len());
-        for (rid, name, qual, rpath) in pending {
+        for (rid, name, qual, rpath, rroot) in pending {
             let mut sid = None;
             if let Some(q) = qual.as_deref() {
                 if !q.is_empty() {
                     let q1 = format!("{q}.{name}");
                     let q2 = format!("{q}::{name}");
                     if let Some(cands) = by_qname.get(&q1) {
-                        sid = pick(cands, &rpath);
+                        sid = pick(cands, &rpath, &rroot);
                     }
                     if sid.is_none() {
                         if let Some(cands) = by_qname.get(&q2) {
-                            sid = pick(cands, &rpath);
+                            sid = pick(cands, &rpath, &rroot);
                         }
                     }
                 }
             }
             if sid.is_none() {
                 if let Some(cands) = by_name.get(&name) {
-                    sid = pick(cands, &rpath);
+                    sid = pick(cands, &rpath, &rroot);
                 }
             }
             if let Some(sid) = sid {
@@ -1338,22 +1780,33 @@ impl Store {
         self.sid_dirty.set(true);
         self.set_meta("sid_dirty", "1")?;
         self.set_meta("dispatch_dirty", "1")?;
-        self.conn
-            .execute("DELETE FROM symbols WHERE path = ?1", params![path])?;
-        self.conn
-            .execute("DELETE FROM refs WHERE path = ?1", params![path])?;
+        let wr = self.write_root();
         self.conn.execute(
-            "DELETE FROM subset_violations WHERE path = ?1",
-            params![path],
+            "DELETE FROM symbols WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
         )?;
         self.conn.execute(
-            "INSERT INTO files(path, hash, language, mtime_ns, size) VALUES(?1, 'parse-error', 'unknown', 0, 0)
-             ON CONFLICT(path) DO UPDATE SET hash = 'parse-error'",
-            params![path],
+            "DELETE FROM refs WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
         )?;
         self.conn.execute(
-            "INSERT INTO subset_violations(path, kind, line, snippet) VALUES(?1, 'parse_error', 1, ?2)",
-            params![path, reason.chars().take(200).collect::<String>()],
+            "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ?2",
+            params![path, wr],
+        )?;
+        if !wr.is_empty() {
+            self.conn.execute(
+                "DELETE FROM files WHERE path = ?1 AND root_id = ''",
+                params![path],
+            )?;
+        }
+        self.conn.execute(
+            "INSERT INTO files(root_id, path, hash, language, mtime_ns, size) VALUES(?1, ?2, 'parse-error', 'unknown', 0, 0)
+             ON CONFLICT(root_id, path) DO UPDATE SET hash = 'parse-error'",
+            params![wr, path],
+        )?;
+        self.conn.execute(
+            "INSERT INTO subset_violations(root_id, path, kind, line, snippet) VALUES(?1, ?2, 'parse_error', 1, ?3)",
+            params![wr, path, reason.chars().take(200).collect::<String>()],
         )?;
         Ok(())
     }
@@ -1363,10 +1816,10 @@ impl Store {
         // or `/src/auth.ts`. Store rows use repo-relative `/` form.
         let normalized = normalize_import_path(file_path);
         let mut stmt = self.conn.prepare(
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
              FROM refs
              WHERE resolved = ?1 AND kind = 'import'
-             ORDER BY path, line
+             ORDER BY root_id, path, line
              LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![normalized, limit as i64], map_ref)?;
@@ -1375,9 +1828,9 @@ impl Store {
 
     pub fn all_symbols_for_export(&self) -> Result<Vec<SymbolRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type
-             FROM symbols s JOIN files f ON f.path = s.path
-             ORDER BY s.path, s.start_line",
+            "SELECT s.id, s.name, s.qualified_name, s.kind, s.path, s.start_line, s.end_line, s.parent, s.description, f.language, s.start_col, s.end_col, s.return_type, s.root_id
+             FROM symbols s JOIN files f ON f.path = s.path AND f.root_id = s.root_id
+             ORDER BY s.root_id, s.path, s.start_line",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(SymbolRecord {
@@ -1394,6 +1847,7 @@ impl Store {
                 start_col: r.get::<_, i64>(10)? as usize,
                 end_col: r.get::<_, i64>(11)? as usize,
                 return_type: r.get(12)?,
+                root_id: r.get::<_, Option<String>>(13)?.unwrap_or_default(),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1404,8 +1858,8 @@ impl Store {
     pub fn all_refs_for_export(&self, filter: ConfidenceFilter) -> Result<Vec<ReferenceRecord>> {
         let conf = confidence_where(filter);
         let sql = format!(
-            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
-             FROM refs WHERE {conf} ORDER BY path, line"
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
+             FROM refs WHERE {conf} ORDER BY root_id, path, line"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map([], map_ref)?;
@@ -1429,23 +1883,39 @@ impl Store {
         limit: usize,
         filter: ConfidenceFilter,
     ) -> Result<Vec<ImpactNode>> {
+        self.impact_filtered_in(name, depth, limit, filter, None)
+    }
+
+    pub fn impact_filtered_in(
+        &self,
+        name: &str,
+        depth: usize,
+        limit: usize,
+        filter: ConfidenceFilter,
+        root_id: Option<&str>,
+    ) -> Result<Vec<ImpactNode>> {
         let fk = filter_key(filter);
+        let rk = root_id.unwrap_or("").to_string();
         {
             let mut c = self.cache.borrow_mut();
-            if let Some(v) = c.impact.get(&(name.to_string(), depth, limit, fk)).cloned() {
+            if let Some(v) = c
+                .impact
+                .get(&(name.to_string(), depth, limit, fk, rk.clone()))
+                .cloned()
+            {
                 c.note_hit();
                 return Ok(v);
             }
             c.note_miss();
         }
-        let result = self.impact_uncached(name, depth, limit, filter)?;
+        let result = self.impact_uncached(name, depth, limit, filter, root_id)?;
         {
             let mut c = self.cache.borrow_mut();
             if QueryCache::evict_if_needed(c.impact.len(), c.max_entries) {
                 c.impact.clear();
             }
             c.impact
-                .insert((name.to_string(), depth, limit, fk), result.clone());
+                .insert((name.to_string(), depth, limit, fk, rk), result.clone());
         }
         Ok(result)
     }
@@ -1456,9 +1926,10 @@ impl Store {
         depth: usize,
         limit: usize,
         filter: ConfidenceFilter,
+        root_id: Option<&str>,
     ) -> Result<Vec<ImpactNode>> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
+        let mut visited_ref: std::collections::HashSet<(String, String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
         let mut frontier: std::collections::VecDeque<(String, usize)> =
@@ -1471,12 +1942,17 @@ impl Store {
                 continue;
             }
             // No SQL LIMIT before expansion (R5 M3): output limit ≠ frontier fetch.
-            let refs = self.callers_uncached_opt(&current, None, filter)?;
+            let refs = self.callers_uncached_opt(&current, None, filter, root_id)?;
             for r in refs {
                 if out.len() >= limit {
                     break;
                 }
-                let key = (r.name.clone(), r.line as i64, r.path.clone());
+                let key = (
+                    r.root_id.clone(),
+                    r.name.clone(),
+                    r.line as i64,
+                    r.path.clone(),
+                );
                 if !visited_ref.insert(key) {
                     continue;
                 }
@@ -1489,6 +1965,11 @@ impl Store {
                     enclosing: r.enclosing.clone(),
                     resolved: r.resolved.clone(),
                     confidence: r.confidence,
+                    root_id: r.root_id.clone(),
+                    edge_role: Some(crate::model::edge_role_for(
+                        r.confidence,
+                        r.evidence.as_ref().map(|e| e.rule_id.as_str()),
+                    )),
                 });
                 // Only expand via last segment of enclosing when that leaf is a real
                 // symbol, ideally in the same language as the referring file.
@@ -1624,26 +2105,48 @@ impl Store {
         Ok(())
     }
 
-    /// All stored S-violations (from last index of each file).
+    /// All stored S-violations (union of roots).
     pub fn subset_violations(&self) -> Result<Vec<SubsetViolation>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, kind, line, snippet FROM subset_violations ORDER BY path, line",
-        )?;
-        let rows = stmt.query_map([], |r| {
+        self.subset_violations_in(None)
+    }
+
+    /// S-violations; `root_id=Some` scopes to one workspace root.
+    pub fn subset_violations_in(&self, root_id: Option<&str>) -> Result<Vec<SubsetViolation>> {
+        let sql = match root_id {
+            None => "SELECT path, kind, line, snippet FROM subset_violations ORDER BY root_id, path, line".to_string(),
+            Some(_) => "SELECT path, kind, line, snippet FROM subset_violations WHERE root_id = ?1 ORDER BY path, line".to_string(),
+        };
+        let mut stmt = self.conn.prepare(&sql)?;
+        let map_row = |r: &rusqlite::Row<'_>| -> rusqlite::Result<SubsetViolation> {
             Ok(SubsetViolation {
                 path: r.get(0)?,
                 kind: r.get(1)?,
                 line: r.get::<_, i64>(2)? as usize,
                 snippet: r.get(3)?,
             })
-        })?;
+        };
+        let rows = match root_id {
+            None => stmt.query_map([], map_row)?,
+            Some(rid) => stmt.query_map(params![rid], map_row)?,
+        };
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     pub fn subset_violation_count(&self) -> Result<usize> {
-        let n: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM subset_violations", [], |r| r.get(0))?;
+        self.subset_violation_count_in(None)
+    }
+
+    pub fn subset_violation_count_in(&self, root_id: Option<&str>) -> Result<usize> {
+        let n: i64 = match root_id {
+            None => self
+                .conn
+                .query_row("SELECT COUNT(*) FROM subset_violations", [], |r| r.get(0))?,
+            Some(rid) => self.conn.query_row(
+                "SELECT COUNT(*) FROM subset_violations WHERE root_id = ?1",
+                params![rid],
+                |r| r.get(0),
+            )?,
+        };
         Ok(n as usize)
     }
 
@@ -1662,29 +2165,42 @@ impl Store {
         }
         let mut refreshed = 0usize;
         for path in paths {
+            let wr = self.write_root();
             let abs = {
-                // Paths are repo-relative (`src/a.ts`). Resolve against db parent's parent
-                // (db lives at <root>/.agentgraph/index.db).
-                let root = self
-                    .conn
-                    .path()
-                    .map(|p| {
-                        let db = std::path::Path::new(p);
-                        db.parent()
-                            .and_then(|ag| ag.parent())
-                            .map(|r| r.to_path_buf())
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default();
-                if root.as_os_str().is_empty() {
+                // Prefer recorded workspace root path for this root_id; else classic
+                // `<root>/.agentgraph/index.db` parent-parent heuristic.
+                let mut resolved = std::path::PathBuf::new();
+                if !wr.is_empty() {
+                    if let Ok(roots) = self.workspace_roots_meta() {
+                        if let Some(info) = roots.iter().find(|r| r.id == wr) {
+                            if !info.path.is_empty() {
+                                resolved = std::path::PathBuf::from(&info.path);
+                            }
+                        }
+                    }
+                }
+                if resolved.as_os_str().is_empty() {
+                    resolved = self
+                        .conn
+                        .path()
+                        .map(|p| {
+                            let db = std::path::Path::new(p);
+                            db.parent()
+                                .and_then(|ag| ag.parent())
+                                .map(|r| r.to_path_buf())
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
+                }
+                if resolved.as_os_str().is_empty() {
                     continue;
                 }
-                root.join(path)
+                resolved.join(path)
             };
             if !abs.exists() {
                 self.conn.execute(
-                    "DELETE FROM subset_violations WHERE path = ?1",
-                    params![path],
+                    "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ?2",
+                    params![path, wr],
                 )?;
                 refreshed += 1;
                 continue;
@@ -1705,16 +2221,16 @@ impl Store {
             };
             let report = super::subset::scan_subset(&src, lang, path);
             self.conn.execute(
-                "DELETE FROM subset_violations WHERE path = ?1",
-                params![path],
+                "DELETE FROM subset_violations WHERE path = ?1 AND root_id = ?2",
+                params![path, wr],
             )?;
             {
                 let mut stmt = self.conn.prepare(
-                    "INSERT INTO subset_violations(path, kind, line, snippet)
-                     VALUES(?1, ?2, ?3, ?4)",
+                    "INSERT INTO subset_violations(root_id, path, kind, line, snippet)
+                     VALUES(?1, ?2, ?3, ?4, ?5)",
                 )?;
                 for v in &report.violations {
-                    stmt.execute(params![path, v.kind, v.line as i64, v.snippet])?;
+                    stmt.execute(params![wr, path, v.kind, v.line as i64, v.snippet])?;
                 }
             }
             refreshed += 1;
@@ -1736,13 +2252,23 @@ impl Store {
         name: &str,
         limit: usize,
     ) -> Result<(Vec<ReferenceRecord>, Vec<SubsetViolation>)> {
-        let all = self.callers_uncached_opt(name, None, ConfidenceFilter::IncludeDynamic)?;
+        self.callers_sound_in(name, limit, None)
+    }
+
+    pub fn callers_sound_in(
+        &self,
+        name: &str,
+        limit: usize,
+        root_id: Option<&str>,
+    ) -> Result<(Vec<ReferenceRecord>, Vec<SubsetViolation>)> {
+        let all =
+            self.callers_uncached_opt(name, None, ConfidenceFilter::IncludeDynamic, root_id)?;
         let hits: Vec<ReferenceRecord> = all
             .into_iter()
             .filter(|r| self.ref_is_sound(r))
             .take(limit)
             .collect();
-        let violations = self.subset_violations()?;
+        let violations = self.subset_violations_in(root_id)?;
         Ok((hits, violations))
     }
 
@@ -1753,8 +2279,18 @@ impl Store {
         depth: usize,
         limit: usize,
     ) -> Result<(Vec<ImpactNode>, Vec<SubsetViolation>)> {
+        self.impact_sound_in(name, depth, limit, None)
+    }
+
+    pub fn impact_sound_in(
+        &self,
+        name: &str,
+        depth: usize,
+        limit: usize,
+        root_id: Option<&str>,
+    ) -> Result<(Vec<ImpactNode>, Vec<SubsetViolation>)> {
         let mut visited_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut visited_ref: std::collections::HashSet<(String, i64, String)> =
+        let mut visited_ref: std::collections::HashSet<(String, String, i64, String)> =
             std::collections::HashSet::new();
         let mut out: Vec<ImpactNode> = Vec::new();
         let mut frontier: std::collections::VecDeque<(String, usize)> =
@@ -1767,8 +2303,12 @@ impl Store {
                 continue;
             }
             // No SQL LIMIT before sound filter (C5).
-            let refs =
-                self.callers_uncached_opt(&current, None, ConfidenceFilter::IncludeDynamic)?;
+            let refs = self.callers_uncached_opt(
+                &current,
+                None,
+                ConfidenceFilter::IncludeDynamic,
+                root_id,
+            )?;
             for r in refs {
                 if !self.ref_is_sound(&r) {
                     continue;
@@ -1776,7 +2316,12 @@ impl Store {
                 if out.len() >= limit {
                     break;
                 }
-                let key = (r.name.clone(), r.line as i64, r.path.clone());
+                let key = (
+                    r.root_id.clone(),
+                    r.name.clone(),
+                    r.line as i64,
+                    r.path.clone(),
+                );
                 if !visited_ref.insert(key) {
                     continue;
                 }
@@ -1789,6 +2334,11 @@ impl Store {
                     enclosing: r.enclosing.clone(),
                     resolved: r.resolved.clone(),
                     confidence: r.confidence,
+                    root_id: r.root_id.clone(),
+                    edge_role: Some(crate::model::edge_role_for(
+                        r.confidence,
+                        r.evidence.as_ref().map(|e| e.rule_id.as_str()),
+                    )),
                 });
                 if let Some(enc) = r.enclosing.clone() {
                     let leaf = last_segment(&enc);
@@ -1801,8 +2351,101 @@ impl Store {
                 }
             }
         }
-        let violations = self.subset_violations()?;
+        let violations = self.subset_violations_in(root_id)?;
         Ok((out, violations))
+    }
+
+    /// Workspace roots recorded at last `index --workspace` (meta JSON).
+    pub fn workspace_roots_meta(&self) -> Result<Vec<crate::model::WorkspaceRootInfo>> {
+        let raw = self.get_meta("workspace_roots")?;
+        let Some(raw) = raw else {
+            return Ok(Vec::new());
+        };
+        let roots: Vec<crate::model::WorkspaceRootInfo> =
+            serde_json::from_str(&raw).unwrap_or_default();
+        Ok(roots)
+    }
+
+    pub fn set_workspace_roots_meta(
+        &self,
+        roots: &[crate::model::WorkspaceRootInfo],
+    ) -> Result<()> {
+        let json = serde_json::to_string(roots)?;
+        self.set_meta("workspace_roots", &json)?;
+        self.set_meta("workspace", if roots.is_empty() { "0" } else { "1" })?;
+        Ok(())
+    }
+
+    pub fn is_workspace(&self) -> Result<bool> {
+        Ok(self.get_meta("workspace")?.as_deref() == Some("1"))
+    }
+
+    /// Per-root subset violation count + optional language list (status payload).
+    pub fn root_status_rows(&self) -> Result<Vec<crate::model::WorkspaceRootInfo>> {
+        let recorded = self.workspace_roots_meta()?;
+        let mut by_id: std::collections::BTreeMap<String, crate::model::WorkspaceRootInfo> =
+            std::collections::BTreeMap::new();
+        for r in recorded {
+            by_id.insert(r.id.clone(), r);
+        }
+        // Overlay live counts from the store (root_id column).
+        let mut stmt = self
+            .conn
+            .prepare("SELECT root_id, COUNT(*) FROM files GROUP BY root_id ORDER BY root_id")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as usize))
+        })?;
+        let mut live: Vec<(String, usize)> = Vec::new();
+        for row in rows {
+            live.push(row?);
+        }
+        for (rid, nfiles) in live {
+            let nsym: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM symbols WHERE root_id = ?1",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            let nref: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM refs WHERE root_id = ?1",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            let nviol: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM subset_violations WHERE root_id = ?1",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            let mut langs = Vec::new();
+            {
+                let mut stmt = self.conn.prepare(
+                    "SELECT DISTINCT language FROM files WHERE root_id = ?1 ORDER BY language",
+                )?;
+                let lrows = stmt.query_map(params![rid], |r| r.get::<_, String>(0))?;
+                for l in lrows {
+                    langs.push(l?);
+                }
+            }
+            let entry =
+                by_id
+                    .entry(rid.clone())
+                    .or_insert_with(|| crate::model::WorkspaceRootInfo {
+                        id: rid.clone(),
+                        path: String::new(),
+                        files: 0,
+                        symbols: 0,
+                        references: 0,
+                        subset_violations: 0,
+                        languages: None,
+                    });
+            entry.files = nfiles;
+            entry.symbols = nsym as usize;
+            entry.references = nref as usize;
+            entry.subset_violations = nviol as usize;
+            if entry.languages.is_none() {
+                entry.languages = Some(langs);
+            }
+        }
+        Ok(by_id.into_values().collect())
     }
 }
 
@@ -1862,6 +2505,7 @@ fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
     let confidence_s: String = r.get(8)?;
     let evidence_s: Option<String> = r.get(9)?;
     let evidence = evidence_s.and_then(|s| serde_json::from_str::<Evidence>(&s).ok());
+    let root_id: Option<String> = r.get(10)?;
     Ok(ReferenceRecord {
         name: r.get(0)?,
         kind: EdgeKind::parse(&r.get::<_, String>(1)?),
@@ -1873,5 +2517,6 @@ fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
         qualifier: r.get(7)?,
         confidence: Confidence::parse(&confidence_s),
         evidence,
+        root_id: root_id.unwrap_or_default(),
     })
 }

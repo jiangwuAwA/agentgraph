@@ -117,7 +117,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "callers",
-                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Use exact_only=true to drop Heuristic; include_dynamic=true to also return DynamicCandidate. sound=true uses the L2 sound-eligible edge set (mutually exclusive with exact_only/include_dynamic) and reports S-violations. with_macro unions optional sidecar hits (origin=macro_expanded, paths mapped when possible); de-dup ON by default; exact_only+with_macro ignores the sidecar; not sound.",
+                "description": "List call sites / references of a symbol. Default includes Exact + Heuristic (L1 DI/factory). Noise governance: when implementor edges (trait/interface impls) are present the payload is an object {callers, implementors, implementor_count, implementors_truncated, truncated, note}; plain array when zero implementors. Rows carry edge_role (call|implementor|registration|dynamic). include_implementors=true merges all roles (old noisy shape); implementors_only=true returns implementors only; exact_only=true stays pure Exact calls. sound=true uses the L2 sound-eligible edge set (mutually exclusive with exact_only/include_dynamic/include_implementors/implementors_only). with_macro unions optional sidecar hits; de-dup ON by default; not sound.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -127,6 +127,8 @@ fn tools_list() -> Value {
                         "include_dynamic": {"type": "boolean", "default": false},
                         "recall": {"type": "boolean", "default": false, "description": "Prefer recall over a clean graph (alias for include_dynamic)"},
                         "sound": {"type": "boolean", "default": false},
+                        "include_implementors": {"type": "boolean", "default": false, "description": "Merge implementor edges into the callers array (old noisy default). Mutually exclusive with implementors_only."},
+                        "implementors_only": {"type": "boolean", "default": false, "description": "Return only implementor edges. Mutually exclusive with include_implementors."},
                         "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro-expanded sidecar hits (origin=macro_expanded). Default off. Paths mapped to source when possible; de-dup ON (same name+enclosing+mapped_path as main Exact/Heuristic drops sidecar row). exact_only ignores sidecar. Mutually exclusive with sound. limit applies per store; without de-dup union may return ~2N rows. Not sound-certified."},
                         "no_macro_dedup": {"type": "boolean", "default": false, "description": "Debug: keep duplicate sidecar rows under with_macro (default de-dup ON)."}
                     },
@@ -135,7 +137,7 @@ fn tools_list() -> Value {
             },
             {
                 "name": "impact",
-                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges. with_macro unions optional sidecar (mapped path + de-dup ON; not sound).",
+                "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges. Rows carry edge_role (call|implementor|registration|dynamic); implementor edges still expand (blast radius) but are tagged. with_macro unions optional sidecar (mapped path + de-dup ON; not sound).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -207,6 +209,17 @@ fn tools_list() -> Value {
                 "name": "stats",
                 "description": "Show current index statistics (file/symbol/reference counts).",
                 "inputSchema": {"type": "object", "properties": {}}
+            },
+            {
+                "name": "workspace_status",
+                "description": "Multi-root workspace status (Track M4-W): db_path, per-root counts (files/symbols/refs/subset_violations), root_id list. Optional workspace_db / workspace_root args. Single SQLite store + root_id — not N separate connections.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional)"},
+                        "workspace_root": {"type": "string", "description": "Project root used to resolve the default workspace DB (optional)"}
+                    }
+                }
             },
             {
                 "name": "importers",
@@ -345,6 +358,24 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let stats = indexer.stats()?;
                 Ok(ok_text(serde_json::to_string_pretty(&stats)?))
             }
+            "workspace_status" => {
+                let db = if let Some(p) = args.get("workspace_db").and_then(|v| v.as_str()) {
+                    PathBuf::from(p)
+                } else if let Some(r) = args.get("workspace_root").and_then(|v| v.as_str()) {
+                    let raw = PathBuf::from(r);
+                    let abs = if raw.is_absolute() {
+                        raw
+                    } else {
+                        root.join(&raw)
+                    };
+                    abs.join(".agentgraph").join("index.db")
+                } else {
+                    root.join(".agentgraph").join("index.db")
+                };
+                let status = crate::index::workspace::workspace_status(&db)
+                    .map_err(|e| anyhow::anyhow!("{e:#}"))?;
+                Ok(ok_text(serde_json::to_string_pretty(&status)?))
+            }
             "find_symbol" => {
                 let sym = args
                     .get("name")
@@ -384,9 +415,23 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     .get("no_macro_dedup")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let include_implementors = args
+                    .get("include_implementors")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let implementors_only = args
+                    .get("implementors_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let indexer = Indexer::new(&root)?;
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
+                let role_mode = crate::query::parse_callers_role_mode(
+                    exact_only,
+                    include_implementors,
+                    implementors_only,
+                )
+                .map_err(|e| anyhow::anyhow!(e))?;
                 if sound && with_macro {
                     return Err(anyhow::anyhow!(
                         "sound is mutually exclusive with with_macro \
@@ -394,9 +439,15 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     ));
                 }
                 if sound {
-                    if exact_only || include_dynamic || recall {
+                    if exact_only
+                        || include_dynamic
+                        || recall
+                        || include_implementors
+                        || implementors_only
+                    {
                         return Err(anyhow::anyhow!(
                             "sound is mutually exclusive with exact_only / include_dynamic / recall \
+                             / include_implementors / implementors_only \
                              (sound walk uses its own eligibility filter)"
                         ));
                     }
@@ -404,16 +455,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let subset_ok = violations.is_empty();
                     let languages = store.stats(&root.to_string_lossy())?.languages;
                     let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
-                    let mapped: Vec<Value> = hits
-                        .into_iter()
-                        .map(|r| {
-                            let mut v = serde_json::to_value(&r).unwrap_or_default();
-                            if let Some(obj) = v.as_object_mut() {
-                                obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
-                            }
-                            v
-                        })
-                        .collect();
+                    let mapped: Vec<Value> = hits.iter().map(|r| r.to_query_json()).collect();
                     let payload = json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
@@ -426,22 +468,13 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
                 let filter = parse_query_flags(exact_only, include_dynamic, recall);
-                let hits = Query::new(&store).callers_filtered(sym, limit, filter)?;
-                // Always emit CLI-stable `at` on callers rows (with or without
-                // with_macro) so e2e consumers do not see schema flip on the flag.
-                let mut mapped: Vec<Value> = hits
-                    .into_iter()
-                    .map(|r| {
-                        let mut v = serde_json::to_value(&r).unwrap_or_default();
-                        if let Some(obj) = v.as_object_mut() {
-                            obj.insert("at".into(), json!(format!("{}:{}", r.path, r.line)));
-                        }
-                        v
-                    })
-                    .collect();
+                let hits = store.callers_for_roles(sym, limit, filter, None)?;
+                let role_payload =
+                    crate::query::build_callers_payload(sym, hits.clone(), limit, role_mode);
+                let mut mapped: Vec<Value> = hits.iter().map(|r| r.to_query_json()).collect();
                 // M1: exact_only + with_macro ignores sidecar (plain array).
                 if with_macro && exact_only {
-                    return Ok(ok_text(serde_json::to_string_pretty(&mapped)?));
+                    return Ok(ok_text(serde_json::to_string_pretty(&role_payload)?));
                 }
                 if with_macro {
                     if let Some(side) = indexer.open_macro_store()? {
@@ -478,12 +511,12 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                             "origin": "macro_expanded",
                             "path_map_present": path_map_present,
                             "dedup_stats": stats,
-                            "note": "sidecar union is optional candidates (not sound); de-dup ON unless no_macro_dedup",
+                            "note": "sidecar union is optional candidates (not sound); de-dup ON unless no_macro_dedup; main rows carry edge_role",
                         });
                         return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                     }
                 }
-                Ok(ok_text(serde_json::to_string_pretty(&mapped)?))
+                Ok(ok_text(serde_json::to_string_pretty(&role_payload)?))
             }
             "impact" => {
                 let sym = args
@@ -532,17 +565,8 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let subset_ok = violations.is_empty();
                     let languages = store.stats(&root.to_string_lossy())?.languages;
                     let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
-                    // Always emit `at` on impact rows (caller symmetry).
-                    let mapped: Vec<Value> = hits
-                        .into_iter()
-                        .map(|n| {
-                            let mut v = serde_json::to_value(&n).unwrap_or_default();
-                            if let Some(obj) = v.as_object_mut() {
-                                obj.insert("at".into(), json!(format!("{}:{}", n.path, n.line)));
-                            }
-                            v
-                        })
-                        .collect();
+                    // Always emit `at` on impact rows (caller symmetry); edge_role tagged.
+                    let mapped: Vec<Value> = hits.iter().map(|n| n.to_query_json()).collect();
                     let payload = serde_json::json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,

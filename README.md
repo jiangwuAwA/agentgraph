@@ -75,7 +75,7 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | Command | Purpose |
 |---|---|
 | `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
-| `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`) |
+| `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`, **`edge_role`**). Default separates implementors into `{callers, implementors, …}` when present; `--include-implementors` / `--implementors-only` / high-freq demote — [docs/noise-governance.md](docs/noise-governance.md) |
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
 | `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view); `--sound` renders S-qualified edges with `subset_ok` / `promise_tier` header — see [docs/graph-html.md](docs/graph-html.md) |
 | `diff` | Indexed-edge set difference vs snapshot baseline written at `index` time (not a runtime call-graph diff) — see [docs/graph-diff.md](docs/graph-diff.md) |
@@ -86,7 +86,7 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 
 Confidence windows on `callers` / `impact` (and MCP tools):
 
-- default: **Exact + Heuristic** (L1 DI/factory/event candidates)
+- default: **Exact + Heuristic** (L1 DI/factory/event candidates). **Noise governance:** rows carry `edge_role` (`call`|`implementor`|`registration`|`dynamic`); when implementors are present `callers` returns `{callers, implementors, implementor_count, implementors_truncated, truncated, note}` (plain array when zero implementors). `--include-implementors` merges; `--implementors-only` isolates implementors. High-frequency names (`fmt`/`drop`/`clone`/…) cap implementors at 20. Store keeps all edges; `impact` still expands implementors (tagged). See [docs/noise-governance.md](docs/noise-governance.md).
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic` / **`--recall`**: also DynamicCandidate (reflection / computed keys — noisier)
 - `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md). **Promise tier:** shipped languages (js/ts/tsx/jsx/python/go/rust) are **`ast_modeled`** (tree-sitter AST S gate — engineering subset, **not** ecosystem sound). Type-only `typeof Function` stays **in S**; value-use of `Function`/`eval` leaves S.

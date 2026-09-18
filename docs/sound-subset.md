@@ -100,12 +100,16 @@ index):
    delete + FK cascade) so they cannot leave permanent S debt.
 
 Cost note: re-cert is **per dirty path** (re-read + tree-sitter scan), not a
-full-corpus rescan. Full `index` still runs the corpus-wide scan. See
-[eval-query-p95.md](eval-query-p95.md) for query p95 (re-cert is on the index
-path, not the query path).
+full-corpus rescan. Full `index` still runs the corpus-wide scan. Measured
+budgets on a mid-size fixture (dirty `refresh_subset_for_paths` / path-scoped
+reindex vs full-corpus `scan_subset`) live in
+[eval-query-p95.md](eval-query-p95.md) § M4 diff / S-recert budgets — fixture +
+machine local, not a production SLO. Query p95 is on the query path; re-cert
+is on the index path.
 
 Regression: `tests/s_recert_watch.rs` (eval write → `index_paths` →
-`promise_tier=disabled`; fix file → violation cleared).
+`promise_tier=disabled`; fix file → violation cleared). Soft latency gate:
+`tests/perf_m4_diff.rs`.
 
 ## S_js (TypeScript / JavaScript)
 

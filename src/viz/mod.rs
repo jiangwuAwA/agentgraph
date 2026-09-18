@@ -6,8 +6,16 @@
 //! Honesty: rendered edges are **indexed** L0/L1 (and optional L1 dynamic /
 //! macro sidecar) candidates — not a complete runtime graph.
 
-use crate::model::{Confidence, ImpactNode, ReferenceRecord};
+use crate::model::{Confidence, EdgeRole, ImpactNode, ReferenceRecord};
 use serde_json::json;
+
+fn role_str_from_impact(row: &ImpactNode) -> &'static str {
+    row.edge_role.unwrap_or(EdgeRole::Call).as_str()
+}
+
+fn role_str_from_ref(row: &ReferenceRecord) -> &'static str {
+    row.edge_role().as_str()
+}
 
 /// Hard cap so a large neighborhood cannot hang the browser.
 pub const MAX_GRAPH_NODES: usize = 300;
@@ -17,6 +25,19 @@ pub const COLOR_EXACT: &str = "#1f9d55";
 pub const COLOR_HEURISTIC: &str = "#d97706";
 pub const COLOR_DYNAMIC: &str = "#a855f7";
 pub const COLOR_MACRO_STROKE: &str = "#0ea5e9";
+/// Role badge accent (implementor / registration) — noise governance.
+pub const COLOR_ROLE_IMPLEMENTOR: &str = "#0ea5e9";
+pub const COLOR_ROLE_REGISTRATION: &str = "#db2777";
+
+/// Badge text for a non-call edge role (noise governance). Empty for call.
+pub fn role_badge(role: &str) -> &'static str {
+    match role {
+        "implementor" => "IMP",
+        "registration" => "REG",
+        "dynamic" => "DYN",
+        _ => "",
+    }
+}
 
 /// Primary neighborhood direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -70,6 +91,8 @@ pub struct GraphNode {
     /// `Some("macro_expanded")` for sidecar-origin rows.
     pub origin: Option<&'static str>,
     pub is_query: bool,
+    /// Edge role: `call` | `implementor` | `registration` | `dynamic`.
+    pub role: &'static str,
 }
 
 impl GraphNode {
@@ -88,6 +111,8 @@ pub struct GraphEdge {
     pub to: String,
     pub confidence: &'static str,
     pub kind: &'static str,
+    /// Edge role badge source: `call` | `implementor` | `registration` | `dynamic`.
+    pub role: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -221,6 +246,7 @@ fn ensure_query_node(nodes: &mut Vec<GraphNode>, query: &str) {
             line: None,
             origin: None,
             is_query: true,
+            role: "call",
         },
     );
 }
@@ -280,6 +306,7 @@ pub fn build_impact_graph(
             continue;
         }
         let conf = conf_str(row.confidence);
+        let role = role_str_from_impact(row);
         let from_id = if row.depth <= 1 {
             "q".to_string()
         } else {
@@ -298,6 +325,7 @@ pub fn build_impact_graph(
                     line: None,
                     origin: None,
                     is_query: false,
+                    role,
                 },
             );
         }
@@ -322,6 +350,7 @@ pub fn build_impact_graph(
                 line: Some(row.line),
                 origin: None,
                 is_query: false,
+                role,
             },
         );
         let _ = is_site;
@@ -332,6 +361,7 @@ pub fn build_impact_graph(
                 to: to_id,
                 confidence: conf,
                 kind: row.kind.as_str(),
+                role,
             },
         );
     }
@@ -348,6 +378,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
             continue;
         }
         let conf = conf_str(row.confidence);
+        let role = role_str_from_impact(row);
         let from_id = if row.depth <= 1 {
             "q".to_string()
         } else {
@@ -365,6 +396,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
                     line: None,
                     origin: Some("macro_expanded"),
                     is_query: false,
+                    role,
                 },
             );
         }
@@ -386,6 +418,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
                 line: Some(row.line),
                 origin: Some("macro_expanded"),
                 is_query: false,
+                role,
             },
         );
         push_edge(
@@ -395,6 +428,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
                 to: to_id,
                 confidence: conf,
                 kind: row.kind.as_str(),
+                role,
             },
         );
     }
@@ -421,6 +455,7 @@ pub fn build_callers_graph(
 
     for row in callers {
         let conf = conf_str(row.confidence);
+        let role = role_str_from_ref(row);
         let (from_id, from_name) = match &row.enclosing {
             Some(enc) if !enc.is_empty() && enc != query => (node_id_for_symbol(enc), enc.clone()),
             _ => (
@@ -439,6 +474,7 @@ pub fn build_callers_graph(
                 line: Some(row.line),
                 origin: None,
                 is_query: false,
+                role,
             },
         );
         push_edge(
@@ -448,6 +484,7 @@ pub fn build_callers_graph(
                 to: "q".to_string(),
                 confidence: conf,
                 kind: row.kind.as_str(),
+                role,
             },
         );
     }
@@ -461,6 +498,7 @@ pub fn add_macro_caller_rows(data: &mut GraphVizData, query: &str, callers: &[Re
     let mut edges = std::mem::take(&mut data.edges);
     for row in callers {
         let conf = conf_str(row.confidence);
+        let role = role_str_from_ref(row);
         let (from_id, from_name) = match &row.enclosing {
             Some(enc) if !enc.is_empty() && enc != query => (node_id_for_symbol(enc), enc.clone()),
             _ => (
@@ -479,6 +517,7 @@ pub fn add_macro_caller_rows(data: &mut GraphVizData, query: &str, callers: &[Re
                 line: Some(row.line),
                 origin: Some("macro_expanded"),
                 is_query: false,
+                role,
             },
         );
         push_edge(
@@ -488,6 +527,7 @@ pub fn add_macro_caller_rows(data: &mut GraphVizData, query: &str, callers: &[Re
                 to: "q".to_string(),
                 confidence: conf,
                 kind: row.kind.as_str(),
+                role,
             },
         );
     }
@@ -671,6 +711,7 @@ fn node_json(n: &GraphNode) -> serde_json::Value {
         "origin": n.origin,
         "is_query": n.is_query,
         "at": n.location(),
+        "edge_role": n.role,
     })
 }
 
@@ -680,6 +721,7 @@ fn edge_json(e: &GraphEdge) -> serde_json::Value {
         "to": e.to,
         "confidence": e.confidence,
         "kind": e.kind,
+        "edge_role": e.role,
     })
 }
 
@@ -706,10 +748,17 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
         let color = conf_color(e.confidence);
         let kind = escape_html(e.kind);
         let conf = escape_html(e.confidence);
+        let role = escape_html(e.role);
+        let role_badge_txt = role_badge(e.role);
         svg_edges.push_str(&format!(
-            r##"<line class="edge conf-{conf}" data-from="{from}" data-to="{to}" x1="{x1:.1}" y1="{y1:.1}" x2="{x2:.1}" y2="{y2:.1}" stroke="{color}" stroke-width="2" marker-end="url(#arrow)" opacity="0.85"><title>{kind} · {conf}</title></line>"##,
+            r##"<line class="edge conf-{conf} role-{role}" data-from="{from}" data-to="{to}" data-edge-role="{role}" x1="{x1:.1}" y1="{y1:.1}" x2="{x2:.1}" y2="{y2:.1}" stroke="{color}" stroke-width="2" marker-end="url(#arrow)" opacity="0.85"><title>{kind} · {conf} · {role}{badge_suffix}</title></line>"##,
             from = escape_html(&e.from),
             to = escape_html(&e.to),
+            badge_suffix = if role_badge_txt.is_empty() {
+                String::new()
+            } else {
+                format!(" · {role_badge_txt}")
+            },
         ));
     }
 
@@ -721,12 +770,19 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
         let label = escape_html(&truncate_label(&n.name));
         let full_name = escape_html(&n.name);
         let conf = escape_html(n.confidence);
+        let role = escape_html(n.role);
+        let role_txt = role_badge(n.role);
         let depth = n.depth;
         let loc = escape_html(&n.location().unwrap_or_else(|| "—".into()));
         let macro_cls = if n.origin == Some("macro_expanded") {
             " node-macro"
         } else {
             ""
+        };
+        let role_cls = if n.role != "call" {
+            format!(" node-role-{role}")
+        } else {
+            String::new()
         };
         let macro_badge = if n.origin == Some("macro_expanded") {
             format!(
@@ -737,18 +793,29 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
         } else {
             String::new()
         };
+        let role_badge_svg = if !role_txt.is_empty() {
+            format!(
+                r#"<text x="{bx:.1}" y="{by:.1}" text-anchor="middle" class="role-badge role-badge-{role}">{badge}</text>"#,
+                bx = x,
+                by = y + r + 20.0,
+                role = role,
+                badge = role_txt,
+            )
+        } else {
+            String::new()
+        };
         let query_cls = if n.is_query { " node-query" } else { "" };
+        let badge = format!("{macro_badge}{role_badge_svg}");
         svg_nodes.push_str(&format!(
-            r##"<g class="node{query_cls}{macro_cls} conf-{conf}" data-id="{id}" data-name="{full_name}" data-depth="{depth}" data-confidence="{conf}" data-location="{loc}" data-origin="{origin}" transform="translate({x:.1},{y:.1})">
+            r##"<g class="node{query_cls}{macro_cls}{role_cls} conf-{conf}" data-id="{id}" data-name="{full_name}" data-depth="{depth}" data-confidence="{conf}" data-location="{loc}" data-origin="{origin}" data-edge-role="{role}" transform="translate({x:.1},{y:.1})">
   <circle r="{r}" fill="{fill}" stroke="#1e293b" stroke-width="2"/>
   <text y="4" text-anchor="middle" class="node-label">{label}</text>
   <text y="{ty:.1}" text-anchor="middle" class="node-meta">d{depth} · {conf}</text>
-  <title>{full_name} · d{depth} · {conf} · {loc}</title>
+  <title>{full_name} · d{depth} · {conf} · {role} · {loc}</title>
 </g>{badge}"##,
             id = escape_html(&n.id),
             origin = escape_html(n.origin.unwrap_or("")),
             ty = r + 14.0,
-            badge = macro_badge,
         ));
     }
 
@@ -758,6 +825,9 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
   <span class="lg"><i style="background:{COLOR_HEURISTIC}"></i> Heuristic / 启发式 (L1)</span>
   <span class="lg"><i style="background:{COLOR_DYNAMIC}"></i> DynamicCandidate / 动态候选 (L1)</span>
   <span class="lg"><i class="macro-swatch"></i> macro_expanded / 宏展开 sidecar</span>
+  <span class="lg role-lg"><b class="role-badge role-badge-implementor">IMP</b> implementor / 实现边</span>
+  <span class="lg role-lg"><b class="role-badge role-badge-registration">REG</b> registration / 注册边</span>
+  <span class="lg role-lg"><b class="role-badge role-badge-dynamic">DYN</b> dynamic / 动态边</span>
 </div>"#
     );
 
@@ -888,6 +958,13 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
   .node-label {{ font-size: 11px; fill: #0f172a; pointer-events: none; font-weight: 600; }}
   .node-meta {{ font-size: 9px; fill: var(--muted); pointer-events: none; }}
   .macro-badge {{ font-size: 9px; fill: var(--macro); font-weight: 700; }}
+  .role-badge {{ font-size: 9px; font-weight: 700; }}
+  .role-badge-implementor {{ fill: {COLOR_ROLE_IMPLEMENTOR}; }}
+  .role-badge-registration {{ fill: {COLOR_ROLE_REGISTRATION}; }}
+  .role-badge-dynamic {{ fill: {COLOR_DYNAMIC}; }}
+  .role-lg .role-badge {{ display: inline-block; margin-right: 4px; }}
+  .node-role-implementor circle {{ stroke: {COLOR_ROLE_IMPLEMENTOR}; stroke-width: 3; }}
+  .node-role-registration circle {{ stroke: {COLOR_ROLE_REGISTRATION}; stroke-width: 3; }}
   .node.is-selected circle {{ stroke: #0f172a; stroke-width: 3; }}
   .node.is-neighbor circle {{ stroke: var(--macro); stroke-width: 3; }}
   .edge.is-dim {{ opacity: 0.15; }}
@@ -1014,6 +1091,7 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
     setText("名称 / Name", n.name);
     setText("深度 / Depth", n.depth);
     setText("置信度 / Confidence", n.confidence);
+    setText("边角色 / Edge role", n.edge_role || n.role || "—");
     setText("路径 / Path:line", n.at || n.location || ((n.path || "—") + (n.line != null ? ":" + n.line : "")));
     setText("来源 / Origin", n.origin || "source");
     setText("边类型 / Kind", (data.edges || []).filter(function (e) {{

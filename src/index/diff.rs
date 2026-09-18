@@ -62,6 +62,9 @@ pub struct RefsSnapshot {
     pub indexed_at: Option<String>,
     #[serde(default)]
     pub edges: Vec<SnapshotEdge>,
+    /// Workspace root_id this snapshot covers (empty = classic single-root).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
 }
 
 /// Diff summary counters (full counts, not limited row counts).
@@ -87,6 +90,9 @@ pub struct EdgeDiff {
     /// Which baseline file/strategy was used (`prev`, `snapshot`, `explicit`, …).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline_source: Option<String>,
+    /// Workspace root filter applied to this diff (if any).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_id: Option<String>,
 }
 
 /// Stable set-key for one edge: name + path + line + confidence + enclosing.
@@ -166,6 +172,7 @@ pub fn diff_edges(
         baseline_index_seq: None,
         current_index_seq: None,
         baseline_source: None,
+        root_id: None,
     }
 }
 
@@ -182,8 +189,21 @@ pub fn ref_to_edge(r: &ReferenceRecord) -> SnapshotEdge {
 
 /// Collect all indexed ref edges from the store (confidence window = everything).
 pub fn collect_store_edges(store: &Store) -> Result<Vec<SnapshotEdge>> {
+    collect_store_edges_in(store, None)
+}
+
+/// Collect edges, optionally scoped to one workspace `root_id`.
+pub fn collect_store_edges_in(store: &Store, root_id: Option<&str>) -> Result<Vec<SnapshotEdge>> {
     let rows = store.all_refs_for_export(ConfidenceFilter::IncludeDynamic)?;
-    Ok(rows.iter().map(ref_to_edge).collect())
+    let edges: Vec<SnapshotEdge> = rows
+        .iter()
+        .filter(|r| match root_id {
+            None => true,
+            Some(rid) => r.root_id == rid,
+        })
+        .map(ref_to_edge)
+        .collect();
+    Ok(edges)
 }
 
 /// `<root>/.agentgraph/refs.snapshot.json`
@@ -194,6 +214,18 @@ pub fn snapshot_path(root: &Path) -> PathBuf {
 /// `<root>/.agentgraph/refs.snapshot.prev.json`
 pub fn snapshot_prev_path(root: &Path) -> PathBuf {
     root.join(".agentgraph").join(REFS_SNAPSHOT_PREV_NAME)
+}
+
+/// Workspace per-root snapshot: `<root>/.agentgraph/refs.snapshot.<root_id>.json`
+pub fn workspace_snapshot_path(root: &Path, root_id: &str) -> PathBuf {
+    root.join(".agentgraph")
+        .join(format!("refs.snapshot.{root_id}.json"))
+}
+
+/// Workspace per-root previous snapshot.
+pub fn workspace_snapshot_prev_path(root: &Path, root_id: &str) -> PathBuf {
+    root.join(".agentgraph")
+        .join(format!("refs.snapshot.{root_id}.prev.json"))
 }
 
 fn now_stamp() -> String {
@@ -234,13 +266,34 @@ fn next_index_seq(store: &Store) -> Result<u64> {
 /// Called at the end of a successful full `index()` (including noop early-out).
 /// Does **not** run on `index_paths` / watch incremental reindex.
 pub fn write_index_snapshot(root: &Path, store: &Store) -> Result<RefsSnapshot> {
-    let edges = collect_store_edges(store)?;
+    write_index_snapshot_for_root(root, store, "")
+}
+
+/// Workspace-aware snapshot write. `root_id == ""` keeps the classic
+/// `refs.snapshot.json` (all edges). Non-empty root_id writes **per-root**
+/// sidecars `refs.snapshot.<root_id>.json` under that root's `.agentgraph/`.
+pub fn write_index_snapshot_for_root(
+    root: &Path,
+    store: &Store,
+    root_id: &str,
+) -> Result<RefsSnapshot> {
+    let edges = if root_id.is_empty() {
+        collect_store_edges(store)?
+    } else {
+        collect_store_edges_in(store, Some(root_id))?
+    };
     let index_seq = next_index_seq(store)?;
     store.set_meta("index_seq", &index_seq.to_string())?;
     store.set_meta("indexed_at", &now_stamp())?;
 
-    let snap_path = snapshot_path(root);
-    let prev_path = snapshot_prev_path(root);
+    let (snap_path, prev_path) = if root_id.is_empty() {
+        (snapshot_path(root), snapshot_prev_path(root))
+    } else {
+        (
+            workspace_snapshot_path(root, root_id),
+            workspace_snapshot_prev_path(root, root_id),
+        )
+    };
     // Dual meta: preserve the previous generation before overwriting.
     if snap_path.exists() {
         if let Ok(old) = read_snapshot_file(&snap_path) {
@@ -251,6 +304,7 @@ pub fn write_index_snapshot(root: &Path, store: &Store) -> Result<RefsSnapshot> 
         index_seq,
         indexed_at: Some(now_stamp()),
         edges,
+        root_id: root_id.to_string(),
     };
     write_snapshot_file(&snap_path, &snap)?;
     Ok(snap)
@@ -261,7 +315,20 @@ pub fn write_index_snapshot(root: &Path, store: &Store) -> Result<RefsSnapshot> 
 /// Used by `diff --write-snapshot`. After this, an immediate re-diff is empty
 /// until further index/watch changes accumulate.
 pub fn write_baseline_snapshot(root: &Path, store: &Store) -> Result<RefsSnapshot> {
-    let edges = collect_store_edges(store)?;
+    write_baseline_snapshot_for_root(root, store, "")
+}
+
+/// Workspace-aware baseline promote. Non-empty `root_id` writes per-root sidecars.
+pub fn write_baseline_snapshot_for_root(
+    root: &Path,
+    store: &Store,
+    root_id: &str,
+) -> Result<RefsSnapshot> {
+    let edges = if root_id.is_empty() {
+        collect_store_edges(store)?
+    } else {
+        collect_store_edges_in(store, Some(root_id))?
+    };
     let index_seq = store
         .get_meta("index_seq")?
         .and_then(|s| s.parse::<u64>().ok())
@@ -270,9 +337,16 @@ pub fn write_baseline_snapshot(root: &Path, store: &Store) -> Result<RefsSnapsho
         index_seq,
         indexed_at: Some(now_stamp()),
         edges,
+        root_id: root_id.to_string(),
     };
-    let snap_path = snapshot_path(root);
-    let prev_path = snapshot_prev_path(root);
+    let (snap_path, prev_path) = if root_id.is_empty() {
+        (snapshot_path(root), snapshot_prev_path(root))
+    } else {
+        (
+            workspace_snapshot_path(root, root_id),
+            workspace_snapshot_prev_path(root, root_id),
+        )
+    };
     write_snapshot_file(&snap_path, &snap)?;
     write_snapshot_file(&prev_path, &snap)?;
     Ok(snap)
@@ -289,11 +363,20 @@ fn edge_sets_equal(a: &[SnapshotEdge], b: &[SnapshotEdge]) -> bool {
 
 /// Load the baseline snapshot for `diff`.
 ///
-/// Fail-loud when no baseline exists.
+/// Fail-loud when no baseline exists. `root_id` selects workspace per-root sidecars.
 pub fn load_baseline(
     root: &Path,
     store: &Store,
     explicit: Option<&Path>,
+) -> Result<(RefsSnapshot, String)> {
+    load_baseline_for_root(root, store, explicit, "")
+}
+
+pub fn load_baseline_for_root(
+    root: &Path,
+    store: &Store,
+    explicit: Option<&Path>,
+    root_id: &str,
 ) -> Result<(RefsSnapshot, String)> {
     if let Some(p) = explicit {
         if !p.exists() {
@@ -306,9 +389,21 @@ pub fn load_baseline(
         return Ok((snap, format!("explicit:{}", p.display())));
     }
 
-    let snap_path = snapshot_path(root);
-    let prev_path = snapshot_prev_path(root);
+    let (snap_path, prev_path) = if root_id.is_empty() {
+        (snapshot_path(root), snapshot_prev_path(root))
+    } else {
+        (
+            workspace_snapshot_path(root, root_id),
+            workspace_snapshot_prev_path(root, root_id),
+        )
+    };
     if !snap_path.exists() && !prev_path.exists() {
+        // Fall back to classic single-root snapshot when workspace sidecar absent.
+        let classic = snapshot_path(root);
+        let classic_prev = snapshot_prev_path(root);
+        if classic.exists() || classic_prev.exists() {
+            return load_baseline_for_root(root, store, None, "");
+        }
         bail!(
             "no refs snapshot baseline at {} — run `agentgraph index` first \
              (full index writes the baseline; then re-index after edits and run `agentgraph diff`)",
@@ -316,7 +411,14 @@ pub fn load_baseline(
         );
     }
 
-    let live = collect_store_edges(store)?;
+    let live = collect_store_edges_in(
+        store,
+        if root_id.is_empty() {
+            None
+        } else {
+            Some(root_id)
+        },
+    )?;
     let snap = if snap_path.exists() {
         read_snapshot_file(&snap_path)?
     } else {
@@ -345,12 +447,34 @@ pub fn run_diff(
     limit: Option<usize>,
     snapshot: Option<&Path>,
 ) -> Result<EdgeDiff> {
+    run_diff_for_root(root, store, exact_only, limit, snapshot, "")
+}
+
+/// Workspace-aware diff. Non-empty `root_id` scopes live edges + baseline sidecar.
+pub fn run_diff_for_root(
+    root: &Path,
+    store: &Store,
+    exact_only: bool,
+    limit: Option<usize>,
+    snapshot: Option<&Path>,
+    root_id: &str,
+) -> Result<EdgeDiff> {
     store.ensure_indexed()?;
-    let (baseline, source) = load_baseline(root, store, snapshot)?;
-    let live = collect_store_edges(store)?;
+    let (baseline, source) = load_baseline_for_root(root, store, snapshot, root_id)?;
+    let live = collect_store_edges_in(
+        store,
+        if root_id.is_empty() {
+            None
+        } else {
+            Some(root_id)
+        },
+    )?;
     let mut d = diff_edges(&baseline.edges, &live, exact_only, limit);
     d.baseline_index_seq = Some(baseline.index_seq);
     d.baseline_source = Some(source);
+    if !root_id.is_empty() {
+        d.root_id = Some(root_id.to_string());
+    }
     let current_seq = store
         .get_meta("index_seq")?
         .and_then(|s| s.parse::<u64>().ok());

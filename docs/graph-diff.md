@@ -16,6 +16,8 @@ agentgraph index
 agentgraph diff
 ```
 
+**Perf:** loose latency budgets (CLI `diff` cold/warm on a mid-size fixture; process spawn included) + reproduce commands: [eval-query-p95.md](eval-query-p95.md) § M4 diff / S-recert budgets (`tests/perf_m4_diff.rs`).
+
 ---
 
 ## Command
@@ -35,6 +37,9 @@ agentgraph diff \
 | `--limit N` | Cap **rows** returned per side; `summary` keeps full counts |
 | `--snapshot PATH` | Explicit baseline JSON (skips dual sidecar selection) |
 | `--write-snapshot` | After printing the diff, promote **current live refs** as the new baseline |
+| `--workspace-root <dir>` | Optional workspace filter: diff only that `root_id` (see [workspace.md](workspace.md)) |
+| `--workspace-db <path>` | Shared workspace SQLite store |
+| `--workspace <manifest>` | Resolve workspace DB from a manifest |
 
 ### Output JSON
 
@@ -143,12 +148,22 @@ Tool `graph_diff` mirrors the CLI payload (optional `exact_only` / `limit` /
 
 ---
 
-## Workspace multi-root (backlog — not shipped in M4 core)
+## Workspace multi-root (shipped — Track M4-W)
 
-Multi-root workspace indexing is **backlog** (not a current CLI flag). When
-implemented, the recommended model is a **single SQLite store + `root_id`
-column** (not one `.agentgraph` per root) so agents keep one connection.
-Until then, index each root separately and run `diff` per root.
+Multi-root workspace indexing uses a **single SQLite store + `root_id` column**
+(not one `.agentgraph` per root) so agents keep one connection.
+
+```bash
+agentgraph index --workspace workspace.json
+agentgraph index --workspace-root ./api --workspace-root ./web
+agentgraph diff --workspace-root ./api --workspace-db <shared.db>
+```
+
+Workspace full index writes **per-root** snapshot sidecars:
+`<root>/.agentgraph/refs.snapshot.<root_id>.json` (+ `.prev.json`).
+Classic single-root `diff` is unchanged (`refs.snapshot.json`).
+
+Details: [workspace.md](workspace.md).
 
 ---
 
@@ -160,4 +175,5 @@ Until then, index each root separately and run `diff` per root.
 - Claiming L1/L2 soundness from a diff
 
 See also: [graph-html.md](graph-html.md), [sound-subset.md](sound-subset.md),
+[workspace.md](workspace.md),
 [product-boundary-migration.md](product-boundary-migration.md) Track M4.

@@ -161,9 +161,70 @@ without `root_id` is rejected (sidecar is per-root).
 
 ---
 
+## Operator appendix — v0.5.1 demos
+
+Private corpora are **not** committed. Numbers are operator-run on the release
+binary (`agentgraph 0.5.1`), not CI.
+
+### A. Two-root mini workspace (Nest TS + Rust dyn)
+
+Roots: Nest starter `src` (`id=api`) + `fixtures/eval-l1-real/rust-dyn-trait`
+(`id=core`). Single store under the workspace dir.
+
+| Metric | Value |
+|---|---|
+| files / symbols / refs | 7 / 18 / 57 |
+| per-root promise | both `ast_modeled`, 0 violations |
+| `find bootstrap` (union) | **api** `src/main.ts` + **core** `src/lib.rs` |
+| `find AppService --workspace-root api` | 1 row, `root_id=api`, `root_path` set |
+| `graph AppService --workspace-root api` | 9 nodes / 9 edges; HTML `root-badge=api` |
+
+**Manifest gotcha:** JSON must be UTF-8 **without BOM**. A PowerShell
+`Set-Content -Encoding UTF8` BOM yields `parse workspace manifest … line 1
+column 1`. Write with `UTF8Encoding($false)` if scripting.
+
+### B. Stock crates as workspace roots (stress)
+
+Six crates copied under one workspace (operator paths omitted):
+
+| root_id | files | refs | subset_violations | promise_tier |
+|---|---:|---:|---:|---|
+| auth | 5 | 471 | 0 | ast_modeled |
+| event-engine | 5 | 384 | 0 | ast_modeled |
+| repository | 27 | 915 | 0 | ast_modeled |
+| strategy-plugins | 30 | 3836 | 3 | disabled |
+| scheduler | 42 | 13986 | 5 | disabled |
+| nn-ranker | 24 | 7417 | 19 | disabled |
+| **workspace total** | **133** | **27009** | union | **disabled** (weakest root) |
+
+- Full workspace `index --force`: **~27 s** on the operator laptop
+- `callers insert --workspace-root repository`: Exact call + **implementor**
+  `PgKlineRepo` (`edge_role=implementor`) — noise split works in multi-root
+- `find decide` union: only `event-engine` (correct for this crate slice)
+- `subset` without root filter: `in_subset=false` when any root violates
+  (nn-ranker/scheduler) — honest weakest-root rule
+- `graph insert --workspace-root repository`: 5 nodes; HTML shows **IMP** +
+  root badges
+
+### C. Practical recipe
+
+```text
+agentgraph index --workspace workspace.json --force
+agentgraph workspace status --workspace workspace.json
+agentgraph find <sym> --workspace workspace.json --workspace-root ./packages/api
+agentgraph callers <sym> --workspace workspace.json --workspace-root ./packages/core
+agentgraph graph <sym> --workspace workspace.json --workspace-root ./packages/api --out g.html
+```
+
+Use **scoped** `--sound` only on roots whose `promise_tier` is not `disabled`.
+
+---
+
 ## See also
 
 - [graph-diff.md](graph-diff.md) — indexed-edge diff + workspace snapshot note
 - [macro-sidecar.md](macro-sidecar.md) — per-root optional expanded sidecar
 - [sound-subset.md](sound-subset.md) — S gate / promise tiers
+- [noise-governance.md](noise-governance.md) — callers vs implementors
 - [product-boundary-migration.md](product-boundary-migration.md) Track M4-W
+

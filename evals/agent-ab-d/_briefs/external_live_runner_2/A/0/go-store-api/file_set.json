@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 11, "refs": 19}, "note": "index go-store-api workdir"},
+    {"tool": "cli", "args": ["find", "Get"], "ok": true, "summary": {"defs": 2, "paths": ["store/store.go"]}, "note": "MemRepo.Get and RedisCache.Get definitions"},
+    {"tool": "cli", "args": ["who-calls", "Get"], "ok": true, "summary": {"callers": 1, "implementors": 7}, "note": "caller api/handlers.go LoadUser; implementors in store/store.go"},
+    {"tool": "cli", "args": ["blast-radius", "Get", "--depth", "3"], "ok": true, "summary": {"impact_paths": ["api/handlers.go", "store/store.go"], "window": "sound"}, "note": "impact scoped to true dependents"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {}, "note": "call site r.Get"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {}, "note": "Repository/Cache interfaces + MemRepo/RedisCache Get"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {}, "note": "noise: no Repository"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {}, "note": "noise: no Repository"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 4,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

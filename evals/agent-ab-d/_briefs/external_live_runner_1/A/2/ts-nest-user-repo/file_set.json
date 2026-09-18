@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 15, "references": 25}, "note": "single-root Nest-like app"},
+    {"tool": "agentgraph.who-calls", "args": ["UserRepository"], "ok": true, "summary": {"callers": ["src/user.module.ts import+providers", "src/user.service.ts import+ctor inject"]}, "note": "DI registration + service inject"},
+    {"tool": "agentgraph.find", "args": ["UserRepository"], "ok": true, "summary": {"defs": ["src/user.repository.ts"]}, "note": "definition root"},
+    {"tool": "agentgraph.who-calls", "args": ["find"], "ok": true, "summary": {"callers": ["src/user.service.ts:9 UserService.load"]}, "note": "find method call site"},
+    {"tool": "read", "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"], "ok": true, "summary": {"true": 4, "noise": 2}, "note": "controller consumes load->find null contract; health/unrelated are noise"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir index",
+    "agentgraph.exe --root workdir who-calls UserRepository",
+    "agentgraph.exe --root workdir find UserRepository",
+    "agentgraph.exe --root workdir who-calls find"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

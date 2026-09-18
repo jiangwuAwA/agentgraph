@@ -1,0 +1,209 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "B",
+  "policy_label": "P0-5d arm B — walk/grep/read only (no agentgraph) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-trait-handler",
+  "seed": 1,
+  "run_id": "external_live_runner_2-b-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-trait-handler",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/B/1/rust-trait-handler",
+  "symbol": "render",
+  "model_note": "xiaomi/mimo-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 2,
+  "read_budget": 3,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 2,
+    "read_budget": 3,
+    "read_files": [
+      "src/handlers.rs",
+      "src/lib.rs",
+      "src/metrics.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 1,
+    "task_order": [
+      "rust-cross-crate-blast",
+      "go-store-api",
+      "rust-trait-handler",
+      "ts-nest-user-repo",
+      "rust-real-noise-dense",
+      "ts-multi-root-client",
+      "py-plugin-registry",
+      "rust-sound-scoped-clean"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "scripted_isolated_runner",
+      "external_live_runner_1"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-trait-handler",
+    "title": "Change Handler::render trait method — impls + dyn call sites",
+    "language": "rust",
+    "issue": "Handler::render signature must change. Find implementors and dyn dispatch call sites that must be updated.",
+    "symbol": "render",
+    "expected_files": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": [
+        "workdir",
+        "/brender/b"
+      ],
+      "ok": true,
+      "summary": {
+        "match_files": 3
+      },
+      "note": "Trait, impls, dyn call sites",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/handlers.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "Handler trait, Html/Json impls, render_dyn",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "Dyn dispatch call sites dispatch/bootstrap",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/metrics.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "Noise: no Handler/render dependency",
+      "seq": 4
+    }
+  ],
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-trait-handler/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "arm": "B",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm B: isolated runner decision path"
+  ],
+  "errors": []
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "index"], "ok": true, "summary": {"files": 6, "symbols": 44, "references": 38}, "note": "indexed single-root workdir"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "encode"], "ok": true, "summary": {"defs": 13, "primary_path": "src/packet.rs"}, "note": "Encode::encode + 12 implementors in packet.rs"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "Encode"], "ok": true, "summary": {"defs": 2, "true_trait": "src/packet.rs", "collision_enum": "src/metrics.rs"}, "note": "trait vs unrelated enum collision"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "who-calls", "encode"], "ok": true, "summary": {"callers": 3, "caller_paths": ["src/wire.rs"], "implementor_count": 12, "high_freq_name": false}, "note": "real callers in wire.rs; implementors in packet.rs"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "blast-radius", "encode"], "ok": true, "summary": {"impact_paths": ["src/packet.rs", "src/wire.rs", "src/lib.rs"], "window": "sound", "subset_ok": true}, "note": "sound window; noise crates excluded"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"trait": "Encode", "implementors": 12}, "note": "true structure"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"real_callers": ["send_packet", "dump_all", "checksum"]}, "note": "true call sites"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"reexports": ["Encode", "send_packet"]}, "note": "module wiring"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"noise": true}, "note": "Encode enum collision + encode_label"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"noise": true}, "note": "legacy encode helpers, no Encode edge"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"noise": true}, "note": "Clone/Debug helpers, no Encode edge"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --root workdir index", "ok": true},
+    {"cmd": "agentgraph --root workdir find encode", "ok": true},
+    {"cmd": "agentgraph --root workdir find Encode", "ok": true},
+    {"cmd": "agentgraph --root workdir who-calls encode", "ok": true},
+    {"cmd": "agentgraph --root workdir blast-radius encode", "ok": true}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

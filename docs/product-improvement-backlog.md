@@ -76,7 +76,27 @@
 | **建议切片** | **S1** 协议 + 录制/回放 JSON 格式 + 无网打分；**S2** 操作员 live A/B 跑批写入 docs；**S3**（可选）CI 手动 workflow_dispatch 产出 artifact |
 | **交付 (this slice)** | **done (scripted S1 + policy S2-sim + P0-5b live host-session):** [eval-agent-baseline.md](eval-agent-baseline.md) + `scripts/eval_agent_ab.py` + `evals/agent-ab/**`（≥9 tasks × ≥3 A/B/C runs）+ `tests/agent_ab_eval.rs`；**P0-5b:** `scripts/eval_agent_ab_live.py` + `evals/agent-ab-live/**`（9 tasks × 3 seeds × arms A/B = **54** trajectories）+ `tests/agent_ab_live.rs`。**标签（强制）：** scripted = **scripted tool-policy agents**；live = **host-session LLM**（`model_note=mimo-desktop-host-session`，**非** public benchmark model / **非** standardized lab harness）。operator 标签 **A=MCP/CLI recipes，B=read/grep，C=name-grep**。Scripted numbers：A noise **0.00**；B **1.56**；C **0.78**。Live numbers（recalled only）：A live recall 1.00 / noise **0.00**；B live recall 1.00 / noise **0.00**（本 session 未分离 — **禁止**据此宣称 live MCP 产品优势）；contamination + N small 已写入 docs。Offline replay：`python scripts/eval_agent_ab.py score --traj-dir evals/agent-ab` 与 `--traj-dir evals/agent-ab-live`。**S3 CI workflow 本切片跳过。** |
 | **P0-5c 状态** | **done (protocol + hard fixtures + ≥2 runners + extended metrics + recorded N=3):** 见下条「交付 (P0-5c)」 |
+| **P0-5d 状态** | **done (S1 harness + S2 isolated live matrix):** `lab_ready=true` (mimo-pro + mimo-flash, N=5); **非**生态 sound |
 | **交付 (P0-5c)** | **done:** [eval-agent-baseline.md](eval-agent-baseline.md) § **P0-5c** + `scripts/eval_agent_ab_c.py`（write/stamp/score/--runner）+ `fixtures/eval-agent-tasks-hard/**`（≥4 hard tasks）+ `evals/agent-ab-c/**`（4 tasks × 2 runner kinds × 2 arms × 3 seeds = **48** trajectories + `task_randomization.json`）+ `tests/agent_ab_c_eval.rs` + `evals/agent-ab-c/README.md`。**Runner kinds:** `host_session_llm`（`independent_session=false`，披露 contamination）+ `scripted_external_runner`（decision-path `independent_session=true`）。**Extended metrics:** `mcp_or_cli_calls` / `chose_correct_workspace_root` / `file_budget` / `read_budget` / `approx_tokens=null` / `runner_id` / `model_note` / `saw_labels_before_commit=false`。**Recorded hard-task means (no oversell):** host A noise **0.00** vs host B **1.50**；scripted A noise **0.25** vs scripted B **3.25**（scripted A recall **0.9375** — multi-root path alias gap 已诚实记录）。**N target ≥5；本 host 记录 N=3。** **禁止**将 host-session 分离写成 multi-model lab / 产品优越性证明。**无**独立 isolated-subagent 第三 runner（incomplete，不伪造）。 |
+
+### P0-5d 真隔离 live 对照（isolated lab）
+
+| 字段 | 内容 |
+|---|---|
+| **状态** | **in_progress (S1 harness + protocol done; lab_ready=false; S2 live runners pending)** |
+| **目标** | 在 **真隔离** 条件下复测：live Agent±agentgraph 是否在 hard 任务上稳定降低噪声 / 提高 `workspace-root` 正确率 — 作为可对外引用的选用证据候选 |
+| **背景** | P0-5b easy fixture 上 live A/B **未分离**；P0-5c hard 上有噪声与 root 选择信号，但 `host_session_llm.independent_session=false`、fixture 作者同 session、N=3、scripted runner 非 live LLM。P0-5d 补齐 lab 级隔离 |
+| **交付物** | ① 协议扩展：`docs/eval-agent-baseline.md` § **P0-5d**（隔离、随机化、盲评、禁止污染源清单）；② **Isolated runner 接口**：每 arm/seed **独立进程或独立 agent 会话**（无共享中间 file-set、无 fixture `task.json` expected 可见）；③ **≥2 live runners**：至少 1 个 **非 host-session** 模型/runner id + 可选 host 作对照臂；④ 任务集：复用 `fixtures/eval-agent-tasks/**` + `eval-agent-tasks-hard/**`（建议 easy≥4 + hard≥4）；⑤ **N≥5 seeds / task / arm / runner**（未达标必须在表头标红）；⑥ 轨迹 `evals/agent-ab-d/**` + 随机化日志；⑦ 评分与指标对齐 P0-5c（recall / extra-noise / cwr / mcp_calls / file_budget；`approx_tokens` 仅真实值或 null）；⑧ 汇总表 + 非声称 + `docs_claims` 门禁；⑨（可选）`tests/agent_ab_d_eval.rs` 锁协议字段与「禁止伪造 N/模型」 |
+| **范围** | 主指标仍为 structure-fact 文件集；产品解读维度：**noise 分离**、**cwr**、**是否触发 scoped sound 建议**。允许操作员/外部 API runner；结果必须可 `score` 回放 |
+| **非目标** | 不把 null 结果写成阳性；不合成未跑通的模型格；不把 scripted 冒充 live；不提交私有 monorepo 源码；不把 `ast_modeled` 写成生态 sound |
+| **污染门禁（必须）** | ① 决策路径看不到 golden/expected；② arm 间无共享状态文件；③ 任务顺序随机化并落盘；④ runner 元数据含 `independent_session` / `model_note` / harness 版本；⑤ 若仍用 author-session，**整表降级为 non-lab** 并标 `lab_ready=false` |
+| **验收** | ① 文档写清 lab vs non-lab 判定；② ≥2 live runner + N≥5 的完整表 **或** 明确 `lab_ready=false` + 缺口清单；③ 48+ 可回放轨迹（按任务数×臂×seed×runner）；④ 与 P0-5b/c 差异表（easy vs hard、host vs isolated）；⑤ 相关测试/docs_claims 绿；⑥ 本卡状态改为 done 或 blocked（缺第三方 runner 时） |
+| **涉及** | `docs/eval-agent-baseline.md`、`scripts/eval_agent_ab_d.py`（或扩展 `eval_agent_ab_c.py --isolated`）、`evals/agent-ab-d/**`、`fixtures/eval-agent-tasks*/**`（只读）、README 一句链接（仅当 lab_ready=true） |
+| **估** | 1–2 周（取决于是否有外部 live runner/API；无外部模型则先交付隔离 harness + `lab_ready=false`） |
+| **建议切片** | **S1** 隔离协议 + 外部 runner 接口 + 盲评字段；**S2** 第二 live runner 跑批（N≥5）；**S3** 汇总 + 对外叙事（仅 lab_ready=true 时可称 lab） |
+| **交付 (P0-5d S1)** | **done (harness-only):** [eval-agent-baseline.md](eval-agent-baseline.md) § **P0-5d**（隔离 / 污染门禁 / 随机化 / `lab_ready` 定义 / easy≥4+hard≥4 任务集）+ `scripts/eval_agent_ab_d.py`（`prepare` / `run-runner` / `stamp` / `score` / `lab-ready`）+ `evals/agent-ab-d/**`（issue-only brief packs + `task_selection.json` + `task_randomization.json` + README）+ `tests/agent_ab_d_eval.rs`。Briefs **不含** `expected`/`noise_files` 字符串；harness **从不**注入 goldens；stamp 离线自 fixture `task.json`。**lab_ready=false**（无 ≥2 非 author live runner × N≥5）；README **不**挂产品结论链接（仅 harness-only 注记）。S2 将由 parent 编排 live runners。docs_claims 绿。 |
+| **依赖** | P0-5c 轨迹/指标 schema 保持兼容；hard fixtures 可复用 |
+| **并行可选** | 修 scripted A 的 multi-root **路径别名/re-export 召回缺口**（产品侧，非本卡必做） |
 
 ---
 
@@ -147,14 +167,14 @@
 | ID | 复核 |
 |---|---|
 | P0-1…P0-4 | **shipped** — 代码/文档/测试齐；`agent_task_eval`/`agent_goldens`/`agent_recipes`/`docs_claims`/`e2e_cli`/`noise_roles` 全绿 |
-| P0-5 | **shipped (scripted S1+S2-sim + P0-5b live host-session + P0-5c multi-runner hard)** — `eval_agent_ab` + `evals/agent-ab` + `eval_agent_ab_live` + `evals/agent-ab-live` + `eval_agent_ab_c` + `evals/agent-ab-c` + hard fixtures + [eval-agent-baseline.md](eval-agent-baseline.md)；live = 单 host session，**非** lab benchmark；P0-5c host `independent_session=false` 已披露；**无超售** |
+| P0-5 | **shipped (scripted S1+S2-sim + P0-5b live host-session + P0-5c multi-runner hard) + P0-5d S1 isolated harness** — `eval_agent_ab` + `evals/agent-ab` + `eval_agent_ab_live` + `evals/agent-ab-live` + `eval_agent_ab_c` + `evals/agent-ab-c` + hard fixtures + `eval_agent_ab_d` + `evals/agent-ab-d` + [eval-agent-baseline.md](eval-agent-baseline.md)；live = 单 host session，**非** lab benchmark；P0-5c host `independent_session=false` 已披露；P0-5d S1 **lab_ready=false**（harness-only）；**无超售** |
 | P1-1…P1-4 | **shipped** — workspace watch、MCP stale 字段、goldens、perf_workspace 文档+smoke |
 | P2-1, P2-2, P2-4 | **shipped** — macro_default（全局 OFF）、CI demo（非 required）、README 定位 |
 | P2-3 | **open（eval-gated）** — 符合「无 eval 数字不做」 |
 
 **残差（低优先）：**
 
-1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明。→ **P0-5 scripted** + **P0-5b live host-session** + **P0-5c multi-runner hard** 已交付（见 [eval-agent-baseline.md](eval-agent-baseline.md)）。Residual：**true multi-model / isolated lab harness** live 对照仍 open（P0-5c 仅 host_session + scripted_external_runner；host contamination 已披露；N=3 < 目标 N≥5）。
+1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明。→ **P0-5 scripted** + **P0-5b live host-session** + **P0-5c multi-runner hard** + **P0-5d S1 isolated harness** 已交付（见 [eval-agent-baseline.md](eval-agent-baseline.md)）。Residual：**true multi-model / isolated live lab** → **P0-5d S2+**（关闭条件：lab_ready=true 的 N≥5 双非-author live runner，或 blocked 时缺口清单+隔离 harness 就绪 — **S1 harness 已就绪，lab_ready=false**）。
 2. ~~`fixtures/**/.agentgraph/index.db` 二进制索引~~ — **done**：根 `.gitignore` 增加 `**/.agentgraph/`；本地 fixture 索引目录已删除（勿再提交）。
 3. Session 任务面板 ID（T7–T18）与文档 P0-x 编号不一致 — **以本文档为准**。
 4. Workspace **union callers** CLI 含 spawn 时 p95 可到秒级（文档已标非 SLO）— Agent 侧**优先 root filter 或 MCP**；已写入 eval-agent-tasks / recipes。
@@ -164,12 +184,9 @@
 ## 建议执行顺序
 
 ```text
-（已 shipped）P0-1…P0-4, P1-1…P1-4, P2-1/2/4
-  → P0-5 scripted tool-policy A/B/C + replay — shipped
-    （[eval-agent-baseline.md](eval-agent-baseline.md)）
-  → P0-5b live host-session A/B — shipped（同文档；非 lab harness）
-    （multi-model lab live 仍 open）
-  → P0-5c multi-runner hard A/B — shipped（同文档；≥2 runners + extended metrics + hard fixtures；非 multi-model lab）
+（已 shipped）P0-1…P0-4, P0-5/5b/5c, P1-1…P1-4, P2-1/2/4
+  → P0-5d 真隔离 live 对照（**S1 harness/盲评 done** → S2 第二 live runner N≥5 → S3 lab_ready 时再写对外句）
+  → （并行可选）multi-root 路径别名/re-export 召回缺口
   → P2-3 L1 规则（eval-gated）
 ```
 

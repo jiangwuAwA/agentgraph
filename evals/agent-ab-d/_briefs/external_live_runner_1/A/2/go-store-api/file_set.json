@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 11, "references": 19}, "note": "single-root index"},
+    {"tool": "agentgraph.who-calls", "args": ["Get"], "ok": true, "summary": {"callers": ["api/handlers.go"], "implementors": ["store/store.go MemRepo.Get", "store/store.go RedisCache.Get"]}, "note": "high_freq_name=true; implementors separated"},
+    {"tool": "agentgraph.find", "args": ["Get"], "ok": true, "summary": {"defs": ["MemRepo.Get", "RedisCache.Get"]}, "note": "both defs in store/store.go"},
+    {"tool": "read", "args": ["store/store.go", "api/handlers.go", "cmd/main.go", "internal/metrics.go"], "ok": true, "summary": {"true": 2, "noise": 2}, "note": "cmd/main.go and internal/metrics.go are noise"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir index",
+    "agentgraph.exe --root workdir who-calls Get",
+    "agentgraph.exe --root workdir find Get"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,56 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "scripted_isolated_runner",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/tools/src/lib.rs",
+    "packages/web/src/lib.rs",
+    "packages/web/src/pages.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "scripted_offline_placeholder"
+      },
+      "note": "scripted isolated A — not live; recipe binary optional"
+    },
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 8
+      },
+      "note": "enumerate sources in isolated workdir"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/api/src/routes.rs",
+        "packages/core/src/id.rs",
+        "packages/core/src/lib.rs",
+        "packages/tools/src/lib.rs",
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "bounded reads of token-hit files"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

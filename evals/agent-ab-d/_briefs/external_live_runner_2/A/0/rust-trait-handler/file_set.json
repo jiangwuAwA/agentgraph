@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 3, "symbols": 12, "refs": 17}, "note": "index rust-trait-handler"},
+    {"tool": "cli", "args": ["find", "render"], "ok": true, "summary": {"defs": 3, "path": "src/handlers.rs"}, "note": "Handler::render + Html/Json impls"},
+    {"tool": "cli", "args": ["who-calls", "render"], "ok": true, "summary": {"callers": 3, "implementors": 4, "paths": ["src/handlers.rs", "src/lib.rs"]}, "note": "dyn call sites + implementors"},
+    {"tool": "cli", "args": ["blast-radius", "render", "--depth", "3"], "ok": true, "summary": {"impact_paths": ["src/handlers.rs", "src/lib.rs"], "window": "sound"}, "note": "no metrics.rs in impact"},
+    {"tool": "cli", "args": ["find", "Handler"], "ok": true, "summary": {"defs": 1, "path": "src/handlers.rs"}, "note": "trait definition"},
+    {"tool": "cli", "args": ["who-calls", "Handler"], "ok": true, "summary": {"callers": 1, "path": "src/lib.rs"}, "note": "import in lib"},
+    {"tool": "read", "args": ["src/handlers.rs"], "ok": true, "summary": {}, "note": "trait + impls + render_dyn"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {}, "note": "dispatch + bootstrap dyn call sites"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {}, "note": "noise: no Handler/render"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 6,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "index"], "ok": true, "summary": {"roots": ["clean", "dirty"], "files": 4}, "note": "workspace index; dirty has S violations"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "subset"], "ok": true, "summary": {"in_subset": false, "clean_eligible": true, "dirty_eligible": false, "violations": 3}, "note": "recommend scoped --sound on clean; avoid dirty"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "find", "batch_write"], "ok": true, "summary": {"defs": 1, "root": "clean"}, "note": "only clean defines batch_write"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "who-calls", "batch_write"], "ok": true, "summary": {"callers": 2, "root": "clean"}, "note": "dirty has no true call edge"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "blast-radius", "batch_write", "--depth", "3"], "ok": true, "summary": {"impact_paths": ["packages/clean/src/lib.rs"], "window": "default", "example": "impact batch_write --sound --workspace-root clean"}, "note": "union window disabled by dirty; candidates=clean"},
+    {"tool": "cli", "args": ["impact", "batch_write", "--sound", "--workspace-root", "packages/clean"], "ok": true, "summary": {"mode": "sound", "subset_ok": true, "root": "clean"}, "note": "scoped sound on clean root per recipe"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {}, "note": "roots clean/dirty"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {}, "note": "batch_write definition"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + flush_all true dependent"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "exclude: unsafe dirty; name collision noise"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "exclude: comment-only batch_write"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 6,
+    "chose_correct_workspace_root": true,
+    "approx_tokens": null
+  }
+}

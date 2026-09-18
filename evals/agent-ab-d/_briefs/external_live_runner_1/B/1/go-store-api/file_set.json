@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["Get|Repository", "workdir"], "ok": true, "summary": {"hits": 11}, "note": "Repository.Get defined in store.go; call site in api/handlers.go"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {"implementors": ["MemRepo.Get", "RedisCache.Get"]}, "note": "interface + implementors for Get"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {"call_sites": ["LoadUser r.Get"]}, "note": "true consumer of Repository.Get"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {}, "note": "noise: no Repository import"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {}, "note": "noise: no Repository dependency"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

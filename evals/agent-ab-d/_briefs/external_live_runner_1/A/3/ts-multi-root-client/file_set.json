@@ -1,0 +1,36 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"]}, "note": "multi-root manifest"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/registry/src/client.ts"], "ok": true, "summary": {"role": "definition_root", "symbols": ["RegistryClient", "RegistryClient.fetch", "createClient"]}, "note": "fetch return contract under change"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/registry/src/index.ts"], "ok": true, "summary": {"role": "reexport"}, "note": "export surface only; no fetch call"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/service/src/order.service.ts"], "ok": true, "summary": {"role": "true_consumer", "symbols": ["OrderService", "client.fetch"]}, "note": "imports RegistryClient and calls fetch"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/service/src/order.controller.ts"], "ok": true, "summary": {"role": "transitive"}, "note": "uses OrderService.lookup; no RegistryClient import"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/cli/src/main.ts"], "ok": true, "summary": {"role": "noise_mention"}, "note": "HELP string mentions RegistryClient as CLI flag name"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/cli/src/help.ts"], "ok": true, "summary": {"role": "noise_mention"}, "note": "DOC_BLURB prose mention only"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/docs/src/overview.ts"], "ok": true, "summary": {"role": "noise_mention"}, "note": "prose name mention"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/docs/src/changelog.ts"], "ok": true, "summary": {"role": "noise_mention"}, "note": "prose name mention"},
+    {"tool": "agentgraph_index", "args": ["--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "files": 8}, "note": "shared workspace store"},
+    {"tool": "agentgraph_who_calls", "args": ["RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"callers_by_root": {"registry": ["src/client.ts:10 createClient"], "service": ["src/order.service.ts:1 import", "src/order.service.ts:6 ctor"], "cli": "no call edges", "docs": "no call edges"}}, "note": "true roots registry+service; cli/docs name mentions dropped"},
+    {"tool": "agentgraph_blast_radius", "args": ["RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json", "--workspace-root", "registry"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact": ["registry/src/client.ts createClient"]}, "note": "scoped to definition root; consumer found via who-calls on service"},
+    {"tool": "agentgraph_find", "args": ["RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"defs": ["registry/src/client.ts RegistryClient"]}, "note": ""},
+    {"tool": "agentgraph_subset", "args": ["--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"all_roots_sound_eligible": true, "violations": 0}, "note": "all roots eligible but review set stays on registry+service"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --workspace ts-multi-root-client/workdir/workspace.json",
+    "agentgraph.exe who-calls RegistryClient --workspace ts-multi-root-client/workdir/workspace.json",
+    "agentgraph.exe blast-radius RegistryClient --workspace ts-multi-root-client/workdir/workspace.json --workspace-root registry",
+    "agentgraph.exe find RegistryClient --workspace ts-multi-root-client/workdir/workspace.json",
+    "agentgraph.exe subset --workspace ts-multi-root-client/workdir/workspace.json"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

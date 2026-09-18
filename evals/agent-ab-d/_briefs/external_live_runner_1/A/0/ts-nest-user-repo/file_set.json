@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 15}, "note": "single-root nest-like ts index"},
+    {"tool": "agentgraph.who_calls", "args": ["UserRepository"], "ok": true, "summary": {"callers": ["user.service.ts import+ctor", "user.module.ts import+providers"]}, "note": "DI registration edges present"},
+    {"tool": "agentgraph.find", "args": ["UserRepository"], "ok": true, "summary": {"defs": ["src/user.repository.ts"]}, "note": ""},
+    {"tool": "agentgraph.find", "args": ["find"], "ok": true, "summary": {"defs": ["UserRepository.find"]}, "note": "method under change (null vs throw)"},
+    {"tool": "agentgraph.who_calls", "args": ["find"], "ok": true, "summary": {"callers": ["user.service.ts:9 UserService.load"]}, "note": "direct call site"},
+    {"tool": "agentgraph.blast_radius", "args": ["UserRepository"], "ok": true, "summary": {"depth2": ["user.controller.ts via UserService"], "depth3": ["user.module.ts UserController"]}, "note": "full DI blast radius"},
+    {"tool": "read", "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"], "ok": true, "summary": {"noise_excluded": ["src/health.ts", "src/unrelated.ts"]}, "note": "true blast radius; noise excluded"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "<workdir>"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 11, "refs": 19},
+      "note": "index go-store-api workdir"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "Get", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": ["api/handlers.go"],
+        "implementors_files": ["store/store.go"],
+        "high_freq_name": true
+      },
+      "note": "implementors MemRepo/RedisCache; caller LoadUser"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "Get", "--depth", "3"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true},
+      "note": "sound window; impact on handlers+store only"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Get"],
+      "ok": true,
+      "summary": {"paths": ["store/store.go"]},
+      "note": "definitions MemRepo.Get / RedisCache.Get"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Repository"],
+      "ok": true,
+      "summary": {"paths": ["store/store.go"]},
+      "note": "Repository interface with Get"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go", "store/store.go", "cmd/main.go", "internal/metrics.go"],
+      "ok": true,
+      "summary": {},
+      "note": "confirm cmd/main + internal/metrics are package noise"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 5,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "who-calls/blast-radius Get: interface+implementors in store/store.go, call site in api/handlers.go. cmd/main.go and internal/metrics.go are labeled package noise (no Repository dependency)."
+  }
+}

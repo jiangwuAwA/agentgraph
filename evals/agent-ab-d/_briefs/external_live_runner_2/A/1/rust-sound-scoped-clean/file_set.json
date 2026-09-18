@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "clean::batch_write"},
+    {"tool": "agentgraph_cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "files": 4}, "note": "dirty promise_tier disabled / subset violations"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "who-calls", "batch_write"], "ok": true, "summary": {"callers_root": "clean"}, "note": "no dirty true callers"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "find", "batch_write"], "ok": true, "summary": {"defs": ["packages/clean/src/write.rs"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "callers", "batch_write"], "ok": true, "summary": {"callers": ["packages/clean/src/lib.rs"]}, "note": ""},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {}, "note": "definition"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + flush_all"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "name collision noise excluded"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "comment noise excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

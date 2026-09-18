@@ -1,0 +1,123 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.randomization.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution",
+  "seeds": [
+    {
+      "seed": 0,
+      "task_order": [
+        "rust-real-noise-dense",
+        "ts-nest-user-repo",
+        "rust-trait-handler",
+        "py-plugin-registry",
+        "rust-sound-scoped-clean",
+        "rust-cross-crate-blast",
+        "go-store-api",
+        "ts-multi-root-client"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "runner_order": [
+        "scripted_isolated_runner",
+        "external_live_runner_1",
+        "external_live_runner_2"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    },
+    {
+      "seed": 1,
+      "task_order": [
+        "rust-cross-crate-blast",
+        "go-store-api",
+        "rust-trait-handler",
+        "ts-nest-user-repo",
+        "rust-real-noise-dense",
+        "ts-multi-root-client",
+        "py-plugin-registry",
+        "rust-sound-scoped-clean"
+      ],
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "runner_order": [
+        "external_live_runner_2",
+        "scripted_isolated_runner",
+        "external_live_runner_1"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    },
+    {
+      "seed": 2,
+      "task_order": [
+        "rust-trait-handler",
+        "rust-real-noise-dense",
+        "go-store-api",
+        "rust-cross-crate-blast",
+        "ts-nest-user-repo",
+        "ts-multi-root-client",
+        "rust-sound-scoped-clean",
+        "py-plugin-registry"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "runner_order": [
+        "external_live_runner_2",
+        "external_live_runner_1",
+        "scripted_isolated_runner"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    },
+    {
+      "seed": 3,
+      "task_order": [
+        "rust-sound-scoped-clean",
+        "py-plugin-registry",
+        "rust-real-noise-dense",
+        "ts-multi-root-client",
+        "rust-trait-handler",
+        "ts-nest-user-repo",
+        "rust-cross-crate-blast",
+        "go-store-api"
+      ],
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "runner_order": [
+        "external_live_runner_2",
+        "external_live_runner_1",
+        "scripted_isolated_runner"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    },
+    {
+      "seed": 4,
+      "task_order": [
+        "ts-nest-user-repo",
+        "rust-sound-scoped-clean",
+        "go-store-api",
+        "rust-trait-handler",
+        "ts-multi-root-client",
+        "rust-real-noise-dense",
+        "py-plugin-registry",
+        "rust-cross-crate-blast"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "runner_order": [
+        "external_live_runner_1",
+        "scripted_isolated_runner",
+        "external_live_runner_2"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    }
+  ]
+}

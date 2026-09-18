@@ -1,0 +1,85 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/user.controller.ts",
+    "src/user.module.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "<workdir>"],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 15, "refs": 25},
+      "note": "index ts-nest-user-repo workdir"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "UserRepository", "--limit", "50"],
+      "ok": true,
+      "summary": {"callers_files": ["src/user.module.ts", "src/user.service.ts"]},
+      "note": "DI import + ctor inject + module providers"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "UserRepository", "--depth", "3"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "depth1": ["src/user.module.ts", "src/user.service.ts"],
+        "depth2": ["src/user.controller.ts"]
+      },
+      "note": "DI blast includes controller via UserService"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "UserRepository"],
+      "ok": true,
+      "summary": {"paths": ["src/user.repository.ts"]},
+      "note": "class + find definition"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "find"],
+      "ok": true,
+      "summary": {"qualified": "UserRepository.find in src/user.repository.ts"},
+      "note": "method whose contract changes"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "find", "--limit", "50"],
+      "ok": true,
+      "summary": {"callers_files": ["src/user.service.ts"]},
+      "note": "UserService.load calls find"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/user.repository.ts",
+        "src/user.service.ts",
+        "src/user.module.ts",
+        "src/user.controller.ts",
+        "src/health.ts",
+        "src/unrelated.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "health/unrelated are noise with no UserRepository edge"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 6,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "UserRepository.find contract: definition repository; consumer service (find call + DI); module registration; controller via service load blast. Excluded health.ts and unrelated.ts noise."
+  }
+}

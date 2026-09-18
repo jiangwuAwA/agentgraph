@@ -1,0 +1,217 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "scripted_external_runner",
+  "arm": "A",
+  "runner_id": "scripted_isolated_runner",
+  "task_id": "py-plugin-registry",
+  "seed": 3,
+  "run_id": "scripted_isolated_runner-a-3",
+  "fixture": "fixtures/eval-agent-tasks/py-plugin-registry",
+  "brief": "evals/agent-ab-d/_briefs/scripted_isolated_runner/A/3/py-plugin-registry",
+  "symbol": "PluginRegistry",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 1,
+    "recipe_tools": [
+      "find"
+    ],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 3,
+  "read_budget": 3,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 1,
+      "recipe_tools": [
+        "find"
+      ],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 3,
+    "read_budget": 3,
+    "read_files": [
+      "app/bootstrap.py",
+      "app/docs_strings.py",
+      "app/registry.py"
+    ],
+    "approx_tokens": null,
+    "runner_id": "scripted_isolated_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 3,
+    "task_order": [
+      "rust-sound-scoped-clean",
+      "py-plugin-registry",
+      "rust-real-noise-dense",
+      "ts-multi-root-client",
+      "rust-trait-handler",
+      "ts-nest-user-repo",
+      "rust-cross-crate-blast",
+      "go-store-api"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "external_live_runner_1",
+      "scripted_isolated_runner"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": false
+  },
+  "task": {
+    "id": "py-plugin-registry",
+    "title": "Change PluginRegistry.register — plugins + bootstrap",
+    "language": "python",
+    "issue": "PluginRegistry.register must validate plugin names. Find the files that actually construct or call the registry.",
+    "symbol": "PluginRegistry",
+    "expected_files": [
+      "app/registry.py",
+      "app/bootstrap.py"
+    ],
+    "noise_files": [
+      "app/docs_strings.py"
+    ],
+    "forbidden_files": [
+      "app/docs_strings.py"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "PluginRegistry"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "scripted_offline_placeholder"
+      },
+      "note": "scripted isolated A — not live; recipe binary optional",
+      "seq": 1
+    },
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 4
+      },
+      "note": "enumerate sources in isolated workdir",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "app/bootstrap.py",
+        "app/docs_strings.py",
+        "app/registry.py"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "bounded reads of token-hit files",
+      "seq": 3
+    }
+  ],
+  "file_set": [
+    "app/bootstrap.py",
+    "app/docs_strings.py",
+    "app/registry.py"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "app/registry.py",
+      "app/bootstrap.py"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "app/docs_strings.py"
+    ],
+    "extra_noise_count": 1,
+    "forbidden_files": [
+      "app/docs_strings.py"
+    ],
+    "forbidden_hit": [
+      "app/docs_strings.py"
+    ],
+    "forbidden_hit_count": 1,
+    "file_set": [
+      "app/bootstrap.py",
+      "app/docs_strings.py",
+      "app/registry.py"
+    ],
+    "file_set_size": 3,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/py-plugin-registry/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "scripted_isolated_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "A",
+    "rationale": "scripted isolated A offline fill (token + walk; not live LLM)",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: scripted isolated A offline fill (token + walk; not live LLM)"
+  ],
+  "errors": []
+}

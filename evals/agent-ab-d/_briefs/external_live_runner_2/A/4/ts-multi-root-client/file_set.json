@@ -1,0 +1,33 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "files": 8}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "RegistryClient"], "ok": true, "summary": {"def_root": "registry", "path": "packages/registry/src/client.ts"}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["who-calls", "RegistryClient"], "ok": true, "summary": {"callers": 3, "roots": ["registry", "service"], "high_freq_name": false}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["blast-radius", "RegistryClient"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "roots": ["registry", "service"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "RegistryClient", "--workspace-root", "registry"], "ok": true, "summary": {"sites": 1}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "RegistryClient", "--workspace-root", "service"], "ok": true, "summary": {"sites": 2}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "RegistryClient", "--workspace-root", "cli"], "ok": true, "summary": {"sites": 0}, "note": "mcp_or_cli_call; cli is help/name noise"},
+    {"tool": "cli", "args": ["callers", "RegistryClient", "--workspace-root", "docs"], "ok": true, "summary": {"sites": 0}, "note": "mcp_or_cli_call; docs is prose noise"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"fetch_def": true}, "note": "RegistryClient.fetch definition + createClient"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts"], "ok": true, "summary": {"reexport": true}, "note": "package export surface for RegistryClient"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"fetch_call": true}, "note": "this.client.fetch consumer"},
+    {"tool": "read", "args": ["packages/service/src/order.controller.ts"], "ok": true, "summary": {"blast_via_service": true}, "note": "OrderController depends on service.lookup using fetch"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {"noise": true}, "note": "name in docs string only — excluded"},
+    {"tool": "read", "args": ["packages/cli/src/main.ts"], "ok": true, "summary": {"noise": true}, "note": "help flag mention only — excluded"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {"noise": true}, "note": "prose mention only — excluded"},
+    {"tool": "read", "args": ["packages/docs/src/changelog.ts"], "ok": true, "summary": {"noise": true}, "note": "prose mention only — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

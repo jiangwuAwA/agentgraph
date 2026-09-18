@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "register validation"},
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "."], "ok": true, "summary": {"files": 4}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "PluginRegistry"], "ok": true, "summary": {"callers": ["app/bootstrap.py"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["find", "PluginRegistry"], "ok": true, "summary": {"defs": ["app/registry.py"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["callers", "register"], "ok": true, "summary": {"callers": ["app/bootstrap.py"]}, "note": ""},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {}, "note": "definition"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {}, "note": "constructs + register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {}, "note": "plugin class only, not registry user"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {}, "note": "prose noise"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

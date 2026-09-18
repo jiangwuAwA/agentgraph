@@ -1,0 +1,123 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {
+        "roots": ["clean", "dirty"],
+        "files": 8,
+        "symbols": 18,
+        "subset_violations_dirty": 3
+      },
+      "note": "multi-root index; dirty has S violations"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "batch_write", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": ["packages/clean/src/lib.rs"],
+        "subset_ok": false
+      },
+      "note": "union window; all true callers in clean root"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "batch_write", "--workspace", "workspace.json", "--depth", "3"],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": false,
+        "recommendation": "scoped sound on clean; avoid dirty"
+      },
+      "note": "do not claim union sound — dirty unsafe/transmute"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/clean",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": ["src/lib.rs"],
+        "subset_ok": true,
+        "root": "clean"
+      },
+      "note": "scoped who-calls on clean root only"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/clean",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true},
+      "note": "recommend scoped sound on clean; not union"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"def": "packages/clean/src/write.rs"},
+      "note": "definition only in clean; dirty has no real batch_write"
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": ["subset", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {
+        "clean_sound_eligible": true,
+        "dirty_sound_eligible": false,
+        "dirty_violations": ["unsafe", "transmute"]
+      },
+      "note": "dirty disables union sound; scope to clean"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/lib.rs",
+        "packages/clean/src/write.rs",
+        "packages/dirty/src/lib.rs",
+        "packages/dirty/src/shadow.rs",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "dirty name collisions are noise for batch_write"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 7,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find", "subset"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "clean::batch_write review set stays on clean package only (write.rs def + lib.rs caller). Scoped --workspace-root packages/clean recommended for sound; dirty root has unsafe/transmute S violations and only comment/name collisions for this symbol — do not claim union sound."
+  }
+}

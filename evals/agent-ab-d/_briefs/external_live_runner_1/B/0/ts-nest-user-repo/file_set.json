@@ -1,0 +1,61 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.module.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["UserRepository", "workdir"],
+      "ok": true,
+      "summary": {
+        "definition": "src/user.repository.ts",
+        "call_site": "src/user.service.ts",
+        "di_provider": "src/user.module.ts",
+        "return_consumer": "src/user.controller.ts",
+        "noise": ["src/unrelated.ts", "src/health.ts"]
+      },
+      "note": "controller uses load return; not a UserRepository name mention but return-contract blast"
+    },
+    {
+      "tool": "read",
+      "args": ["src/user.repository.ts"],
+      "ok": true,
+      "summary": {"symbols": ["UserRepository.find", "throw new Error('not found')"]},
+      "note": "contract under change: find should return null"
+    },
+    {
+      "tool": "read",
+      "args": ["src/user.service.ts", "src/user.module.ts", "src/user.controller.ts"],
+      "ok": true,
+      "summary": {
+        "calls_find": "UserService.load -> userRepo.find",
+        "di": "providers: [UserService, UserRepository]",
+        "consumes_return": "UserController.load -> users.load"
+      },
+      "note": "true structural dependents in Nest-like DI graph"
+    },
+    {
+      "tool": "read",
+      "args": ["src/unrelated.ts", "src/health.ts"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "excluded — no UserRepository dependency"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 0,
+    "grep_count": 1,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.module.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 6}, "note": "agentgraph index"},
+    {"tool": "cli", "args": ["find", "UserRepository"], "ok": true, "summary": {"defs": 1}, "note": "definition in user.repository.ts"},
+    {"tool": "cli", "args": ["who-calls", "UserRepository"], "ok": true, "summary": {"callers": 4}, "note": "module DI + service ctor inject"},
+    {"tool": "cli", "args": ["blast-radius", "UserRepository"], "ok": true, "summary": {"nodes": 10}, "note": "depth to controller via service"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {}, "note": "find throw path under change"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {}, "note": "userRepo.find consumer"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {}, "note": "DI providers include UserRepository"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {}, "note": "downstream of service.load"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {}, "note": "noise: no user-repo dependency"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {}, "note": "noise: MetricsClient only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

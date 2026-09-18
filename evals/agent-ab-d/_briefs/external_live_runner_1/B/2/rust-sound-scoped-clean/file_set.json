@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["batch_write", "workdir"], "ok": true, "summary": {"hits": 12}, "note": "true def+call in clean; dirty has name collisions/comments only"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"]}, "note": "multi-root index"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"def": "batch_write"}, "note": "definition under change; also batch_write_verbose calls it"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"reexport": true, "call": "flush_all"}, "note": "true clean dependent — re-export + flush_all call"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "noise: batch_write_shadow + unsafe transmute; not a true clean dependent"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "noise: comment-only mention of batch_write"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

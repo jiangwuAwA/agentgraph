@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "files": 16, "symbols": 26, "references": 14}, "note": "multi-root workspace index"},
+    {"tool": "agentgraph_cli", "args": ["find", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"defs": ["packages/registry/src/client.ts"], "root_id": "registry"}, "note": "definition root is registry"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"callers": ["packages/registry/src/client.ts:10", "packages/service/src/order.service.ts:1", "packages/service/src/order.service.ts:6"], "true_roots": ["registry", "service"]}, "note": "cli/docs have zero graph callers"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json", "--workspace-root", "registry"], "ok": true, "summary": {"callers": ["src/client.ts:10"], "root_id": "registry"}, "note": "definition + createClient factory"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json", "--workspace-root", "service"], "ok": true, "summary": {"callers": ["src/order.service.ts:1", "src/order.service.ts:6"], "root_id": "service"}, "note": "true consumer: imports + ctor + client.fetch"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json", "--workspace-root", "cli"], "ok": true, "summary": {"callers": [], "root_id": "cli"}, "note": "empty: help/prose name mentions only"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json", "--workspace-root", "docs"], "ok": true, "summary": {"callers": [], "root_id": "docs"}, "note": "empty: docs prose only"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "RegistryClient", "--workspace", "ts-multi-root-client/workdir/workspace.json"], "ok": true, "summary": {"window": "sound", "paths": ["packages/registry/src/client.ts", "packages/service/src/order.service.ts", "packages/service/src/order.controller.ts"], "noise": ["packages/cli", "packages/docs"]}, "note": "controller is d2 via OrderService.lookup"},
+    {"tool": "read", "args": ["ts-multi-root-client/workdir/packages/registry/src/client.ts", "ts-multi-root-client/workdir/packages/registry/src/index.ts", "ts-multi-root-client/workdir/packages/service/src/order.service.ts", "ts-multi-root-client/workdir/packages/service/src/order.controller.ts", "ts-multi-root-client/workdir/packages/cli/src/main.ts", "ts-multi-root-client/workdir/packages/cli/src/help.ts", "ts-multi-root-client/workdir/packages/docs/src/overview.ts", "ts-multi-root-client/workdir/packages/docs/src/changelog.ts"], "ok": true, "summary": {"noise": ["packages/cli/*", "packages/docs/*"]}, "note": "cli/docs mention RegistryClient in help/prose only"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

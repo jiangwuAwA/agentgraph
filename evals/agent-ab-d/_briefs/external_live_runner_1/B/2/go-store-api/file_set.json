@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["Get|Repository|MemRepo|RedisCache", "workdir"], "ok": true, "summary": {"hits": 14}, "note": "Repository.Get defined in store.go with implementors; call site in api/handlers.go; cmd+internal noise"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {"interface": "Repository", "implementors": ["MemRepo.Get", "RedisCache.Get"]}, "note": "interface + implementors for Get — must accept context"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {"call_sites": ["LoadUser r.Get(id)"]}, "note": "true consumer of Repository.Get"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {}, "note": "noise: bootstrap does not import store.Repository"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {}, "note": "noise: metrics helpers with no Repository dependency"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

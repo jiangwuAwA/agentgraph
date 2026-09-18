@@ -1,0 +1,130 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {
+        "roots": ["core", "api", "tools", "web"],
+        "files": 16,
+        "symbols": 26,
+        "refs": 20
+      },
+      "note": "multi-root index via workspace.json"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "normalize_id", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/core/src/lib.rs",
+          "packages/api/src/routes.rs"
+        ],
+        "roots_with_hits": ["core", "api", "tools"]
+      },
+      "note": "tools hit is local collision self-call, not core dependent"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "normalize_id", "--workspace", "workspace.json", "--depth", "3"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "depth1_core_api": true,
+        "depth2_api_lib": true
+      },
+      "note": "true blast: core definition/reexport + api routes/lib"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "normalize_id",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/core",
+        "--workspace-root",
+        "<workdir>/packages/api",
+        "--workspace-root",
+        "<workdir>/packages/tools",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {"scoped_roots": ["core", "api", "tools"]},
+      "note": "scoped roots excluding comment-only web"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "normalize_id",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/tools",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {"callers_files": ["src/lib.rs"], "local_collision": true},
+      "note": "tools defines its own normalize_id — not a core consumer"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "normalize_id", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {
+        "core_def": "packages/core/src/id.rs",
+        "tools_local": "packages/tools/src/lib.rs"
+      },
+      "note": "canonical def in core/id.rs; tools is name collision"
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": ["subset", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"in_subset": true, "roots_eligible": ["core", "api", "tools", "web"]},
+      "note": "all roots subset_ok"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/src/id.rs",
+        "packages/core/src/lib.rs",
+        "packages/api/src/routes.rs",
+        "packages/api/src/lib.rs",
+        "packages/tools/src/lib.rs",
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "tools local collision + web comments are noise"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 7,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find", "subset"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "Scoped multi-root queries: true blast is core (id.rs definition + lib.rs reexport/batch_key) and api (routes.rs core::normalize_id + lib.rs handle). tools::normalize_id is a local name collision (not a core consumer); web is comment-only — both omitted. Used --workspace workspace.json with workspace-root scopes."
+  }
+}

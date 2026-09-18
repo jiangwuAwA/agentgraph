@@ -1,0 +1,318 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_1",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 4,
+  "run_id": "external_live_runner_1-a-4",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_1/A/4/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "xiaomi/mimo-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 4,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 4,
+    "read_files": [
+      "rust-sound-scoped-clean/workdir/packages/clean/src/write.rs",
+      "rust-sound-scoped-clean/workdir/packages/clean/src/lib.rs",
+      "rust-sound-scoped-clean/workdir/packages/dirty/src/lib.rs",
+      "rust-sound-scoped-clean/workdir/packages/dirty/src/shadow.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 4,
+    "task_order": [
+      "ts-nest-user-repo",
+      "rust-sound-scoped-clean",
+      "go-store-api",
+      "rust-trait-handler",
+      "ts-multi-root-client",
+      "rust-real-noise-dense",
+      "py-plugin-registry",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [
+      "external_live_runner_1",
+      "scripted_isolated_runner",
+      "external_live_runner_2"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "index",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "clean",
+          "dirty"
+        ],
+        "files": 8,
+        "symbols": 18,
+        "references": 12,
+        "dirty_subset_violations": 3
+      },
+      "note": "dirty root promise_tier=disabled (transmute/unsafe)",
+      "seq": 1
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "find",
+        "batch_write",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "defs": [
+          "packages/clean/src/write.rs"
+        ],
+        "root_id": "clean"
+      },
+      "note": "true def only in clean; dirty is name collision",
+      "seq": 2
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "who-calls",
+        "batch_write",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ],
+        "root_id": "clean",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "scoped to clean root",
+      "seq": 3
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "blast-radius",
+        "batch_write",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "paths": [
+          "packages/clean/src/write.rs",
+          "packages/clean/src/lib.rs"
+        ]
+      },
+      "note": "scoped sound on clean; dirty excluded",
+      "seq": 4
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "impact",
+        "batch_write",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json",
+        "--workspace-root",
+        "clean",
+        "--sound"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "paths": [
+          "packages/clean/src/lib.rs"
+        ]
+      },
+      "note": "do not claim union sound; scoped sound on clean only",
+      "seq": 5
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "blast-radius",
+        "batch_write",
+        "--workspace",
+        "rust-sound-scoped-clean/workdir/workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": false,
+        "recommendation": "scoped sound on clean; avoid dirty",
+        "dirty_violations": 3
+      },
+      "note": "union sound disabled by dirty unsafe",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "rust-sound-scoped-clean/workdir/packages/clean/src/write.rs",
+        "rust-sound-scoped-clean/workdir/packages/clean/src/lib.rs",
+        "rust-sound-scoped-clean/workdir/packages/dirty/src/lib.rs",
+        "rust-sound-scoped-clean/workdir/packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "noise": [
+          "packages/dirty/src/lib.rs",
+          "packages/dirty/src/shadow.rs"
+        ]
+      },
+      "note": "dirty batch_write_shadow/comments are name collisions; no true batch_write edge",
+      "seq": 7
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

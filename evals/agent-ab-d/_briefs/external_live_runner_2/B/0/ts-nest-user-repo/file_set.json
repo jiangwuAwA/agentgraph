@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.module.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["UserRepository"], "ok": true, "summary": {"matches": 6}, "note": "definition, service consumer, module provider; unrelated is noise"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {"find_throws": true}, "note": "UserRepository.find throws when missing"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {"calls_find": true}, "note": "UserService injects UserRepository and calls find"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {"provides_repo": true}, "note": "DI module registers UserRepository provider"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {"http_surface_of_find": true}, "note": "controller load path surfaces find result via service"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {"noise": true}, "note": "no user-repo dependency"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {"noise": true}, "note": "mention of UserRepository only in noise comment"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

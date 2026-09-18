@@ -1,0 +1,41 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "index"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "registry_refs": 1, "service_refs": 6, "cli_refs": 0, "docs_refs": 0}, "note": "multi-root index; cli/docs have zero RegistryClient refs"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "find", "RegistryClient"], "ok": true, "summary": {"defs": 1, "path": "packages/registry/src/client.ts", "root_id": "registry"}, "note": "definition in registry root only"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "who-calls", "RegistryClient"], "ok": true, "summary": {"callers": 3, "caller_roots": ["registry", "service"], "excluded_roots": ["cli", "docs"]}, "note": "true consumers registry+service only"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "blast-radius", "RegistryClient"], "ok": true, "summary": {"impact_paths": ["packages/registry/src/client.ts", "packages/service/src/order.service.ts", "packages/service/src/order.controller.ts"], "window": "sound"}, "note": "sound window; docs/help prose excluded"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "registry", "find", "RegistryClient"], "ok": true, "summary": {"defs": 1, "root_id": "registry"}, "note": "scoped registry find"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "registry", "who-calls", "RegistryClient"], "ok": true, "summary": {"callers": 1, "root_id": "registry"}, "note": "createClient factory"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "service", "who-calls", "RegistryClient"], "ok": true, "summary": {"callers": 2, "root_id": "service"}, "note": "import + ctor inject"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"class": "RegistryClient", "method": "fetch"}, "note": "contract change target"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts"], "ok": true, "summary": {"reexport": true}, "note": "public export surface"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"calls": "client.fetch"}, "note": "true consumer"},
+    {"tool": "read", "args": ["packages/service/src/order.controller.ts"], "ok": true, "summary": {"calls": "OrderService.lookup"}, "note": "transitive consumer"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {"noise": true}, "note": "prose mention only"},
+    {"tool": "read", "args": ["packages/cli/src/main.ts"], "ok": true, "summary": {"noise": true}, "note": "help text flag name only"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {"noise": true}, "note": "prose mention only"},
+    {"tool": "read", "args": ["packages/docs/src/changelog.ts"], "ok": true, "summary": {"noise": true}, "note": "prose mention only"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --workspace workspace.json index", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json find RegistryClient", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json who-calls RegistryClient", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json blast-radius RegistryClient", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root registry find RegistryClient", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root registry who-calls RegistryClient", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root service who-calls RegistryClient", "ok": true}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

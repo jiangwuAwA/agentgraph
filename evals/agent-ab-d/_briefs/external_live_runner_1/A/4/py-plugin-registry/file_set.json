@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"files": 4, "symbols": 7, "references": 7}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["find", "PluginRegistry", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"defs": ["PluginRegistry"], "paths": ["app/registry.py"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "PluginRegistry", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"callers": ["app/bootstrap.py:1", "app/bootstrap.py:6"], "paths": ["app/bootstrap.py", "app/registry.py"]}, "note": "construct/call sites only in bootstrap"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "PluginRegistry", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "paths": ["app/bootstrap.py", "app/registry.py"]}, "note": ""},
+    {"tool": "read", "args": ["py-plugin-registry/workdir/app/registry.py", "py-plugin-registry/workdir/app/bootstrap.py", "py-plugin-registry/workdir/app/plugins.py", "py-plugin-registry/workdir/app/docs_strings.py"], "ok": true, "summary": {"noise": ["app/docs_strings.py", "app/plugins.py"]}, "note": "docs_strings prose-only; plugins.py does not construct/call registry"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

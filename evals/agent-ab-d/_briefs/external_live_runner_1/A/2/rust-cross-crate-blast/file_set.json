@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir", "--workspace", "workdir/workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "files": 8}, "note": "multi-root workspace index"},
+    {"tool": "agentgraph.who-calls", "args": ["normalize_id", "--workspace", "workspace.json"], "ok": true, "summary": {"true_roots": ["core", "api"], "noise_roots": ["tools"]}, "note": "tools is local name collision; web comment-only"},
+    {"tool": "agentgraph.find", "args": ["normalize_id", "--workspace", "workspace.json"], "ok": true, "summary": {"defs": ["core/src/id.rs normalize_id", "tools/src/lib.rs normalize_id"]}, "note": "tools def is unrelated local collision"},
+    {"tool": "agentgraph.blast-radius", "args": ["normalize_id", "--workspace-root", "core"], "ok": true, "summary": {"impact": ["packages/core/src/lib.rs"]}, "note": "scoped sound on core root"},
+    {"tool": "agentgraph.callers", "args": ["normalize_id", "--workspace-root", "api"], "ok": true, "summary": {"callers": ["packages/api/src/routes.rs"]}, "note": "true cross-crate consumer"},
+    {"tool": "read", "args": ["packages/core/src/id.rs", "packages/core/src/lib.rs", "packages/api/src/routes.rs", "packages/tools/src/lib.rs", "packages/web/src/lib.rs"], "ok": true, "summary": {"true": 3, "noise": 2}, "note": "tools/web are name-collision or comment noise"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir --workspace workspace.json index",
+    "agentgraph.exe --root workdir --workspace workspace.json who-calls normalize_id",
+    "agentgraph.exe --root workdir --workspace workspace.json find normalize_id",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root core blast-radius normalize_id",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root api callers normalize_id"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

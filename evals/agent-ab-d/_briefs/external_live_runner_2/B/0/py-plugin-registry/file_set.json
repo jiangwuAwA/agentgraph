@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["PluginRegistry"], "ok": true, "summary": {"matches": 5}, "note": "definition, bootstrap construction, docs prose noise"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {"register": true}, "note": "PluginRegistry definition with register"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {"constructs": true, "register_call": true}, "note": "constructs PluginRegistry and calls register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {"registry_edge": false}, "note": "MetricsPlugin only; no PluginRegistry construct/call"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {"noise": true}, "note": "prose mention only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

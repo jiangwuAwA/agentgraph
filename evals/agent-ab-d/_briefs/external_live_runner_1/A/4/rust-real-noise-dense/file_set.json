@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"files": 6, "symbols": 44, "references": 38}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["find", "encode", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"defs": ["Encode::encode", "Header::encode", "Body::encode", "Footer::encode", "Ack::encode", "Nack::encode", "Ping::encode", "Pong::encode", "Meta::encode", "Chunk0::encode", "Chunk1::encode", "Chunk2::encode", "Chunk3::encode"], "paths": ["src/packet.rs"]}, "note": "true Encode trait + dense implementors all in packet.rs"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "encode", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"callers": ["src/wire.rs:5", "src/wire.rs:9", "src/wire.rs:15"], "implementors": ["src/packet.rs:8..85"], "paths": ["src/wire.rs", "src/packet.rs"]}, "note": "real dyn Encode call sites in wire.rs; collisions excluded"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "encode", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "paths": ["src/packet.rs", "src/wire.rs", "src/lib.rs"]}, "note": "lib.rs re-exports Encode/send_packet"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/packet.rs", "rust-real-noise-dense/workdir/src/wire.rs", "rust-real-noise-dense/workdir/src/lib.rs", "rust-real-noise-dense/workdir/src/metrics.rs", "rust-real-noise-dense/workdir/src/legacy.rs", "rust-real-noise-dense/workdir/src/clone_heavy.rs"], "ok": true, "summary": {"noise": ["src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"]}, "note": "metrics Encode enum / encode_label / encode_legacy / encode_name_for_clone are collisions"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

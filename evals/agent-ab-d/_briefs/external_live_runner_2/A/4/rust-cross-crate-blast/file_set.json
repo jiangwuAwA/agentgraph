@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "files": 8, "references": 10}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "normalize_id"], "ok": true, "summary": {"defs": ["core/src/id.rs", "tools/src/lib.rs"]}, "note": "mcp_or_cli_call; tools is name collision"},
+    {"tool": "cli", "args": ["who-calls", "normalize_id"], "ok": true, "summary": {"callers": 4, "high_freq_name": false}, "note": "mcp_or_cli_call; qualify by root"},
+    {"tool": "cli", "args": ["blast-radius", "normalize_id"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "true_roots": ["core", "api"], "tools_collision": true}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "normalize_id", "--workspace-root", "core"], "ok": true, "summary": {"sites": 2}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "normalize_id", "--workspace-root", "api"], "ok": true, "summary": {"sites": 1, "qualifier": "core"}, "note": "mcp_or_cli_call; true cross-crate consumer"},
+    {"tool": "cli", "args": ["callers", "normalize_id", "--workspace-root", "tools"], "ok": true, "summary": {"sites": 1, "own_symbol_not_core_consumer": true}, "note": "mcp_or_cli_call; name collision only"},
+    {"tool": "cli", "args": ["callers", "normalize_id", "--workspace-root", "web"], "ok": true, "summary": {"sites": 0}, "note": "mcp_or_cli_call; comment-only noise"},
+    {"tool": "cli", "args": ["impact", "normalize_id", "--sound", "--workspace-root", "core"], "ok": true, "summary": {"mode": "sound", "subset_ok": true}, "note": "mcp_or_cli_call; scoped sound on definition root"},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {"definition": true}, "note": "core::normalize_id"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {"reexport_and_caller": true}, "note": "pub use + batch_key"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {"true_consumer": true}, "note": "core::normalize_id cross-crate call"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {"noise": true}, "note": "local normalize_id name collision — excluded"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {"noise": true}, "note": "comment-only mention — excluded"},
+    {"tool": "read", "args": ["packages/web/src/pages.rs"], "ok": true, "summary": {"noise": true}, "note": "noise comment — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

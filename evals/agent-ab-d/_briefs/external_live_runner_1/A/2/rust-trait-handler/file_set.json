@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 3, "symbols": 12, "references": 17}, "note": "single-root index"},
+    {"tool": "agentgraph.who-calls", "args": ["render"], "ok": true, "summary": {"callers": ["src/handlers.rs render_dyn", "src/lib.rs dispatch", "src/lib.rs bootstrap"], "implementors": ["HtmlHandler", "JsonHandler"]}, "note": "implementors separated"},
+    {"tool": "agentgraph.find", "args": ["render"], "ok": true, "summary": {"defs": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"]}, "note": "all in src/handlers.rs"},
+    {"tool": "agentgraph.blast-radius", "args": ["Handler"], "ok": true, "summary": {"window": "sound", "impact": ["src/lib.rs"]}, "note": "lib.rs dyn dispatch consumers"},
+    {"tool": "read", "args": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"], "ok": true, "summary": {"true": 2, "noise": 1}, "note": "metrics.rs has no Handler/render dependency"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir index",
+    "agentgraph.exe --root workdir who-calls render",
+    "agentgraph.exe --root workdir find render",
+    "agentgraph.exe --root workdir blast-radius Handler"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

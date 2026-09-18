@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--workspace", "workdir/workspace.json"], "ok": true, "summary": {"files": 4, "roots": 2}, "note": "clean+dirty multi-root; dirty S-violations=3"},
+    {"tool": "cli", "args": ["find", "batch_write"], "ok": true, "summary": {"defs": 1}, "note": "def only in clean/write.rs"},
+    {"tool": "cli", "args": ["who-calls", "batch_write"], "ok": true, "summary": {"callers": 2, "subset_ok": false}, "note": "union window sees dirty promise_tier=disabled"},
+    {"tool": "cli", "args": ["blast-radius", "batch_write"], "ok": true, "summary": {"window": "default", "sound_candidates": ["clean"]}, "note": "recommend scoped sound on clean; avoid dirty"},
+    {"tool": "cli", "args": ["impact", "batch_write", "--sound", "--workspace-root", "clean"], "ok": true, "summary": {"mode": "sound", "nodes": 2}, "note": "scoped sound on clean root"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {}, "note": "batch_write def + verbose wrapper"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + flush_all call"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "noise: unsafe/name collision comments only"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "noise: comment-only batch_write mention"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

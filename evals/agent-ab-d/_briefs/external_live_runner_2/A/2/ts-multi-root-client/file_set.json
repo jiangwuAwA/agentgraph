@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--workspace", "workdir/workspace.json"], "ok": true, "summary": {"files": 8, "roots": 4}, "note": "multi-root index registry/service/cli/docs"},
+    {"tool": "cli", "args": ["find", "RegistryClient"], "ok": true, "summary": {"defs": 1}, "note": "def in registry/src/client.ts only"},
+    {"tool": "cli", "args": ["who-calls", "RegistryClient"], "ok": true, "summary": {"callers": 3}, "note": "registry createClient + service import/ctor"},
+    {"tool": "cli", "args": ["callers", "RegistryClient"], "ok": true, "summary": {"callers": 3}, "note": "no cli/docs code edges"},
+    {"tool": "cli", "args": ["blast-radius", "RegistryClient"], "ok": true, "summary": {"nodes": 5, "roots": ["registry", "service"]}, "note": "true roots registry+service"},
+    {"tool": "cli", "args": ["impact", "RegistryClient"], "ok": true, "summary": {"nodes": 5}, "note": "controller via order.service.lookup->fetch"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {}, "note": "RegistryClient.fetch definition"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts"], "ok": true, "summary": {}, "note": "package re-export surface"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {}, "note": "imports RegistryClient; calls fetch"},
+    {"tool": "read", "args": ["packages/service/src/order.controller.ts"], "ok": true, "summary": {}, "note": "downstream of lookup return"},
+    {"tool": "read", "args": ["packages/cli/src/main.ts"], "ok": true, "summary": {}, "note": "noise: help text name mention only"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {}, "note": "noise: DOC_BLURB string only"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {}, "note": "noise: prose mention"},
+    {"tool": "read", "args": ["packages/docs/src/changelog.ts"], "ok": true, "summary": {}, "note": "noise: prose mention"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

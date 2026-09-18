@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "walk", "args": ["workdir"], "ok": true, "summary": {"files": 5}, "note": "clean + dirty roots"},
+    {"tool": "grep", "args": ["batch_write"], "ok": true, "summary": {"matches": 12}, "note": "True clean def/callers vs dirty noise"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {}, "note": "Roots clean/dirty"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {}, "note": "batch_write definition"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {}, "note": "Re-export and flush_all caller"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "Unsafe dirty sibling, comment collision only"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "No true batch_write edge - noise"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "index"], "ok": true, "summary": {"files": 4, "symbols": 11, "references": 19}, "note": "indexed single-root workdir"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "Get"], "ok": true, "summary": {"defs": 2, "paths": ["store/store.go"], "impls": ["MemRepo.Get", "RedisCache.Get"]}, "note": "interface method implementations"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "Repository"], "ok": true, "summary": {"defs": 1, "path": "store/store.go", "kind": "interface"}, "note": "Repository interface"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "who-calls", "Get"], "ok": true, "summary": {"callers": 1, "caller_paths": ["api/handlers.go"], "implementors": ["store/store.go"], "high_freq_name": true}, "note": "LoadUser calls r.Get; implementors MemRepo/RedisCache"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "blast-radius", "Get"], "ok": true, "summary": {"impact_paths": ["api/handlers.go", "store/store.go"], "window": "sound"}, "note": "sound window; metrics.go/main.go excluded"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {"Repository": "Get+Put", "Cache": "Get", "MemRepo.Get": true, "RedisCache.Get": true}, "note": "interface + implementors"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {"call_site": "LoadUser r.Get(id)"}, "note": "API consumer"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {"noise": true}, "note": "no Repository dependency"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {"noise": true}, "note": "bootstrap that does not import store.Repository"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --root workdir index", "ok": true},
+    {"cmd": "agentgraph --root workdir find Get", "ok": true},
+    {"cmd": "agentgraph --root workdir find Repository", "ok": true},
+    {"cmd": "agentgraph --root workdir who-calls Get", "ok": true},
+    {"cmd": "agentgraph --root workdir blast-radius Get", "ok": true}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

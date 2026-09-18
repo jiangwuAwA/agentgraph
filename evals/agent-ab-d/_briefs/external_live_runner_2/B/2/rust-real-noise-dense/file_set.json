@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"Encode": true, "implementors": 12}, "note": "trait definition and dense implementors"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"encode_callers": true}, "note": "true Encode::encode call sites"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"reexport_Encode": true, "reexport_send_packet": true}, "note": "crate structure re-exporting trait and caller"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"noise": true}, "note": "Encode enum / encode_label collisions; excluded"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"noise": true}, "note": "legacy encode helpers; not packet Encode; excluded"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"noise": true}, "note": "clone helpers; name-adjacent only; excluded"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

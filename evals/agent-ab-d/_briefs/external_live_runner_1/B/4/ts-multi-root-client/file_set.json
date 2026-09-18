@@ -1,0 +1,43 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["registry", "service", "cli", "docs"]},
+      "note": "true roots are registry (define) + service (consume)"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/registry/src/client.ts", "workdir/packages/registry/src/index.ts"],
+      "ok": true,
+      "summary": {"definition": "RegistryClient.fetch"},
+      "note": "client.ts is the definition; index is barrel re-export only"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/service/src/order.service.ts"],
+      "ok": true,
+      "summary": {"consumer": "OrderService.lookup -> client.fetch"},
+      "note": "true RegistryClient.fetch consumer; controller does not touch RegistryClient"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/cli/src/main.ts", "workdir/packages/docs/src/overview.ts"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "cli/docs mention RegistryClient only in help/prose; not dependents"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

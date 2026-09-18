@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "RegistryClient.fetch"},
+    {"tool": "agentgraph_cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "files": 8}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "who-calls", "RegistryClient"], "ok": true, "summary": {"roots": ["registry", "service"]}, "note": "cli/docs had 0 refs"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "find", "RegistryClient"], "ok": true, "summary": {"defs": ["packages/registry/src/client.ts"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "callers", "fetch"], "ok": true, "summary": {"callers": ["packages/service/src/order.service.ts"]}, "note": ""},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {}, "note": "definition"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {}, "note": "calls fetch"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {}, "note": "name mention only"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {}, "note": "prose only"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

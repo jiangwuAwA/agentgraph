@@ -1,0 +1,50 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["workdir", "batch_write"],
+      "ok": true,
+      "summary": {"matches": 12},
+      "note": "Arm B grep/read only; dirty package is name-collision noise"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["clean", "dirty"]},
+      "note": "scoped sound on clean root only; do not claim union sound"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/clean/src/write.rs"],
+      "ok": true,
+      "summary": {"defines": "batch_write", "caller": "batch_write_verbose"},
+      "note": "definition root in clean package"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"reexport": "batch_write", "caller": "flush_all"},
+      "note": "clean package consumer + re-export"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/dirty/src/lib.rs"],
+      "ok": true,
+      "summary": {"noise": true, "unsafe": true},
+      "note": "dirty has unsafe transmute + batch_write_shadow name collision — exclude"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

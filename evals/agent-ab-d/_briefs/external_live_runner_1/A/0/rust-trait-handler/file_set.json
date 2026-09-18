@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 3, "symbols": 12}, "note": "single-root rust index"},
+    {"tool": "agentgraph.who_calls", "args": ["render"], "ok": true, "summary": {"callers": ["handlers.rs:22 render_dyn", "lib.rs:7 dispatch", "lib.rs:12 bootstrap"], "implementors": ["HtmlHandler", "JsonHandler"]}, "note": "implementors separated from dyn call sites"},
+    {"tool": "agentgraph.find", "args": ["render"], "ok": true, "summary": {"defs": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"]}, "note": ""},
+    {"tool": "agentgraph.blast_radius", "args": ["render"], "ok": true, "summary": {"nodes": ["src/handlers.rs", "src/lib.rs"]}, "note": "window=sound"},
+    {"tool": "read", "args": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"], "ok": true, "summary": {"noise_excluded": ["src/metrics.rs"]}, "note": "trait impls + dyn dispatch only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

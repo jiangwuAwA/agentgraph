@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "walk", "args": ["workdir"], "ok": true, "summary": {"files": 4}, "note": "Listed all workdir files"},
+    {"tool": "grep", "args": ["Get|MemRepo|RedisCache"], "ok": true, "summary": {"matches": 9}, "note": "Located Get interface, implementors, call site"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {}, "note": "Call site r.Get(id)"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {}, "note": "Repository/Cache Get, MemRepo/RedisCache implementors"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {}, "note": "Noise bootstrap, no Repository"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {}, "note": "Noise metrics, no Repository"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": 4}, "note": "multi-root index: core, api, tools, web"},
+    {"tool": "grep", "args": ["normalize_id"], "ok": true, "summary": {"matches": 16}, "note": "hits in core definition, api consumer, tools collision, web comments"},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {"definition": true}, "note": "canonical normalize_id definition"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {"reexport": true, "call": true}, "note": "re-exports and calls normalize_id in batch_key"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {"cross_crate_call": true}, "note": "core::normalize_id call site"},
+    {"tool": "read", "args": ["packages/api/src/lib.rs"], "ok": true, "summary": {"normalize_id_edge": false}, "note": "delegates to routes only"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {"name_collision": true}, "note": "local normalize_id, not a core consumer"},
+    {"tool": "read", "args": ["packages/tools/src/audit.rs"], "ok": true, "summary": {"normalize_id_edge": false}, "note": "no normalize_id usage"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {"comment_only": true}, "note": "comment mention, no call edge"},
+    {"tool": "read", "args": ["packages/web/src/pages.rs"], "ok": true, "summary": {"comment_only": true}, "note": "comment mention only"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

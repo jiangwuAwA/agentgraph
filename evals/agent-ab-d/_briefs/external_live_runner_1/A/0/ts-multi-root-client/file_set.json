@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "files": 8}, "note": "multi-root ts workspace"},
+    {"tool": "agentgraph.who_calls", "args": ["RegistryClient"], "ok": true, "summary": {"callers": ["registry client.ts:10", "service order.service.ts import+ctor"], "cli_docs_refs": 0}, "note": "cli/docs have no indexed refs — name mentions only"},
+    {"tool": "agentgraph.find", "args": ["RegistryClient"], "ok": true, "summary": {"defs": ["packages/registry/src/client.ts"]}, "note": ""},
+    {"tool": "agentgraph.find", "args": ["fetch"], "ok": true, "summary": {"defs": ["RegistryClient.fetch"]}, "note": "contract under change"},
+    {"tool": "agentgraph.who_calls", "args": ["fetch"], "ok": true, "summary": {"callers": ["service order.service.ts:11 OrderService.lookup"]}, "note": ""},
+    {"tool": "agentgraph.blast_radius", "args": ["RegistryClient"], "ok": true, "summary": {"depth2": ["service order.controller.ts via OrderService"]}, "note": "registry+service true roots; exclude cli/docs"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts", "packages/registry/src/index.ts", "packages/service/src/order.service.ts", "packages/service/src/order.controller.ts", "packages/cli/src/main.ts", "packages/cli/src/help.ts", "packages/docs/src/overview.ts", "packages/docs/src/changelog.ts"], "ok": true, "summary": {"noise_excluded": ["packages/cli/**", "packages/docs/**"]}, "note": "help/prose mentions are not dependents"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

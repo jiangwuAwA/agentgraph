@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "app/bootstrap.py",
+    "app/registry.py"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 7, "refs": 7}, "note": "index py-plugin-registry"},
+    {"tool": "cli", "args": ["find", "PluginRegistry"], "ok": true, "summary": {"defs": 1, "paths": ["app/registry.py"]}, "note": "class definition"},
+    {"tool": "cli", "args": ["who-calls", "PluginRegistry"], "ok": true, "summary": {"callers": 2, "paths": ["app/bootstrap.py"]}, "note": "import + construct in bootstrap"},
+    {"tool": "cli", "args": ["blast-radius", "PluginRegistry", "--depth", "3"], "ok": true, "summary": {"impact_paths": ["app/bootstrap.py"], "window": "sound"}, "note": "true dependent bootstrap only"},
+    {"tool": "cli", "args": ["find", "register"], "ok": true, "summary": {"defs": 1, "paths": ["app/registry.py"]}, "note": "PluginRegistry.register"},
+    {"tool": "cli", "args": ["who-calls", "register"], "ok": true, "summary": {"callers": 1, "paths": ["app/bootstrap.py"]}, "note": "bootstrap registers metrics plugin"},
+    {"tool": "cli", "args": ["blast-radius", "register", "--depth", "3"], "ok": true, "summary": {"impact_paths": ["app/bootstrap.py"], "window": "sound"}, "note": "confirm blast"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {}, "note": "PluginRegistry definition"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {}, "note": "constructs and calls register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {}, "note": "plugin class only; does not construct/call registry"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {}, "note": "noise: prose mention only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 7,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

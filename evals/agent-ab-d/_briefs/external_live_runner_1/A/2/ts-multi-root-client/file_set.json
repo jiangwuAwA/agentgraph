@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir", "--workspace", "workdir/workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"], "true_roots": ["registry", "service"], "noise_roots": ["cli", "docs"]}, "note": "multi-root workspace index"},
+    {"tool": "agentgraph.who-calls", "args": ["RegistryClient", "--workspace", "workspace.json"], "ok": true, "summary": {"callers": ["packages/registry/src/client.ts createClient", "packages/service/src/order.service.ts import+ctor"]}, "note": "cli/docs name mentions excluded"},
+    {"tool": "agentgraph.find", "args": ["RegistryClient", "--workspace", "workspace.json"], "ok": true, "summary": {"defs": ["packages/registry/src/client.ts"]}, "note": "single definition root"},
+    {"tool": "agentgraph.blast-radius", "args": ["RegistryClient", "--workspace-root", "registry"], "ok": true, "summary": {"impact": ["packages/registry/src/client.ts"]}, "note": "scoped to registry root"},
+    {"tool": "agentgraph.who-calls", "args": ["RegistryClient", "--workspace-root", "service"], "ok": true, "summary": {"callers": ["packages/service/src/order.service.ts"]}, "note": "service is true consumer root"},
+    {"tool": "agentgraph.who-calls", "args": ["fetch", "--workspace-root", "service"], "ok": true, "summary": {"callers": ["packages/service/src/order.service.ts:11"]}, "note": "fetch return-contract consumer"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts", "packages/registry/src/index.ts", "packages/service/src/order.service.ts", "packages/cli/src/main.ts", "packages/docs/src/overview.ts"], "ok": true, "summary": {"true": 3, "noise": 2}, "note": "cli/docs only mention RegistryClient in help/prose"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir --workspace workspace.json index",
+    "agentgraph.exe --root workdir --workspace workspace.json who-calls RegistryClient",
+    "agentgraph.exe --root workdir --workspace workspace.json find RegistryClient",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root registry blast-radius RegistryClient",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root service who-calls RegistryClient",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root service who-calls fetch"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

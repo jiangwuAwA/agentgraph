@@ -1,0 +1,49 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["PluginRegistry", "workdir"],
+      "ok": true,
+      "summary": {"hits_in": ["app/registry.py", "app/bootstrap.py", "app/docs_strings.py"]},
+      "note": "docs_strings is prose-only mention"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"symbols": ["PluginRegistry", "register"]},
+      "note": "definition + register method"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {"symbols": ["PluginRegistry()", "reg.register"]},
+      "note": "constructs and calls registry"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py", "app/plugins.py"],
+      "ok": true,
+      "summary": {"noise_or_payload": true},
+      "note": "docs noise excluded; plugins.py is payload class not registry construct/call"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 0,
+    "grep_count": 1,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

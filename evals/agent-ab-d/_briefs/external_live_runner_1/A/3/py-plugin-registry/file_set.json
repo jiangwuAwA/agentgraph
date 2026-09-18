@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["py-plugin-registry/workdir/app/registry.py"], "ok": true, "summary": {"role": "definition", "symbols": ["PluginRegistry", "PluginRegistry.register"]}, "note": "register under change"},
+    {"tool": "read", "args": ["py-plugin-registry/workdir/app/bootstrap.py"], "ok": true, "summary": {"role": "construct+call", "symbols": ["bootstrap", "PluginRegistry()", "reg.register"]}, "note": "constructs registry and calls register"},
+    {"tool": "read", "args": ["py-plugin-registry/workdir/app/plugins.py"], "ok": true, "summary": {"role": "noise"}, "note": "plugin class only; does not construct/call registry"},
+    {"tool": "read", "args": ["py-plugin-registry/workdir/app/docs_strings.py"], "ok": true, "summary": {"role": "noise"}, "note": "prose mention of PluginRegistry; not a constructor/caller"},
+    {"tool": "agentgraph_index", "args": ["--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"files": 4, "symbols": 7, "references": 7}, "note": ""},
+    {"tool": "agentgraph_who_calls", "args": ["PluginRegistry", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"callers": ["app/bootstrap.py:1 import", "app/bootstrap.py:6 construct"]}, "note": "only bootstrap constructs registry"},
+    {"tool": "agentgraph_who_calls", "args": ["register", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"callers": ["app/bootstrap.py:7"]}, "note": "only bootstrap calls register"},
+    {"tool": "agentgraph_find", "args": ["PluginRegistry", "--root", "py-plugin-registry/workdir"], "ok": true, "summary": {"defs": ["app/registry.py PluginRegistry"]}, "note": ""}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --root py-plugin-registry/workdir",
+    "agentgraph.exe who-calls PluginRegistry --root py-plugin-registry/workdir",
+    "agentgraph.exe who-calls register --root py-plugin-registry/workdir",
+    "agentgraph.exe find PluginRegistry --root py-plugin-registry/workdir"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

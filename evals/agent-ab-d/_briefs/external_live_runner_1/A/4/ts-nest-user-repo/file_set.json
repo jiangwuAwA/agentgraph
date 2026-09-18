@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"files": 6, "symbols": 15, "references": 25}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["find", "UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"defs": ["UserRepository"], "paths": ["src/user.repository.ts"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"callers": ["src/user.module.ts:4", "src/user.module.ts:6", "src/user.service.ts:2", "src/user.service.ts:6"], "paths": ["src/user.module.ts", "src/user.service.ts", "src/user.repository.ts"]}, "note": "DI registration + ctor inject + find call sites"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "paths": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts"]}, "note": "d2 includes controller via UserService"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/user.repository.ts", "ts-nest-user-repo/workdir/src/user.service.ts", "ts-nest-user-repo/workdir/src/user.controller.ts", "ts-nest-user-repo/workdir/src/user.module.ts", "ts-nest-user-repo/workdir/src/health.ts", "ts-nest-user-repo/workdir/src/unrelated.ts"], "ok": true, "summary": {"noise": ["src/health.ts", "src/unrelated.ts"]}, "note": "health/unrelated are unrelated concerns"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["\\bencode\\b|Encode"], "ok": true, "summary": {"matches": 51}, "note": "dense trait/callers plus metrics/legacy/clone name collisions"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"trait": "Encode", "implementors": 12}, "note": "Encode trait and dense implementors"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"call_sites": 3}, "note": "real Encode::encode callers via dyn"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"reexport_only": true}, "note": "re-exports Encode/send_packet; no encode call"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"name_collision_noise": true}, "note": "Encode enum collision, encode_label"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"name_collision_noise": true}, "note": "legacy encode helpers, not trait implementor"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"name_collision_noise": true}, "note": "encode_name_for_clone helper, no Encode edge"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

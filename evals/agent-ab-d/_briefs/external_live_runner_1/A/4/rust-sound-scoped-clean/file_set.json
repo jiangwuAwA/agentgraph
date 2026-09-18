@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "files": 8, "symbols": 18, "references": 12, "dirty_subset_violations": 3}, "note": "dirty root promise_tier=disabled (transmute/unsafe)"},
+    {"tool": "agentgraph_cli", "args": ["find", "batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"defs": ["packages/clean/src/write.rs"], "root_id": "clean"}, "note": "true def only in clean; dirty is name collision"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json", "--workspace-root", "clean"], "ok": true, "summary": {"callers": ["src/lib.rs:3", "src/lib.rs:6"], "root_id": "clean", "subset_ok": true, "promise_tier": "ast_modeled"}, "note": "scoped to clean root"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json", "--workspace-root", "clean"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "paths": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs"]}, "note": "scoped sound on clean; dirty excluded"},
+    {"tool": "agentgraph_cli", "args": ["impact", "batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json", "--workspace-root", "clean", "--sound"], "ok": true, "summary": {"mode": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "paths": ["packages/clean/src/lib.rs"]}, "note": "do not claim union sound; scoped sound on clean only"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"window": "default", "subset_ok": false, "recommendation": "scoped sound on clean; avoid dirty", "dirty_violations": 3}, "note": "union sound disabled by dirty unsafe"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/packages/clean/src/write.rs", "rust-sound-scoped-clean/workdir/packages/clean/src/lib.rs", "rust-sound-scoped-clean/workdir/packages/dirty/src/lib.rs", "rust-sound-scoped-clean/workdir/packages/dirty/src/shadow.rs"], "ok": true, "summary": {"noise": ["packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"]}, "note": "dirty batch_write_shadow/comments are name collisions; no true batch_write edge"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

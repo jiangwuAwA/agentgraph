@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 6}, "note": "agentgraph index"},
+    {"tool": "cli", "args": ["find", "encode"], "ok": true, "summary": {"defs": 13}, "note": "Encode::encode + dense impls in packet.rs"},
+    {"tool": "cli", "args": ["find", "Encode"], "ok": true, "summary": {"defs": 2}, "note": "trait packet.rs vs enum metrics.rs collision"},
+    {"tool": "cli", "args": ["who-calls", "encode"], "ok": true, "summary": {"callers": 3, "implementors": 12}, "note": "wire callers; packet impls; high-freq implementors demoted"},
+    {"tool": "cli", "args": ["callers", "encode"], "ok": true, "summary": {"callers": 3, "implementors": 12}, "note": "separated implementors"},
+    {"tool": "cli", "args": ["callers", "Encode"], "ok": true, "summary": {"callers": 2}, "note": "lib re-export + wire import"},
+    {"tool": "cli", "args": ["blast-radius", "encode"], "ok": true, "summary": {"nodes": 16}, "note": "sound window excludes metrics/legacy/clone"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {}, "note": "Encode trait + 12 implementors"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {}, "note": "real dyn Encode call sites"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {}, "note": "module re-exports only"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {}, "note": "noise: Encode enum + encode_label collision"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {}, "note": "noise: encode_legacy helpers"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {}, "note": "noise: clone helpers, no Encode edge"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

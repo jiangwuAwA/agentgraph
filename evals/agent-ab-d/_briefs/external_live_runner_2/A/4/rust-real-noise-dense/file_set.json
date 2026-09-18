@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 44, "refs": 38}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "encode"], "ok": true, "summary": {"defs": 12, "all_in": "src/packet.rs"}, "note": "mcp_or_cli_call; dense Encode implementors"},
+    {"tool": "cli", "args": ["who-calls", "encode"], "ok": true, "summary": {"callers": 3, "implementors": 12, "high_freq_name": false}, "note": "mcp_or_cli_call; implementors separated"},
+    {"tool": "cli", "args": ["who-calls", "Encode"], "ok": true, "summary": {"callers": 2, "paths": ["src/lib.rs", "src/wire.rs"]}, "note": "mcp_or_cli_call; trait type refs"},
+    {"tool": "cli", "args": ["blast-radius", "encode"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["src/packet.rs", "src/wire.rs", "src/lib.rs"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "encode"], "ok": true, "summary": {"dyn_call_sites": 3}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["related", "encode"], "ok": true, "summary": {"top": ["src/packet.rs", "src/wire.rs"]}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"trait_and_impls": true}, "note": "Encode trait + dense implementors"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"real_callers": true}, "note": "send_packet/dump_all/checksum"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"reexports": true}, "note": "pub use Encode + send_packet"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"noise": true}, "note": "encode_label + metrics Encode enum collision — excluded"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"noise": true}, "note": "encode_legacy helper not packet consumer — excluded"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"noise": true}, "note": "encode_name_for_clone name adjacency — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

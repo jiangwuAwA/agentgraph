@@ -1,0 +1,23 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 3, "symbols": 12, "refs": 17}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "render"], "ok": true, "summary": {"defs": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["who-calls", "render"], "ok": true, "summary": {"callers": 3, "implementors": 4, "high_freq_name": false}, "note": "mcp_or_cli_call; implementors separated"},
+    {"tool": "cli", "args": ["blast-radius", "render"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["src/handlers.rs", "src/lib.rs"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "render"], "ok": true, "summary": {"dyn_sites": 3}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["src/handlers.rs"], "ok": true, "summary": {"trait_impls_dyn": true}, "note": "Handler trait + Html/Json impls + render_dyn"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"dyn_call_sites": true}, "note": "dispatch + bootstrap dyn Handler::render"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"noise": true}, "note": "no Handler/render dependency — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

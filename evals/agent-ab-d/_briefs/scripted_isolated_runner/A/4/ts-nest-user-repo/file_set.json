@@ -1,0 +1,52 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "scripted_isolated_runner",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/unrelated.ts",
+    "src/user.module.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "UserRepository"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "scripted_offline_placeholder"
+      },
+      "note": "scripted isolated A — not live; recipe binary optional"
+    },
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 6
+      },
+      "note": "enumerate sources in isolated workdir"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/unrelated.ts",
+        "src/user.module.ts",
+        "src/user.repository.ts",
+        "src/user.service.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "bounded reads of token-hit files"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

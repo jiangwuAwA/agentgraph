@@ -1,0 +1,44 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "api", "tools", "web"]},
+      "note": "multi-root index; definition root is core"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/core/src/id.rs", "workdir/packages/core/src/lib.rs"],
+      "ok": true,
+      "summary": {"definition": "normalize_id", "in_crate_call": "batch_key"},
+      "note": "definition root + re-export/in-crate consumer"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/api/src/routes.rs"],
+      "ok": true,
+      "summary": {"true_consumer": "core::normalize_id"},
+      "note": "cross-crate real call edge; api/lib.rs does not call normalize_id"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/web/src/lib.rs", "workdir/packages/tools/src/lib.rs"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "web is comment-only mention; tools is local name collision, not a core consumer"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

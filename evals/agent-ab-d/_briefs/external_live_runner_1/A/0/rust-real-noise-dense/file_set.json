@@ -1,0 +1,23 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 44}, "note": "dense rust index"},
+    {"tool": "agentgraph.who_calls", "args": ["encode"], "ok": true, "summary": {"callers": ["src/wire.rs send_packet/dump_all/checksum"], "implementors": "12 packet.rs Encode impls"}, "note": "implementors separated; metrics Encode enum not in impl list"},
+    {"tool": "agentgraph.find", "args": ["encode"], "ok": true, "summary": {"defs": "Encode::encode + 12 impls in packet.rs"}, "note": ""},
+    {"tool": "agentgraph.find", "args": ["Encode"], "ok": true, "summary": {"defs": ["packet.rs trait Encode", "metrics.rs enum Encode"]}, "note": "metrics Encode is collision"},
+    {"tool": "agentgraph.blast_radius", "args": ["encode"], "ok": true, "summary": {"nodes": ["src/packet.rs", "src/wire.rs", "src/lib.rs send_packet reexport"]}, "note": "exclude collision modules"},
+    {"tool": "agentgraph.subset", "args": [], "ok": true, "summary": {"subset_ok": true}, "note": "ast_modeled"},
+    {"tool": "read", "args": ["src/lib.rs", "src/packet.rs", "src/wire.rs", "src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"], "ok": true, "summary": {"noise_excluded": ["src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"]}, "note": "trait+real callers only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.meta.v1",
+  "runner_id": "scripted_isolated_runner",
+  "kind": "scripted_external_runner",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "saw_labels_before_commit": false,
+  "arm_isolated": true,
+  "read_budget": 7,
+  "approx_tokens": null,
+  "lab_ready_claim": false,
+  "rationale": "scripted isolated A offline fill (token + walk; not live LLM)"
+}

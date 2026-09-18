@@ -1,0 +1,45 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/api/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "index"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "core_refs": 4, "api_refs": 2, "tools_refs": 4, "web_refs": 0}, "note": "multi-root index"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "find", "normalize_id"], "ok": true, "summary": {"defs": 2, "true_def": "packages/core/src/id.rs", "collision_def": "packages/tools/src/lib.rs"}, "note": "core defines true normalize_id; tools has local name collision"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 4, "true_roots": ["core", "api"], "collision_root": "tools"}, "note": "core::normalize_id consumers in core+api; tools calls its own local fn"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "blast-radius", "normalize_id"], "ok": true, "summary": {"impact_paths": ["packages/core/src/id.rs", "packages/core/src/lib.rs", "packages/api/src/routes.rs", "packages/api/src/lib.rs"], "excluded_roots": ["tools", "web"], "window": "sound"}, "note": "true dependents core+api only"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "core", "find", "normalize_id"], "ok": true, "summary": {"defs": 1, "root_id": "core", "path": "src/id.rs"}, "note": "scoped core find — true definition"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "core", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 2, "root_id": "core"}, "note": "reexport + batch_key"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "api", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 1, "root_id": "api", "qualifier": "core"}, "note": "cross-crate call core::normalize_id"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "tools", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 1, "root_id": "tools", "note": "local collision"}, "note": "tools has its own normalize_id — not a core consumer"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "web", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 0, "root_id": "web"}, "note": "comment-only mention"},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {"fn": "normalize_id"}, "note": "true definition"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {"reexport": true, "caller": "batch_key"}, "note": "true core dependent"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {"call": "core::normalize_id"}, "note": "true cross-crate consumer"},
+    {"tool": "read", "args": ["packages/api/src/lib.rs"], "ok": true, "summary": {"calls": "routes::lookup"}, "note": "transitive consumer"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {"noise": true, "local_collision": true}, "note": "local normalize_id, different semantics, no core dependency"},
+    {"tool": "read", "args": ["packages/tools/src/audit.rs"], "ok": true, "summary": {"noise": true}, "note": "label helper, no core edge"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {"noise": true}, "note": "comment-only mention"},
+    {"tool": "read", "args": ["packages/web/src/pages.rs"], "ok": true, "summary": {"noise": true}, "note": "comment-only mention"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --workspace workspace.json index", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json find normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json who-calls normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json blast-radius normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root core find normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root core who-calls normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root api who-calls normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root tools who-calls normalize_id", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root web who-calls normalize_id", "ok": true}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

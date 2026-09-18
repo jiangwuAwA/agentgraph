@@ -60,7 +60,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → offline HTML + honesty fiel
 - Sound subset / S gate — [docs/sound-subset.md](docs/sound-subset.md)
 - Noise / implementors — [docs/noise-governance.md](docs/noise-governance.md)
 - Public Agent code-change task evals — [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
-- Scripted tool-policy A/B/C + replay (P0-5; **not** live LLM) + P0-5b live host-session A/B (not a public benchmark lab) + P0-5c multi-runner hard A/B (≥2 runner kinds; **not** multi-model lab) — [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md)
+- Scripted tool-policy A/B/C + replay (P0-5; **not** live LLM) + P0-5b live host-session A/B (not a public benchmark lab) + P0-5c multi-runner hard A/B (≥2 runner kinds; **not** multi-model lab) + P0-5d isolated lab matrix (**`lab_ready=true`**: 2 non-author models × N=5 isolated sessions; still **not** ecosystem sound / not universal product proof) — [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md)
 - CI blast-radius comment **demo** (non-required) — [docs/ci-blast-radius-demo.md](docs/ci-blast-radius-demo.md)
 
 ## Quick start

@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "dirty_violations": 3}, "note": "dirty promise_tier=disabled (unsafe/transmute)"},
+    {"tool": "agentgraph.who_calls", "args": ["batch_write"], "ok": true, "summary": {"callers_only_root": "clean"}, "note": "no dirty callers; dirty is name-collision noise"},
+    {"tool": "agentgraph.who_calls", "args": ["batch_write", "--workspace-root", "clean"], "ok": true, "summary": {"scoped": "clean", "subset_ok": true}, "note": "scoped sound eligible"},
+    {"tool": "agentgraph.find", "args": ["batch_write"], "ok": true, "summary": {"defs": ["packages/clean/src/write.rs batch_write"]}, "note": "single true def"},
+    {"tool": "agentgraph.blast_radius", "args": ["batch_write", "--workspace-root", "clean"], "ok": true, "summary": {"nodes": ["packages/clean/src/lib.rs"]}, "note": "scoped clean root; do not claim union sound"},
+    {"tool": "agentgraph.subset", "args": [], "ok": true, "summary": {"clean_ok": true, "dirty_disabled": true, "union_ok": false}, "note": "recommend scoped sound on clean only"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs", "packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"], "ok": true, "summary": {"noise_excluded": ["packages/dirty/**"]}, "note": "true clean dependents only"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

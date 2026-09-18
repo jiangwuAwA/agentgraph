@@ -1,0 +1,18 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["src/handlers.rs"], "ok": true, "summary": {"Handler": true, "render": true, "implementors": 2}, "note": "trait, HtmlHandler/JsonHandler impls, render_dyn"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"dispatch": true, "bootstrap": true, "dyn_render": true}, "note": "dyn dispatch call sites for render"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"noise": true}, "note": "no Handler/render dependency; excluded"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

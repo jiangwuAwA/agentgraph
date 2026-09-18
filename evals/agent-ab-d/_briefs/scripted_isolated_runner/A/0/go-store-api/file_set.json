@@ -1,0 +1,48 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "scripted_isolated_runner",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "Get"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "scripted_offline_placeholder"
+      },
+      "note": "scripted isolated A — not live; recipe binary optional"
+    },
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 4
+      },
+      "note": "enumerate sources in isolated workdir"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "api/handlers.go",
+        "store/store.go"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "bounded reads of token-hit files"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["registry", "service", "cli", "docs"]},
+      "note": "true roots are registry (define) + service (consume)"
+    },
+    {
+      "tool": "grep",
+      "args": ["RegistryClient", "workdir"],
+      "ok": true,
+      "summary": {
+        "definition": "packages/registry/src/client.ts",
+        "reexport": "packages/registry/src/index.ts",
+        "consumer": "packages/service/src/order.service.ts",
+        "name_mentions_only": [
+          "packages/cli/src/help.ts",
+          "packages/cli/src/main.ts",
+          "packages/docs/src/changelog.ts",
+          "packages/docs/src/overview.ts"
+        ]
+      },
+      "note": "cli/docs are help/prose noise, not dependents"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts",
+        "packages/registry/src/index.ts",
+        "packages/service/src/order.service.ts",
+        "packages/service/src/order.controller.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "fetch_definition": "RegistryClient.fetch",
+        "fetch_call": "this.client.fetch(orderId)",
+        "return_consumer": "OrderController.get -> service.lookup"
+      },
+      "note": "controller consumes fetch return contract via lookup"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/cli/src/help.ts",
+        "packages/cli/src/main.ts",
+        "packages/docs/src/changelog.ts",
+        "packages/docs/src/overview.ts"
+      ],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "excluded from file_set"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 0,
+    "grep_count": 1,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

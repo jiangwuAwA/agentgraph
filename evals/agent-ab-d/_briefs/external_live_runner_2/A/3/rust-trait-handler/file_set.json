@@ -1,0 +1,69 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "<workdir>"],
+      "ok": true,
+      "summary": {"files": 3, "symbols": 12, "refs": 17},
+      "note": "index rust-trait-handler workdir"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "render", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": ["src/handlers.rs", "src/lib.rs"],
+        "implementors_files": ["src/handlers.rs"],
+        "high_freq_name": false
+      },
+      "note": "dyn callers + Html/Json implementors"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "render", "--depth", "3"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true},
+      "note": "impact handlers+lib only"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Handler"],
+      "ok": true,
+      "summary": {"paths": ["src/handlers.rs"]},
+      "note": "Handler trait definition"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "render"],
+      "ok": true,
+      "summary": {"paths": ["src/handlers.rs"]},
+      "note": "Handler::render + impl methods"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"],
+      "ok": true,
+      "summary": {},
+      "note": "metrics.rs has no Handler/render dependency"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 5,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "Handler::render trait + impls in src/handlers.rs; dyn dispatch call sites (dispatch/bootstrap/render_dyn) in src/handlers.rs and src/lib.rs. src/metrics.rs is noise."
+  }
+}

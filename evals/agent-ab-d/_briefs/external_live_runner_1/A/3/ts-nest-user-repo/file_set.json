@@ -1,0 +1,34 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/user.repository.ts"], "ok": true, "summary": {"role": "definition", "symbols": ["UserRepository", "UserRepository.find"]}, "note": "find must return null instead of throwing"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/user.service.ts"], "ok": true, "summary": {"role": "direct_consumer", "symbols": ["UserService", "UserService.load"]}, "note": "calls userRepo.find(id)"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/user.controller.ts"], "ok": true, "summary": {"role": "transitive_consumer", "symbols": ["UserController", "UserController.load"]}, "note": "returns users.load; will observe null vs throw"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/user.module.ts"], "ok": true, "summary": {"role": "di_wiring"}, "note": "providers registration only; no find call — excluded from review set"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/health.ts"], "ok": true, "summary": {"role": "noise"}, "note": "no UserRepository dependency"},
+    {"tool": "read", "args": ["ts-nest-user-repo/workdir/src/unrelated.ts"], "ok": true, "summary": {"role": "noise"}, "note": "MetricsClient; no UserRepository dependency"},
+    {"tool": "agentgraph_index", "args": ["--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"files": 6, "symbols": 15, "references": 25}, "note": ""},
+    {"tool": "agentgraph_who_calls", "args": ["UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"callers": ["src/user.module.ts", "src/user.service.ts"]}, "note": "DI import/registration sites"},
+    {"tool": "agentgraph_who_calls", "args": ["find", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"callers": ["src/user.service.ts:9 UserService.load"]}, "note": "true find call site"},
+    {"tool": "agentgraph_blast_radius", "args": ["UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"window": "sound", "paths": ["src/user.module.ts", "src/user.service.ts", "src/user.controller.ts"]}, "note": "registration edges noted; method-contract review set kept on find path"},
+    {"tool": "agentgraph_find", "args": ["UserRepository", "--root", "ts-nest-user-repo/workdir"], "ok": true, "summary": {"defs": ["src/user.repository.ts UserRepository"]}, "note": ""}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --root ts-nest-user-repo/workdir",
+    "agentgraph.exe who-calls UserRepository --root ts-nest-user-repo/workdir",
+    "agentgraph.exe who-calls find --root ts-nest-user-repo/workdir",
+    "agentgraph.exe blast-radius UserRepository --root ts-nest-user-repo/workdir",
+    "agentgraph.exe find UserRepository --root ts-nest-user-repo/workdir"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

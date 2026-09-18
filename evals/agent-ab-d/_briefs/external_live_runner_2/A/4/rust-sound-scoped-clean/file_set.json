@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "files": 4, "subset_violations_dirty": 3}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["blast-radius", "batch_write"], "ok": true, "summary": {"window": "default", "subset_ok": false, "sound_candidates": ["clean"], "example": "impact batch_write --sound --workspace-root clean"}, "note": "mcp_or_cli_call; union sound disabled by dirty S violations"},
+    {"tool": "cli", "args": ["who-calls", "batch_write"], "ok": true, "summary": {"callers_root": "clean", "implementors": 0}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "batch_write", "--sound", "--workspace-root", "clean"], "ok": true, "summary": {"mode": "sound", "subset_ok": true, "sites": 2}, "note": "mcp_or_cli_call; scoped sound on clean root"},
+    {"tool": "cli", "args": ["find", "batch_write"], "ok": true, "summary": {"def": "packages/clean/src/write.rs"}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"true_def": true}, "note": "batch_write definition"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"import_and_call": true}, "note": "flush_all true dependent"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"noise": true, "unsafe": true}, "note": "comment/name collision only — excluded"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"noise": true}, "note": "no true batch_write edge — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

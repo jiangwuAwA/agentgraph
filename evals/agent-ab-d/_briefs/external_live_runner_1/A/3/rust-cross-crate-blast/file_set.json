@@ -1,0 +1,32 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"]}, "note": "multi-root manifest"},
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/packages/core/src/id.rs"], "ok": true, "summary": {"role": "definition_root", "symbols": ["normalize_id"]}, "note": "core::normalize_id contract under change"},
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/packages/core/src/lib.rs"], "ok": true, "summary": {"role": "definition_root_consumer", "symbols": ["pub use id::normalize_id", "batch_key"]}, "note": "re-export + batch_key calls normalize_id"},
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/packages/api/src/routes.rs"], "ok": true, "summary": {"role": "true_cross_crate_consumer", "symbols": ["lookup"]}, "note": "core::normalize_id(raw) call"},
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/packages/tools/src/lib.rs"], "ok": true, "summary": {"role": "noise_collision"}, "note": "local normalize_id name collision; not a core consumer"},
+    {"tool": "read", "args": ["rust-cross-crate-blast/workdir/packages/web/src/lib.rs"], "ok": true, "summary": {"role": "noise_comment"}, "note": "comment-only mention of normalize_id"},
+    {"tool": "agentgraph_index", "args": ["--workspace", "rust-cross-crate-blast/workdir/workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "files": 8}, "note": "shared workspace store"},
+    {"tool": "agentgraph_who_calls", "args": ["normalize_id", "--workspace", "rust-cross-crate-blast/workdir/workspace.json"], "ok": true, "summary": {"callers_by_root": {"core": ["src/lib.rs:3", "src/lib.rs:6"], "api": ["src/routes.rs:4 core::normalize_id"], "tools": ["src/lib.rs:14 local collision"]}}, "note": "tools root is local name collision — dropped"},
+    {"tool": "agentgraph_blast_radius", "args": ["normalize_id", "--workspace", "rust-cross-crate-blast/workdir/workspace.json", "--workspace-root", "core"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact": ["core/src/lib.rs"]}, "note": "scoped to definition root; true dependent api/routes.rs via who-calls"},
+    {"tool": "agentgraph_find", "args": ["normalize_id", "--workspace", "rust-cross-crate-blast/workdir/workspace.json"], "ok": true, "summary": {"defs": ["core/src/id.rs normalize_id", "tools/src/lib.rs normalize_id collision"]}, "note": "selected core definition; dropped tools collision"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --workspace rust-cross-crate-blast/workdir/workspace.json",
+    "agentgraph.exe who-calls normalize_id --workspace rust-cross-crate-blast/workdir/workspace.json",
+    "agentgraph.exe blast-radius normalize_id --workspace rust-cross-crate-blast/workdir/workspace.json --workspace-root core",
+    "agentgraph.exe find normalize_id --workspace rust-cross-crate-blast/workdir/workspace.json"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

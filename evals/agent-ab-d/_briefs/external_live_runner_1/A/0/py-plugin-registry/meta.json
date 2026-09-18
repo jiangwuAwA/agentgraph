@@ -1,0 +1,23 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.meta.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "kind": "live_llm_agent",
+  "model_note": "xiaomi/mimo-pro",
+  "independent_session": true,
+  "arm": "A",
+  "seed": 0,
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "saw_labels_before_commit": false,
+  "arm_isolated": true,
+  "read_budget": null,
+  "approx_tokens": null,
+  "lab_ready_claim": false,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 5,
+    "recipe_tools": ["index", "who_calls", "find"],
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null,
+    "read_budget": null
+  }
+}

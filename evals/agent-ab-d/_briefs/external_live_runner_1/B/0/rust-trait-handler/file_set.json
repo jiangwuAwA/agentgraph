@@ -1,0 +1,57 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["render", "workdir"],
+      "ok": true,
+      "summary": {
+        "trait_and_impls": "src/handlers.rs",
+        "dyn_call_sites": "src/lib.rs",
+        "noise": "src/metrics.rs"
+      },
+      "note": "metrics has no Handler/render dependency"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {
+        "trait": "Handler::render",
+        "impls": ["HtmlHandler", "JsonHandler"],
+        "dyn": "render_dyn"
+      },
+      "note": "definition + implementors + same-file dyn call"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {"dyn_calls": ["dispatch", "bootstrap"]},
+      "note": "dyn dispatch call sites via h.render()"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "excluded"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 0,
+    "grep_count": 1,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

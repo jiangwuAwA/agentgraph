@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 15, "refs": 25}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["blast-radius", "UserRepository"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_nodes": 10}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["who-calls", "UserRepository"], "ok": true, "summary": {"callers": 4, "implementors": 0, "high_freq_name": false}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "UserRepository"], "ok": true, "summary": {"sites": 4}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "UserRepository"], "ok": true, "summary": {"defs": 1, "path": "src/user.repository.ts"}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {"throw_on_missing": true}, "note": "find throws when missing"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {"calls_find": true}, "note": "userRepo.find consumer"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {"via_service": true}, "note": "blast via UserService.load"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {"registers_repo": true}, "note": "DI provider registration"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {"noise": true}, "note": "no UserRepository dependency — excluded"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {"noise": true}, "note": "comment-only mention — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

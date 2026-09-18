@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["RegistryClient", "workdir"], "ok": true, "summary": {"hits": 15}, "note": "def in registry/client.ts; consumer in service/order.service.ts; name mentions in cli/docs only"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["registry", "service", "cli", "docs"]}, "note": "multi-root index"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"class": "RegistryClient", "method": "fetch"}, "note": "definition + fetch under change"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts"], "ok": true, "summary": {"reexport": true}, "note": "package export surface for RegistryClient"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"imports": "RegistryClient", "calls_fetch": true}, "note": "true consumer of RegistryClient.fetch"},
+    {"tool": "read", "args": ["packages/service/src/order.controller.ts"], "ok": true, "summary": {}, "note": "indirect via OrderService.lookup; no RegistryClient direct use"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {}, "note": "noise: help/prose mention of RegistryClient"},
+    {"tool": "read", "args": ["packages/cli/src/main.ts"], "ok": true, "summary": {}, "note": "noise: HELP string mentions RegistryClient as flag name"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {}, "note": "noise: docs prose mention"},
+    {"tool": "read", "args": ["packages/docs/src/changelog.ts"], "ok": true, "summary": {}, "note": "noise: changelog prose mention"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

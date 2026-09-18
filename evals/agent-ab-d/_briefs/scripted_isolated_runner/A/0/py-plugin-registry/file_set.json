@@ -1,0 +1,50 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "scripted_isolated_runner",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "app/bootstrap.py",
+    "app/docs_strings.py",
+    "app/registry.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "PluginRegistry"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "scripted_offline_placeholder"
+      },
+      "note": "scripted isolated A — not live; recipe binary optional"
+    },
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 4
+      },
+      "note": "enumerate sources in isolated workdir"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "app/bootstrap.py",
+        "app/docs_strings.py",
+        "app/registry.py"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "bounded reads of token-hit files"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

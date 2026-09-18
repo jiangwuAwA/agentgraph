@@ -1,0 +1,252 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "B",
+  "policy_label": "P0-5d arm B — walk/grep/read only (no agentgraph) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "external_live_runner_2",
+  "task_id": "ts-nest-user-repo",
+  "seed": 2,
+  "run_id": "external_live_runner_2-b-2",
+  "fixture": "fixtures/eval-agent-tasks/ts-nest-user-repo",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/B/2/ts-nest-user-repo",
+  "symbol": "UserRepository",
+  "model_note": "xiaomi/mimo-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 3,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 3,
+    "read_budget": 6,
+    "read_files": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.controller.ts",
+      "src/user.module.ts",
+      "src/health.ts",
+      "src/unrelated.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 2,
+    "task_order": [
+      "rust-trait-handler",
+      "rust-real-noise-dense",
+      "go-store-api",
+      "rust-cross-crate-blast",
+      "ts-nest-user-repo",
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "py-plugin-registry"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "external_live_runner_1",
+      "scripted_isolated_runner"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "ts-nest-user-repo",
+    "title": "Change UserRepository contract in a Nest-like DI app",
+    "language": "typescript",
+    "issue": "Product wants UserRepository.find to return null instead of throwing when a user is missing. Before editing, identify the blast radius: which files must be reviewed, and which files are noise that mention unrelated concerns.",
+    "symbol": "UserRepository",
+    "expected_files": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.module.ts"
+    ],
+    "noise_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "src/user.repository.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "UserRepository": true,
+        "find": true
+      },
+      "note": "definition; find throws on missing user",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/user.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "UserRepository": true,
+        "find": true
+      },
+      "note": "direct caller of find",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/user.controller.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "UserService": true,
+        "load": true
+      },
+      "note": "uses find result via service.load; return contract dependent",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/user.module.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "DI_wire_only": true
+      },
+      "note": "provider wiring only; does not use find; excluded",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/health.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "noise": true
+      },
+      "note": "no user-repo dependency; excluded",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/unrelated.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "noise": true
+      },
+      "note": "does not depend on UserRepository; excluded",
+      "seq": 6
+    }
+  ],
+  "file_set": [
+    "src/user.controller.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 0.6667,
+    "expected_hit": [
+      "src/user.repository.ts",
+      "src/user.service.ts"
+    ],
+    "expected_miss": [
+      "src/user.module.ts"
+    ],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/user.controller.ts",
+      "src/user.repository.ts",
+      "src/user.service.ts"
+    ],
+    "file_set_size": 3,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/ts-nest-user-repo/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "arm": "B",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm B: isolated runner decision path"
+  ],
+  "errors": []
+}

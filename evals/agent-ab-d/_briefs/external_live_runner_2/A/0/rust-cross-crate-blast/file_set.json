@@ -1,0 +1,35 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/lib.rs",
+    "packages/core/src/id.rs"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "index"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "files": 8}, "note": "multi-root index via workspace manifest"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "subset"], "ok": true, "summary": {"in_subset": true, "sound_eligible_roots": ["core", "api", "tools", "web"]}, "note": "all roots sound-eligible"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "find", "normalize_id"], "ok": true, "summary": {"defs": 2, "roots": ["core", "tools"]}, "note": "core definition vs tools name collision"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "who-calls", "normalize_id"], "ok": true, "summary": {"callers": 4, "roots": ["api", "core", "tools"]}, "note": "true consumers api+core; tools is local collision"},
+    {"tool": "cli", "args": ["--workspace", "workspace.json", "blast-radius", "normalize_id", "--depth", "3"], "ok": true, "summary": {"impact_roots": ["api", "core"], "window": "sound"}, "note": "web has 0 refs; tools local only; core+api true blast"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {}, "note": "roots core/api/tools/web"},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {}, "note": "normalize_id definition"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + batch_key consumer"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {}, "note": "cross-crate core::normalize_id call"},
+    {"tool": "read", "args": ["packages/api/src/lib.rs"], "ok": true, "summary": {}, "note": "handle -> lookup impact depth 2"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {}, "note": "exclude: local normalize_id collision"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {}, "note": "exclude: comment-only mention"},
+    {"tool": "read", "args": ["packages/web/src/pages.rs"], "ok": true, "summary": {}, "note": "exclude: comment noise"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 5,
+    "chose_correct_workspace_root": true,
+    "approx_tokens": null
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": 4}, "note": "multi-root index: registry, service, cli, docs"},
+    {"tool": "grep", "args": ["RegistryClient"], "ok": true, "summary": {"matches": 15}, "note": "name appears in definition, service consumer, and docs/cli prose noise"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"fetch": true}, "note": "RegistryClient definition with fetch"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts"], "ok": true, "summary": {"reexport": true}, "note": "re-exports RegistryClient"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"call_site": true}, "note": "imports RegistryClient and calls fetch"},
+    {"tool": "read", "args": ["packages/service/src/order.controller.ts"], "ok": true, "summary": {"registry_edge": false}, "note": "only uses OrderService, no RegistryClient edge"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {"noise": true}, "note": "prose/help mention only"},
+    {"tool": "read", "args": ["packages/cli/src/main.ts"], "ok": true, "summary": {"noise": true}, "note": "help flag name mention only"},
+    {"tool": "read", "args": ["packages/docs/src/changelog.ts"], "ok": true, "summary": {"noise": true}, "note": "docs prose only"},
+    {"tool": "read", "args": ["packages/docs/src/overview.ts"], "ok": true, "summary": {"noise": true}, "note": "docs prose only"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

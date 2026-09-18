@@ -1,4 +1,4 @@
-# Agent baseline evals — scripted tool-policy A/B/C (P0-5) + live host-session A/B (P0-5b) + multi-runner hard A/B (P0-5c)
+# Agent baseline evals — scripted tool-policy A/B/C (P0-5) + live host-session A/B (P0-5b) + multi-runner hard A/B (P0-5c) + isolated lab harness (P0-5d)
 
 **Status:**
 
@@ -18,10 +18,18 @@
   `host_session_llm` is still **not** a public benchmark model / multi-model
   lab; `scripted_external_runner` is **not** a live LLM. **No oversell**
   that live A “beats” B as a product proof.
+- **P0-5d (isolated lab):** issue-only brief packs + isolated workdirs +
+  offline stamp/score + `lab_ready` gate — see § **P0-5d** below.
+  **S2 status:** complete matrix on **mimo-pro** + **mimo-flash** isolated
+  live sessions (N=5 seeds × easy+hard × arms A/B) — harness
+  **`lab_ready=true`**. Still **not** ecosystem sound / not a universal
+  agent product proof.
+  with `independent_session=true` fill **N≥5** per cell. **Not** a product
+  lab proof.
 
 Related: [eval-agent-tasks.md](eval-agent-tasks.md) (P0-1 structure-fact
 scores vs name-grep), [agent-recipes.md](agent-recipes.md),
-[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 / P0-5b / P0-5c card).
+[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 / P0-5b / P0-5c / P0-5d card).
 
 ---
 
@@ -546,3 +554,186 @@ Machine-readable replay: `target/agent_ab_c_replay.json` (not committed).
 | `evals/agent-ab-c/**` | public hard-task multi-runner trajectories + randomization log |
 | `evals/agent-ab-c/README.md` | P0-5c replay honesty + layout |
 | `tests/agent_ab_c_eval.rs` | hard fixtures + metrics keys + ≥2 runners + honesty gates |
+
+---
+
+## P0-5d — isolated lab harness + protocol (S1)
+
+**Question (lab-grade, not yet answered on this host):** under **true isolation**
+(per-cell independent agent sessions, issue-only briefs, no shared file-set
+state, no structure-fact labels on the decision path), do live Agent ± agentgraph
+arms separate on hard public tasks?
+
+**S2 status (this commit):** isolated live matrix complete —
+`lab_ready=true` via harness offline check on `evals/agent-ab-d`.
+
+| runner | model_note | arm | runs | recall | extra-noise | cwr true/false/na | mean mcp/cli |
+|---|---|---|---:|---:|---:|---|---:|
+| external_live_runner_1 | xiaomi/mimo-pro | A | 40 | 0.952 | **0.00** | 15/0/25 | 1.98 |
+| external_live_runner_1 | xiaomi/mimo-pro | B | 40 | 0.879 | **0.00** | 12/0/28 | 0 |
+| external_live_runner_2 | xiaomi/mimo-flash | A | 40 | 0.971 | **0.00** | 15/0/25 | 1.28 |
+| external_live_runner_2 | xiaomi/mimo-flash | B | 40 | 0.902 | **0.00** | 12/0/28 | 0 |
+| scripted_isolated_runner | deterministic | A/B | 80 | 0.896 | **1.875** | n/a | 1.0 / 0 |
+
+**Honest reading:** live isolated **A vs B** on these fixtures separates on
+**expected-file recall** and **workspace-root correctness** (cwr), **not** on
+extra-noise (both live arms ~0 noise — fixtures are small/self-labely for
+careful readers). Scripted policy still shows mechanical noise (+1.875).
+`approx_tokens` remains null. **lab_ready=true** means **matrix completeness
++ isolation protocol**, **not** “MCP always wins” / ecosystem sound.
+
+**S1 status:** harness + protocol (below) remain the gate definitions.
+
+- Deliverables shipped: this § protocol, `scripts/eval_agent_ab_d.py`
+  (`prepare` / `run-runner` / `stamp` / `score` / `lab-ready`), task selection
+  + randomization under [`evals/agent-ab-d/`](../evals/agent-ab-d/), tests in
+  `tests/agent_ab_d_eval.rs`.
+- **Not shipped in S1:** live external runner batches (parent/S2 orchestrates).
+- **README product link withheld** while `lab_ready=false` (harness-only note
+  above; no lab product claim).
+
+### Isolation requirements
+
+| Requirement | Implementation | Residual |
+|---|---|---|
+| Per `(runner_id, arm, seed, task)` **independent agent session** | Brief pack path `evals/agent-ab-d/_briefs/<runner>/<arm>/<seed>/<task>/`; each cell has its own `workdir/` | Live process/session isolation is the **runner’s** job; harness records `independent_session` / `model_note` |
+| **No shared file-set files between arms** | Runners write `file_set.json` only into their own brief dir; no cross-arm shared intermediates | Operator must not copy file sets across cells |
+| Decision path **cannot read** `task.json` expected / golden / trajectory scores of other arms | Briefs are **issue-only**; `workdir/` is a fixture copy **without** `task.json`; harness **never injects** goldens; stamp runs **offline after** commitment | Brief ban list is enforced in harness + tests (`expected` / `noise_files` strings forbidden in brief packs) |
+| Randomization log | `evals/agent-ab-d/task_randomization.json` — per-seed `task_order`, `arm_order` (A→B vs B→A by seed parity), `runner_order` | Order is recorded, not a full counterbalanced lab design |
+| Runner metadata | `meta.json` requires `runner_id`, `kind`, `model_note`, `independent_session`, `harness_version`, `saw_labels_before_commit=false` | Missing/malformed meta ⇒ cell not stamped |
+
+### Contamination ban list (must)
+
+1. Fixture `task.json` structure-fact labels (`expected` / `noise` / `forbidden` / correct roots) on the decision path.
+2. Golden file sets or **scored** tables from any arm, seed, or runner.
+3. Shared intermediate file-set files between arms.
+4. Shared workdirs or `.agentgraph` index DBs between arms.
+5. P0-5b / P0-5c trajectory scores visible to the decision path.
+6. Fixture-**author** session context that already saw labels (forces `lab_ready=false`).
+7. Private monorepo / stock corpus paths.
+8. Injected harness answer-key lists into brief packs.
+
+### Task set (S1 selection)
+
+Public fixtures only (read-only reuse):
+
+| tier | task_id | why selected |
+|---|---|---|
+| easy | `ts-nest-user-repo` | TS Nest-like DI; health/unrelated noise |
+| easy | `rust-trait-handler` | Rust trait/dyn dispatch; metrics sibling noise |
+| easy | `py-plugin-registry` | Python registry; docs_strings noise |
+| easy | `go-store-api` | Go store API; package-sibling noise |
+| hard | `rust-cross-crate-blast` | multi-root cross-crate blast + name collision |
+| hard | `rust-real-noise-dense` | dense implementors + encode collisions |
+| hard | `rust-sound-scoped-clean` | sound-disabled dirty sibling + clean scoped root |
+| hard | `ts-multi-root-client` | multi-root TS wrong-root + help/docs noise |
+
+**easy≥4 + hard≥4** satisfied (4+4). Hard set = **all four** P0-5c fixtures.
+Randomization order file: [`evals/agent-ab-d/task_randomization.json`](../evals/agent-ab-d/task_randomization.json).
+Selection metadata: [`evals/agent-ab-d/task_selection.json`](../evals/agent-ab-d/task_selection.json).
+
+### `lab_ready` definition (strict)
+
+`lab_ready=true` **only if all** hold on **recorded** trajectories (never invented):
+
+1. **≥2 live runner ids** with `kind=live_llm_agent`.
+2. Every counted live runner has **`independent_session=true`**.
+3. **N≥5** seeds per `(runner_id, arm, task)` cell over the selected task set.
+4. **Non-author models only** — `mimo-desktop-host-session` / fixture-author /
+   host-session author markers **do not count**; their presence forces
+   `lab_ready=false`.
+5. **Both arms** present per cell; **easy≥4 and hard≥4** tasks covered.
+6. **No forgery violations** from `score` / `lab-ready` (stamped scores must
+   match fixture recomputation; no forged independence / N / model notes).
+
+Otherwise the harness prints **`lab_ready=false`** plus a **gap list**.
+Scripted offline fills (`scripted_isolated_runner`) are **protocol parity only**
+and **never** satisfy `lab_ready`.
+
+### Metrics (aligned P0-5c)
+
+| metric | definition |
+|---|---|
+| recall | structure-fact expected-file hit rate |
+| extra-noise | labeled noise files pulled into `file_set` |
+| cwr | `chose_correct_workspace_root` (true/false/`null` when n/a) |
+| mcp_or_cli_calls | `{count, recipe_tools[], grep_count}` |
+| file_budget | \|file_set\| |
+| read_budget | files opened or `null` |
+| approx_tokens | runner-reported number or **`null`** — **never invented** |
+
+### Runner contract (harness never injects goldens)
+
+```text
+prepare  → issue-only briefs + isolated workdirs
+run      → external runner (independent session) writes file_set.json + meta.json
+           into evals/agent-ab-d/_briefs/<runner>/<arm>/<seed>/<task>/
+stamp    → offline structure-fact score from fixture task.json
+score    → aggregate table; refuse forged fields
+lab-ready→ print whether matrix meets P0-5d acceptance
+```
+
+### Harness CLI (S1)
+
+```bash
+# materialize issue-only briefs + isolated workdirs + randomization log
+python scripts/eval_agent_ab_d.py prepare
+
+# validate runner contract (optional offline scripted fill — not live LLM)
+python scripts/eval_agent_ab_d.py run-runner --runner scripted_isolated_runner --fill-scripted
+
+# offline stamp after runners commit file_set.json + meta.json
+python scripts/eval_agent_ab_d.py stamp --traj-dir evals/agent-ab-d
+
+# aggregate + forgery refusal
+python scripts/eval_agent_ab_d.py score --traj-dir evals/agent-ab-d --allow-empty
+
+# lab gate
+python scripts/eval_agent_ab_d.py lab-ready --traj-dir evals/agent-ab-d
+cargo test --test agent_ab_d_eval
+```
+
+Scripts: [`scripts/eval_agent_ab_d.py`](../scripts/eval_agent_ab_d.py).
+Artifacts: [`evals/agent-ab-d/`](../evals/agent-ab-d/) (harness tree; **not** a
+complete live lab table until S2).
+
+### Differences vs P0-5b / P0-5c
+
+| | P0-5b | P0-5c | **P0-5d** |
+|---|---|---|---|
+| Tasks | easy public (9) | hard public (4) | **easy≥4 + hard≥4** (8) |
+| Isolation | same host session; contamination disclosed | tool-policy isolation; host `independent_session=false` | **issue-only briefs + per-cell workdir**; no labels on decision path |
+| Runners | 1 host-session live | host-session + scripted external | **≥2 non-author live** required for lab; S1 ships harness slots only |
+| N | 3 | 3 | **target N≥5**; incomplete ⇒ `lab_ready=false` |
+| Label | not a public benchmark lab | not multi-model lab | **harness-only until lab_ready=true** |
+
+### P0-5d non-claims (required)
+
+- **No** claim that incomplete/harness-only trees prove live Agent±MCP product superiority.
+- **No** scripted row is a live LLM; **no** author-session row is lab-grade.
+- **No** private corpus; **no** production monorepo precision claim.
+- **No** ecological / production sound claim from fixture `window` fields.
+- **No** README product result link while `lab_ready=false`.
+
+### P0-5d layout additions (S1)
+
+| path | role |
+|---|---|
+| `docs/eval-agent-baseline.md` § P0-5d | this protocol |
+| `scripts/eval_agent_ab_d.py` | prepare / run-runner / stamp / score / lab-ready |
+| `evals/agent-ab-d/task_selection.json` | easy+hard selection + lab_ready criteria |
+| `evals/agent-ab-d/task_randomization.json` | per-seed task/arm/runner order |
+| `evals/agent-ab-d/_briefs/**/ISSUE.md` | issue-only brief packs (no label keys) |
+| `evals/agent-ab-d/README.md` | harness honesty + layout |
+| `tests/agent_ab_d_eval.rs` | brief ban, stamp/score offline, honesty, lab_ready=false gate |
+
+### P0-5d S1 reproduce (offline)
+
+```bash
+python scripts/eval_agent_ab_d.py prepare --seeds 0,1,2,3,4
+python scripts/eval_agent_ab_d.py lab-ready --traj-dir evals/agent-ab-d
+python scripts/check_docs_claims.py
+cargo test --test agent_ab_d_eval
+```
+
+Expected S1 gate outcome: `lab_ready=false` with gap list (no live matrix yet).

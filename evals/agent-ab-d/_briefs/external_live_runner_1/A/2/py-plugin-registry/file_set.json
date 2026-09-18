@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 7, "references": 7}, "note": "single-root index"},
+    {"tool": "agentgraph.who-calls", "args": ["PluginRegistry"], "ok": true, "summary": {"callers": ["app/bootstrap.py import", "app/bootstrap.py construct"]}, "note": "def in app/registry.py"},
+    {"tool": "agentgraph.who-calls", "args": ["register"], "ok": true, "summary": {"callers": ["app/bootstrap.py:7"]}, "note": "register call site"},
+    {"tool": "agentgraph.find", "args": ["PluginRegistry"], "ok": true, "summary": {"defs": ["PluginRegistry"]}, "note": "class in app/registry.py"},
+    {"tool": "read", "args": ["app/registry.py", "app/bootstrap.py", "app/plugins.py", "app/docs_strings.py"], "ok": true, "summary": {"true": 2, "noise": 2}, "note": "plugins.py is factory only; docs_strings.py is prose"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir index",
+    "agentgraph.exe --root workdir who-calls PluginRegistry",
+    "agentgraph.exe --root workdir who-calls register",
+    "agentgraph.exe --root workdir find PluginRegistry"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

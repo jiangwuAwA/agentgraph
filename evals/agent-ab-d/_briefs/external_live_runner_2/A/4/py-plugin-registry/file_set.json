@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 7, "refs": 7}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "PluginRegistry"], "ok": true, "summary": {"def": "app/registry.py"}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["who-calls", "PluginRegistry"], "ok": true, "summary": {"callers": 2, "implementors": 0, "path": "app/bootstrap.py"}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["blast-radius", "PluginRegistry"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["app/bootstrap.py"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "PluginRegistry"], "ok": true, "summary": {"sites": 2}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {"register_def": true}, "note": "PluginRegistry definition"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {"constructs_and_calls_register": true}, "note": "PluginRegistry() + reg.register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {"factory_only": true}, "note": "MetricsPlugin factory — does not construct/call registry — excluded"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {"noise": true}, "note": "prose mention only — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,60 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "scripted_isolated_runner",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs",
+    "src/metrics.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": [
+        "walk_sources"
+      ],
+      "ok": true,
+      "summary": {
+        "source_count": 3
+      },
+      "note": "arm B walk only"
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "grep",
+        "render",
+        "src/handlers.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "token hit"
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "grep",
+        "render",
+        "src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "token hit"
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "grep",
+        "render",
+        "src/metrics.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "token hit"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

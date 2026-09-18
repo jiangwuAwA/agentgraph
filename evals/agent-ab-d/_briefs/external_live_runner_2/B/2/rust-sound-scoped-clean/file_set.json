@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"]}, "note": "multi-root index; clean is definition root"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"batch_write": true}, "note": "true clean definition of batch_write"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"batch_write": true, "flush_all": true}, "note": "re-export and true clean dependent flush_all"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"noise": true}, "note": "dirty sibling; comment/name collision only; excluded"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"noise": true}, "note": "no true batch_write edge; excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

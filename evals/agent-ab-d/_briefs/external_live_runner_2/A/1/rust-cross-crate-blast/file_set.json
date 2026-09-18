@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/api/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "normalize_id contract"},
+    {"tool": "agentgraph_cli", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"], "files": 8}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "who-calls", "normalize_id"], "ok": true, "summary": {"roots": ["core", "api", "tools"]}, "note": "tools is local collision"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "find", "normalize_id"], "ok": true, "summary": {"defs": ["packages/core/src/id.rs", "packages/tools/src/lib.rs"]}, "note": "filter by qualifier core"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "callers", "normalize_id"], "ok": true, "summary": {"core_and_api_callers": true}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workspace.json", "impact", "normalize_id"], "ok": true, "summary": {"depth2": ["packages/api/src/lib.rs"]}, "note": ""},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {}, "note": "definition"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + batch_key"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {}, "note": "cross-crate call"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {}, "note": "name collision excluded"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {}, "note": "comment-only excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

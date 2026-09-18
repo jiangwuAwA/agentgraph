@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 6, "symbols": 44, "references": 38}, "note": "single-root dense crate"},
+    {"tool": "agentgraph.who-calls", "args": ["encode"], "ok": true, "summary": {"callers": ["src/wire.rs"], "implementors": ["src/packet.rs x12"], "high_freq_name": false}, "note": "callers=wire; implementors=dense packet Encode impls"},
+    {"tool": "agentgraph.find", "args": ["Encode"], "ok": true, "summary": {"defs": ["src/packet.rs trait Encode", "src/metrics.rs enum Encode"]}, "note": "metrics enum is name collision"},
+    {"tool": "agentgraph.who-calls", "args": ["Encode"], "ok": true, "summary": {"callers": ["src/lib.rs re-export", "src/wire.rs import"]}, "note": "true trait consumers"},
+    {"tool": "agentgraph.blast-radius", "args": ["Encode"], "ok": true, "summary": {"impact": ["src/lib.rs", "src/wire.rs"]}, "note": "packet is definition root"},
+    {"tool": "read", "args": ["src/packet.rs", "src/wire.rs", "src/lib.rs", "src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"], "ok": true, "summary": {"true": 3, "noise": 3}, "note": "metrics/legacy/clone_heavy are encode name collisions"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir index",
+    "agentgraph.exe --root workdir who-calls encode",
+    "agentgraph.exe --root workdir find Encode",
+    "agentgraph.exe --root workdir who-calls Encode",
+    "agentgraph.exe --root workdir blast-radius Encode"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

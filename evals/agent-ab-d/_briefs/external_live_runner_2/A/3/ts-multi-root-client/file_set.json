@@ -1,0 +1,132 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {
+        "roots": ["registry", "service", "cli", "docs"],
+        "files": 16,
+        "symbols": 26,
+        "refs": 14
+      },
+      "note": "multi-root index via workspace.json"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "RegistryClient", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/registry/src/client.ts",
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "def/createClient + service ctor inject"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "RegistryClient", "--workspace", "workspace.json", "--depth", "3"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "depth1": ["packages/registry/src/client.ts", "packages/service/src/order.service.ts"],
+        "depth2": ["packages/service/src/order.controller.ts"]
+      },
+      "note": "registry+service true roots; no cli/docs edges"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/registry",
+        "--workspace-root",
+        "<workdir>/packages/service",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {"scoped_roots": ["registry", "service"]},
+      "note": "correct roots for review; exclude cli/docs"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "fetch", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": {"callers_files": ["packages/service/src/order.service.ts"]},
+      "note": "true fetch call site"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "fetch", "--workspace", "workspace.json", "--depth", "3"],
+      "ok": true,
+      "summary": {
+        "depth1": ["packages/service/src/order.service.ts"],
+        "depth2": ["packages/service/src/order.controller.ts"]
+      },
+      "note": "fetch contract change blast through service"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "RegistryClient", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"path": "packages/registry/src/client.ts"},
+      "note": "class definition under registry"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "fetch", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"qualified": "RegistryClient.fetch"},
+      "note": "method under registry/client.ts"
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": ["subset", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"in_subset": true},
+      "note": "all roots sound-eligible"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts",
+        "packages/registry/src/index.ts",
+        "packages/service/src/order.service.ts",
+        "packages/service/src/order.controller.ts",
+        "packages/cli/src/help.ts",
+        "packages/cli/src/main.ts",
+        "packages/docs/src/overview.ts",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "cli/docs only mention name in help/prose — not dependents"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 9,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find", "subset"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "Multi-root RegistryClient.fetch: correct roots registry (client.ts def + index.ts reexport) and service (order.service.ts fetch consumer + order.controller.ts depth-2 blast). cli/docs help/prose name mentions are not dependents — omitted. Used --workspace workspace.json with workspace-root registry+service."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir", "--workspace", "workdir/workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "clean_subset_ok": true, "dirty_promise_tier": "disabled", "dirty_subset_violations": 3}, "note": "multi-root; dirty disables union sound"},
+    {"tool": "agentgraph.who-calls", "args": ["batch_write", "--workspace", "workspace.json"], "ok": true, "summary": {"callers": ["packages/clean/src/lib.rs"]}, "note": "dirty has only name-collision helpers"},
+    {"tool": "agentgraph.find", "args": ["batch_write", "--workspace", "workspace.json"], "ok": true, "summary": {"defs": ["packages/clean/src/write.rs batch_write"]}, "note": "single true def in clean"},
+    {"tool": "agentgraph.blast-radius", "args": ["batch_write", "--workspace-root", "clean"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact": ["packages/clean/src/lib.rs"]}, "note": "scoped sound on clean root; do not claim union sound"},
+    {"tool": "agentgraph.who-calls", "args": ["batch_write", "--workspace-root", "clean"], "ok": true, "summary": {"callers": ["packages/clean/src/lib.rs import+flush_all"]}, "note": "scoped clean dependents only"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs", "packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"], "ok": true, "summary": {"true": 2, "noise": 2}, "note": "dirty package is name-collision noise for batch_write"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe --root workdir --workspace workspace.json index",
+    "agentgraph.exe --root workdir --workspace workspace.json who-calls batch_write",
+    "agentgraph.exe --root workdir --workspace workspace.json find batch_write",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root clean blast-radius batch_write",
+    "agentgraph.exe --root workdir --workspace workspace.json --workspace-root clean who-calls batch_write"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,72 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "app/bootstrap.py",
+    "app/registry.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "<workdir>"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 7, "refs": 7},
+      "note": "index py-plugin-registry workdir"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "PluginRegistry", "--limit", "50"],
+      "ok": true,
+      "summary": {"callers_files": ["app/bootstrap.py"]},
+      "note": "construct/import + construct sites only in bootstrap"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "PluginRegistry", "--depth", "3"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true},
+      "note": "sound blast over bootstrap callers"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "PluginRegistry"],
+      "ok": true,
+      "summary": {"paths": ["app/registry.py"]},
+      "note": "class + register definition"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "register"],
+      "ok": true,
+      "summary": {"paths": ["app/registry.py"]},
+      "note": "PluginRegistry.register definition"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "register", "--limit", "50"],
+      "ok": true,
+      "summary": {"callers_files": ["app/bootstrap.py"]},
+      "note": "reg.register call site"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py", "app/registry.py", "app/plugins.py", "app/docs_strings.py"],
+      "ok": true,
+      "summary": {},
+      "note": "plugins.py is factory payload only; docs_strings prose-only noise"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 6,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "PluginRegistry defined in app/registry.py; constructed and register() called only from app/bootstrap.py. plugins.py holds MetricsPlugin factory (no registry construct/call). docs_strings.py is prose-only noise."
+  }
+}

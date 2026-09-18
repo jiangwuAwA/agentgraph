@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "Encode::encode payload"},
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "."], "ok": true, "summary": {"files": 6, "symbols": 44}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "encode"], "ok": true, "summary": {"callers": ["src/wire.rs"], "implementors": ["src/packet.rs"]}, "note": "high_freq false"},
+    {"tool": "agentgraph_cli", "args": ["find", "encode"], "ok": true, "summary": {"defs_in_packet": true}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["callers", "encode"], "ok": true, "summary": {"callers": ["src/wire.rs"]}, "note": ""},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "encode"], "ok": true, "summary": {"sound_window": true}, "note": ""},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {}, "note": "trait + dense implementors"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {}, "note": "real callers"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {}, "note": "Encode enum collision excluded"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {}, "note": "legacy encode excluded"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {}, "note": "clone noise excluded"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {}, "note": "module wiring only; no encode call"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

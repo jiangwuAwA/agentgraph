@@ -1,0 +1,93 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.selection.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "easy_tasks": [
+    "ts-nest-user-repo",
+    "rust-trait-handler",
+    "py-plugin-registry",
+    "go-store-api"
+  ],
+  "hard_tasks": [
+    "rust-cross-crate-blast",
+    "rust-real-noise-dense",
+    "rust-sound-scoped-clean",
+    "ts-multi-root-client"
+  ],
+  "rationale": {
+    "ts-nest-user-repo": "easy · TypeScript Nest-like DI; clean vs health/unrelated noise",
+    "rust-trait-handler": "easy · Rust trait impl blast; metrics sibling noise",
+    "py-plugin-registry": "easy · Python registry; docs_strings noise",
+    "go-store-api": "easy · Go store API; package-sibling noise",
+    "rust-cross-crate-blast": "hard · multi-root cross-crate blast + name collision",
+    "rust-real-noise-dense": "hard · dense implementors + encode name collisions",
+    "rust-sound-scoped-clean": "hard · sound-disabled dirty sibling + clean scoped root",
+    "ts-multi-root-client": "hard · multi-root TS wrong-root + help/docs noise"
+  },
+  "selection_note": "easy≥4 + hard≥4 from public fixtures only; hard set = all four P0-5c fixtures; easy set = P0-5b language-diverse clean/noise tasks",
+  "seeds_target": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "n_per_cell_target": 5,
+  "prepare_runners": [
+    "scripted_isolated_runner",
+    "external_live_runner_1",
+    "external_live_runner_2"
+  ],
+  "planned_live_runner_slots": [
+    {
+      "runner_id": "external_live_runner_1",
+      "status": "not_run",
+      "independent_session_required": true,
+      "non_author_model_required": true,
+      "kind_required": "live_llm_agent"
+    },
+    {
+      "runner_id": "external_live_runner_2",
+      "status": "not_run",
+      "independent_session_required": true,
+      "non_author_model_required": true,
+      "kind_required": "live_llm_agent"
+    }
+  ],
+  "scripted_offline_runner": {
+    "runner_id": "scripted_isolated_runner",
+    "kind": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "live_llm": false,
+    "note": "protocol parity / offline fill only — not a live lab model"
+  },
+  "contamination_ban_list": [
+    "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+    "golden file sets or scored tables from any arm, seed, or runner",
+    "shared intermediate file-set files between arms",
+    "shared workdirs or .agentgraph index.db between arms",
+    "P0-5b / P0-5c trajectory scores visible to the decision path",
+    "fixture-author session context that already saw labels (forces lab_ready=false)",
+    "private monorepo / stock corpus paths",
+    "injected harness goldens into brief packs"
+  ],
+  "lab_ready_definition": {
+    "min_live_runners": 2,
+    "min_seeds_per_cell": 5,
+    "require_independent_session": true,
+    "require_non_author_models": true,
+    "require_both_arms": true,
+    "require_easy_and_hard": true
+  },
+  "task_order_base": [
+    "ts-nest-user-repo",
+    "rust-trait-handler",
+    "py-plugin-registry",
+    "go-store-api",
+    "rust-cross-crate-blast",
+    "rust-real-noise-dense",
+    "rust-sound-scoped-clean",
+    "ts-multi-root-client"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["clean", "dirty"]},
+      "note": "scoped review to clean root only"
+    },
+    {
+      "tool": "grep",
+      "args": ["batch_write", "workdir"],
+      "ok": true,
+      "summary": {
+        "definition": "packages/clean/src/write.rs",
+        "clean_dependents": "packages/clean/src/lib.rs",
+        "dirty_collisions": ["packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"]
+      },
+      "note": "dirty hits are name collisions / comments — not true dependents"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"symbols": ["batch_write", "batch_write_verbose", "flush_all", "pub use write::batch_write"]},
+      "note": "true clean blast radius"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {"noise": true, "unsafe": true},
+      "note": "dirty unsafe + batch_write_shadow excluded; union sound not claimed"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": 0,
+    "grep_count": 1,
+    "chose_correct_workspace_root": null,
+    "approx_tokens": null
+  }
+}

@@ -60,7 +60,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
 - Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
 - 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)
 - 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
-- 脚本化 tool-policy A/B/C + 回放（P0-5；**非** live LLM）+ P0-5b live host-session A/B（非公开基准实验室）+ P0-5c 多 runner 难任务 A/B（≥2 runner kinds；**非** multi-model lab）—— [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md)
+- 脚本化 tool-policy A/B/C + 回放（P0-5；**非** live LLM）+ P0-5b live host-session A/B（非公开基准实验室）+ P0-5c 多 runner 难任务 A/B（≥2 runner kinds；**非** multi-model lab）+ P0-5d 隔离 lab 矩阵（**`lab_ready=true`**：2 个非 author 模型 × N=5 独立会话；仍**不是**生态 sound / 万能产品证明）—— [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md)
 - CI 爆炸半径注释 **demo**（非 required）—— [docs/ci-blast-radius-demo.md](docs/ci-blast-radius-demo.md)
 
 ## 快速开始

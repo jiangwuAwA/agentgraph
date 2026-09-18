@@ -1,0 +1,266 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "B",
+  "policy_label": "P0-5d arm B — walk/grep/read only (no agentgraph) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-real-noise-dense",
+  "seed": 4,
+  "run_id": "external_live_runner_2-b-4",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/B/4/rust-real-noise-dense",
+  "symbol": "encode",
+  "model_note": "xiaomi/mimo-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 2
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 2,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 2
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 2,
+    "read_budget": 6,
+    "read_files": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs",
+      "src/lib.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 4,
+    "task_order": [
+      "ts-nest-user-repo",
+      "rust-sound-scoped-clean",
+      "go-store-api",
+      "rust-trait-handler",
+      "ts-multi-root-client",
+      "rust-real-noise-dense",
+      "py-plugin-registry",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [
+      "external_live_runner_1",
+      "scripted_isolated_runner",
+      "external_live_runner_2"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-real-noise-dense",
+    "title": "Dense Encode noise — separate real call sites from collisions",
+    "language": "rust",
+    "issue": "Encode::encode payload format must change. Dense implementors exist alongside unrelated name collisions (metrics Encode enum, encode_label, legacy encode, clone helpers). Identify true structure files for the trait + real callers; exclude collision/noise crates. high-freq implementor demotion may apply.",
+    "symbol": "encode",
+    "expected_files": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": [
+        "workdir",
+        "encode|Encode|Encode::"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 54
+      },
+      "note": "dense hits; separated trait/callers from name collisions",
+      "seq": 1
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "workdir",
+        "impl Encode|fn encode|dyn Encode|/.encode/("
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 35
+      },
+      "note": "true edges only in packet.rs and wire.rs",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/packet.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "implementors": 12
+      },
+      "note": "Encode trait definition + dense real implementors (Header..Chunk3)",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/wire.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "real Encode::encode call sites via dyn Encode",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/metrics.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise: Encode enum + encode_label name collisions, not packet consumers",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/legacy.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise: legacy encode helpers, not Packet Encode implementor",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise: encode_name_for_clone helper, no Encode edge",
+      "seq": 7
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "module wiring + re-export only; no encode logic",
+      "seq": 8
+    }
+  ],
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "score": {
+    "expected_file_recall": 0.6667,
+    "expected_hit": [
+      "src/packet.rs",
+      "src/wire.rs"
+    ],
+    "expected_miss": [
+      "src/lib.rs"
+    ],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/packet.rs",
+      "src/wire.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "arm": "B",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm B: isolated runner decision path"
+  ],
+  "errors": []
+}

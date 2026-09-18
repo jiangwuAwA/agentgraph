@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["rust-trait-handler/workdir/src/handlers.rs"], "ok": true, "summary": {"role": "trait_def+impls+dyn_call", "symbols": ["Handler::render", "HtmlHandler::render", "JsonHandler::render", "render_dyn"]}, "note": "trait method under change; implementors + same-file dyn call"},
+    {"tool": "read", "args": ["rust-trait-handler/workdir/src/lib.rs"], "ok": true, "summary": {"role": "dyn_call_sites", "symbols": ["dispatch", "bootstrap"]}, "note": "h.render() dyn dispatch call sites"},
+    {"tool": "read", "args": ["rust-trait-handler/workdir/src/metrics.rs"], "ok": true, "summary": {"role": "noise"}, "note": "no Handler/render dependency"},
+    {"tool": "agentgraph_index", "args": ["--root", "rust-trait-handler/workdir"], "ok": true, "summary": {"files": 3, "symbols": 12, "references": 17}, "note": ""},
+    {"tool": "agentgraph_who_calls", "args": ["render", "--root", "rust-trait-handler/workdir"], "ok": true, "summary": {"callers": ["src/handlers.rs:22 render_dyn", "src/lib.rs:7 dispatch", "src/lib.rs:12 bootstrap"], "implementors": ["src/handlers.rs:10 HtmlHandler", "src/handlers.rs:16 JsonHandler"]}, "note": "implementors separated; metrics.rs excluded"},
+    {"tool": "agentgraph_find", "args": ["render", "--root", "rust-trait-handler/workdir"], "ok": true, "summary": {"defs": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"]}, "note": ""}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --root rust-trait-handler/workdir",
+    "agentgraph.exe who-calls render --root rust-trait-handler/workdir",
+    "agentgraph.exe find render --root rust-trait-handler/workdir"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,0 +1,58 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["workdir", "RegistryClient|fetch"],
+      "ok": true,
+      "summary": {"matches": 17},
+      "note": "Arm B grep/read only; cli/docs are help/prose noise"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["registry", "service", "cli", "docs"]},
+      "note": "true roots for review: registry (def) + service (consumer)"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/registry/src/client.ts"],
+      "ok": true,
+      "summary": {"class": "RegistryClient", "method": "fetch"},
+      "note": "definition of RegistryClient.fetch"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/registry/src/index.ts"],
+      "ok": true,
+      "summary": {"exports": ["RegistryClient", "createClient"]},
+      "note": "package export surface consumed by service"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/service/src/order.service.ts"],
+      "ok": true,
+      "summary": {"imports": "RegistryClient", "calls": "client.fetch"},
+      "note": "true consumer; cli/docs name mentions are not dependents"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/service/src/order.controller.ts"],
+      "ok": true,
+      "summary": {"transitive": true},
+      "note": "uses OrderService.lookup only; no direct RegistryClient edge — not in set"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

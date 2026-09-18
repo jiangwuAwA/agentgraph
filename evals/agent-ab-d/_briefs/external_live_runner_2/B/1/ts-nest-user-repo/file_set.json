@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/user.controller.ts",
+    "src/user.module.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["workdir", "UserRepository"], "ok": true, "summary": {"match_files": 4}, "note": "Definition, DI wiring, consumer"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {}, "note": "find throw path under change"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {}, "note": "Calls userRepo.find"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {}, "note": "DI providers include UserRepository"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {}, "note": "Downstream of service.load/find"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {}, "note": "Noise: no user-repo dependency"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {}, "note": "Noise: does not depend on UserRepository"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

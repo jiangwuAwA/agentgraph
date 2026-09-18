@@ -1,0 +1,58 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": ["workdir", "normalize_id"],
+      "ok": true,
+      "summary": {"matches": 16},
+      "note": "Arm B grep/read only; multi-root workspace.json roots: core/api/tools/web"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "api", "tools", "web"]},
+      "note": "workspace index for multi-root scoping"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/core/src/id.rs"],
+      "ok": true,
+      "summary": {"defines": "normalize_id"},
+      "note": "definition root"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/core/src/lib.rs"],
+      "ok": true,
+      "summary": {"reexport": true, "internal_call": "batch_key -> normalize_id"},
+      "note": "core package consumer + public re-export"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/api/src/routes.rs"],
+      "ok": true,
+      "summary": {"cross_crate_call": "core::normalize_id"},
+      "note": "true cross-crate dependent"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/tools/src/lib.rs", "workdir/packages/web/src/lib.rs"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "tools has local name collision; web is comment-only mention — exclude both"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

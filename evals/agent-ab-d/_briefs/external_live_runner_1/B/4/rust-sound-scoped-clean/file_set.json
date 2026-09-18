@@ -1,0 +1,36 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workdir/workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["clean", "dirty"]},
+      "note": "scoped review on clean root only; do not claim union sound"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/clean/src/write.rs", "workdir/packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"definition": "batch_write", "dependents": ["batch_write_verbose", "flush_all"]},
+      "note": "true clean definition + in-package dependents"
+    },
+    {
+      "tool": "read",
+      "args": ["workdir/packages/dirty/src/lib.rs", "workdir/packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {"noise": true},
+      "note": "dirty package has unsafe and only name-collision helpers/comments; not a true batch_write edge"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

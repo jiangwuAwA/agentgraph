@@ -1,0 +1,33 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "index"], "ok": true, "summary": {"roots": ["clean", "dirty"], "clean_promise": "ast_modeled", "dirty_promise": "disabled", "dirty_violations": 3}, "note": "multi-root index; dirty has unsafe/transmute"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "find", "batch_write"], "ok": true, "summary": {"defs": 1, "path": "packages/clean/src/write.rs", "root_id": "clean"}, "note": "true definition only in clean"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "who-calls", "batch_write"], "ok": true, "summary": {"callers": 2, "caller_paths": ["packages/clean/src/lib.rs"], "root_id": "clean"}, "note": "true dependents all in clean"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "blast-radius", "batch_write"], "ok": true, "summary": {"impact_paths": ["packages/clean/src/lib.rs"], "sound_candidates": ["clean"], "avoid": ["dirty"], "subset_ok": false}, "note": "scoped sound on clean only; do not claim union sound"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "clean", "find", "batch_write"], "ok": true, "summary": {"defs": 1, "root_id": "clean"}, "note": "scoped clean query"},
+    {"tool": "agentgraph_cli", "args": ["--workspace", "workdir/workspace.json", "--workspace-root", "clean", "who-calls", "batch_write"], "ok": true, "summary": {"callers": 2, "root_id": "clean", "promise_tier": "ast_modeled", "subset_ok": true}, "note": "scoped clean who-calls; sound eligible"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"fn": "batch_write"}, "note": "true definition"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"reexport": true, "caller": "flush_all"}, "note": "true clean dependent"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"noise": true, "unsafe": true}, "note": "transmute; name collision only"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"noise": true}, "note": "no true batch_write edge"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --workspace workspace.json index", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json find batch_write", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json who-calls batch_write", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json blast-radius batch_write", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root clean find batch_write", "ok": true},
+    {"cmd": "agentgraph --workspace workspace.json --workspace-root clean who-calls batch_write", "ok": true}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

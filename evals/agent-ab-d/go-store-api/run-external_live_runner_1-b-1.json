@@ -1,0 +1,232 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "B",
+  "policy_label": "P0-5d arm B — walk/grep/read only (no agentgraph) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "external_live_runner_1",
+  "task_id": "go-store-api",
+  "seed": 1,
+  "run_id": "external_live_runner_1-b-1",
+  "fixture": "fixtures/eval-agent-tasks/go-store-api",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_1/B/1/go-store-api",
+  "symbol": "Get",
+  "model_note": "xiaomi/mimo-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 2,
+  "read_budget": 4,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 2,
+    "read_budget": 4,
+    "read_files": [
+      "store/store.go",
+      "api/handlers.go",
+      "cmd/main.go",
+      "internal/metrics.go"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 1,
+    "task_order": [
+      "rust-cross-crate-blast",
+      "go-store-api",
+      "rust-trait-handler",
+      "ts-nest-user-repo",
+      "rust-real-noise-dense",
+      "ts-multi-root-client",
+      "py-plugin-registry",
+      "rust-sound-scoped-clean"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "scripted_isolated_runner",
+      "external_live_runner_1"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "go-store-api",
+    "title": "Change Go Repository.Get — consumers and implementors",
+    "language": "go",
+    "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+    "symbol": "Get",
+    "expected_files": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": [
+        "Get|Repository",
+        "workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 11
+      },
+      "note": "Repository.Get defined in store.go; call site in api/handlers.go",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "store/store.go"
+      ],
+      "ok": true,
+      "summary": {
+        "implementors": [
+          "MemRepo.Get",
+          "RedisCache.Get"
+        ]
+      },
+      "note": "interface + implementors for Get",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "api/handlers.go"
+      ],
+      "ok": true,
+      "summary": {
+        "call_sites": [
+          "LoadUser r.Get"
+        ]
+      },
+      "note": "true consumer of Repository.Get",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "cmd/main.go"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise: no Repository import",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "internal/metrics.go"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise: no Repository dependency",
+      "seq": 5
+    }
+  ],
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "api/handlers.go",
+      "store/store.go"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/go-store-api/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "arm": "B",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm B: isolated runner decision path"
+  ],
+  "errors": []
+}

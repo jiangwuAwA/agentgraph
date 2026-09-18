@@ -1,0 +1,393 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "ts-multi-root-client",
+  "seed": 3,
+  "run_id": "external_live_runner_2-a-3",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-multi-root-client",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/3/ts-multi-root-client",
+  "symbol": "RegistryClient",
+  "model_note": "xiaomi/mimo-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 9,
+    "recipe_tools": [
+      "index",
+      "who-calls",
+      "blast-radius",
+      "find",
+      "subset"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 4,
+  "read_budget": 8,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 9,
+      "recipe_tools": [
+        "index",
+        "who-calls",
+        "blast-radius",
+        "find",
+        "subset"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 4,
+    "read_budget": 8,
+    "read_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/cli/src/help.ts",
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 3,
+    "task_order": [
+      "rust-sound-scoped-clean",
+      "py-plugin-registry",
+      "rust-real-noise-dense",
+      "ts-multi-root-client",
+      "rust-trait-handler",
+      "ts-nest-user-repo",
+      "rust-cross-crate-blast",
+      "go-store-api"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "external_live_runner_1",
+      "scripted_isolated_runner"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "ts-multi-root-client",
+    "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+    "language": "typescript",
+    "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+    "symbol": "RegistryClient",
+    "expected_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "registry",
+          "service",
+          "cli",
+          "docs"
+        ],
+        "files": 16,
+        "symbols": 26,
+        "refs": 14
+      },
+      "note": "multi-root index via workspace.json",
+      "seq": 1
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/registry/src/client.ts",
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "def/createClient + service ctor inject",
+      "seq": 2
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "depth1": [
+          "packages/registry/src/client.ts",
+          "packages/service/src/order.service.ts"
+        ],
+        "depth2": [
+          "packages/service/src/order.controller.ts"
+        ]
+      },
+      "note": "registry+service true roots; no cli/docs edges",
+      "seq": 3
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "<workdir>/packages/registry",
+        "--workspace-root",
+        "<workdir>/packages/service",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "scoped_roots": [
+          "registry",
+          "service"
+        ]
+      },
+      "note": "correct roots for review; exclude cli/docs",
+      "seq": 4
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "fetch",
+        "--workspace",
+        "workspace.json",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "true fetch call site",
+      "seq": 5
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "fetch",
+        "--workspace",
+        "workspace.json",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "depth1": [
+          "packages/service/src/order.service.ts"
+        ],
+        "depth2": [
+          "packages/service/src/order.controller.ts"
+        ]
+      },
+      "note": "fetch contract change blast through service",
+      "seq": 6
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "path": "packages/registry/src/client.ts"
+      },
+      "note": "class definition under registry",
+      "seq": 7
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "fetch",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "qualified": "RegistryClient.fetch"
+      },
+      "note": "method under registry/client.ts",
+      "seq": 8
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "in_subset": true
+      },
+      "note": "all roots sound-eligible",
+      "seq": 9
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts",
+        "packages/registry/src/index.ts",
+        "packages/service/src/order.service.ts",
+        "packages/service/src/order.controller.ts",
+        "packages/cli/src/help.ts",
+        "packages/cli/src/main.ts",
+        "packages/docs/src/overview.ts",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "cli/docs only mention name in help/prose — not dependents",
+      "seq": 10
+    }
+  ],
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/service/src/order.service.ts"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-multi-root-client/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-flash",
+    "arm": "A",
+    "rationale": "Multi-root RegistryClient: correct roots registry+service (not cli/docs); fetch blast through service; workspace-root choice recorded true.",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: Multi-root RegistryClient: correct roots registry+service (not cli/docs); fetch blast through service; workspace-root choice recorded true."
+  ],
+  "errors": []
+}

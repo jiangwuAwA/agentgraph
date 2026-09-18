@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/packet.rs"], "ok": true, "summary": {"role": "trait_def+dense_implementors", "symbols": ["Encode", "Encode::encode", "Header/Body/Footer/Ack/Nack/Ping/Pong/Meta/Chunk0-3"]}, "note": "Encode trait under change; 12 implementors same file"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/wire.rs"], "ok": true, "summary": {"role": "real_call_sites", "symbols": ["send_packet", "dump_all", "checksum"]}, "note": "dyn Encode callers of encode()"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/lib.rs"], "ok": true, "summary": {"role": "reexport"}, "note": "pub use packet::Encode / wire::send_packet only; no encode edge"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/metrics.rs"], "ok": true, "summary": {"role": "noise_collision"}, "note": "Encode enum + encode_label name collision; not packet consumers"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/legacy.rs"], "ok": true, "summary": {"role": "noise"}, "note": "legacy encode helpers + comment noise"},
+    {"tool": "read", "args": ["rust-real-noise-dense/workdir/src/clone_heavy.rs"], "ok": true, "summary": {"role": "noise"}, "note": "clone helpers; encode_name_for_clone is name-adjacent noise"},
+    {"tool": "agentgraph_index", "args": ["--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"files": 6, "symbols": 44, "references": 38}, "note": ""},
+    {"tool": "agentgraph_who_calls", "args": ["encode", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"callers": ["src/wire.rs:5", "src/wire.rs:9", "src/wire.rs:15"], "implementors": 12, "implementor_paths": ["src/packet.rs"], "high_freq_name": false}, "note": "true callers only in wire.rs; metrics/legacy/clone excluded as collisions"},
+    {"tool": "agentgraph_find", "args": ["Encode", "--root", "rust-real-noise-dense/workdir"], "ok": true, "summary": {"defs": ["src/packet.rs Encode trait", "src/metrics.rs Encode enum"]}, "note": "selected packet trait; dropped metrics enum collision"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --root rust-real-noise-dense/workdir",
+    "agentgraph.exe who-calls encode --root rust-real-noise-dense/workdir",
+    "agentgraph.exe find Encode --root rust-real-noise-dense/workdir"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

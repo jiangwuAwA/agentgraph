@@ -1,0 +1,88 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "<workdir>"],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 44, "refs": 38},
+      "note": "index rust-real-noise-dense workdir"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "encode", "--limit", "50"],
+      "ok": true,
+      "summary": {
+        "callers_files": ["src/wire.rs"],
+        "implementors_files": ["src/packet.rs"],
+        "implementor_count": 12,
+        "high_freq_name": false
+      },
+      "note": "true Encode callers in wire; dense impls in packet"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "encode", "--depth", "3"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "depth2_files": ["src/lib.rs"]},
+      "note": "impact packet+wire+lib re-export"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Encode"],
+      "ok": true,
+      "summary": {
+        "trait": "src/packet.rs",
+        "noise_enum": "src/metrics.rs"
+      },
+      "note": "true trait packet; metrics Encode enum is collision"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "encode"],
+      "ok": true,
+      "summary": {"parent": "Encode::encode in src/packet.rs"},
+      "note": "definition + impls only under packet"
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": ["subset"],
+      "ok": true,
+      "summary": {"in_subset": true, "violations": 0},
+      "note": "sound-eligible subset on src"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/packet.rs",
+        "src/wire.rs",
+        "src/lib.rs",
+        "src/metrics.rs",
+        "src/legacy.rs",
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "metrics/legacy/clone_heavy are name-collision noise"
+    }
+  ],
+  "mcp_or_cli_calls": {
+    "count": 6,
+    "recipe_tools": ["index", "who-calls", "blast-radius", "find", "subset"],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null,
+  "extras": {
+    "rationale": "Encode::encode trait+implementors in src/packet.rs; real callers in src/wire.rs; pub re-exports in src/lib.rs. Excluded metrics Encode enum/encode_label, legacy encode helpers, clone_heavy name collisions."
+  }
+}

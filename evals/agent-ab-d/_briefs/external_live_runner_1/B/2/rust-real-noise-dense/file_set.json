@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["Encode|encode", "workdir"], "ok": true, "summary": {"hits": 54}, "note": "trait+impls in packet.rs; dyn callers in wire.rs; collisions in metrics/legacy/clone_heavy"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"trait": "Encode", "impls": 12}, "note": "trait definition + dense implementors (Header, Body, Footer, Ack, Nack, Ping, Pong, Meta, Chunk0-3)"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"call_sites": ["send_packet", "dump_all", "checksum"]}, "note": "real Encode::encode callers via dyn"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {}, "note": "module re-exports only; no encode logic"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {}, "note": "noise: Encode enum / encode_label name collisions, not packet consumers"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {}, "note": "noise: legacy encode helpers, not trait impls"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {}, "note": "noise: encode_name_for_clone collision, no Encode edge"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

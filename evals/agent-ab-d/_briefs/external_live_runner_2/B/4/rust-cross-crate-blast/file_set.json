@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["workdir/workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"]}, "note": "multi-root index; scoped queries from definition root"},
+    {"tool": "grep", "args": ["workdir", "normalize_id"], "ok": true, "summary": {"matches": 16}, "note": "hits across core/api/tools/web; filtered by real call edges"},
+    {"tool": "read", "args": ["packages/core/src/id.rs"], "ok": true, "summary": {}, "note": "canonical normalize_id definition — contract change root"},
+    {"tool": "read", "args": ["packages/core/src/lib.rs"], "ok": true, "summary": {}, "note": "re-exports normalize_id; batch_key() calls it — true internal dependent"},
+    {"tool": "read", "args": ["packages/api/src/routes.rs"], "ok": true, "summary": {}, "note": "core::normalize_id cross-crate call — true consumer"},
+    {"tool": "read", "args": ["packages/api/src/lib.rs"], "ok": true, "summary": {}, "note": "delegates to routes::lookup only; no direct normalize_id use"},
+    {"tool": "read", "args": ["packages/tools/src/lib.rs"], "ok": true, "summary": {}, "note": "noise: local normalize_id name collision, no core dependency"},
+    {"tool": "read", "args": ["packages/web/src/lib.rs"], "ok": true, "summary": {}, "note": "noise: comment-only mention, no call edge"},
+    {"tool": "grep", "args": ["workdir", "core::|use core|batch_key"], "ok": true, "summary": {"matches": 5}, "note": "only api/routes.rs and core/lib.rs have true edges"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

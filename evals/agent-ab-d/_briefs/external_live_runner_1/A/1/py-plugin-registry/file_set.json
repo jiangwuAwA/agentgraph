@@ -1,0 +1,32 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py",
+    "app/plugins.py"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "index"], "ok": true, "summary": {"files": 4, "symbols": 7, "references": 7}, "note": "indexed single-root workdir"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "PluginRegistry"], "ok": true, "summary": {"defs": 1, "path": "app/registry.py"}, "note": "class definition"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "register"], "ok": true, "summary": {"defs": 1, "path": "app/registry.py", "qualified": "PluginRegistry.register"}, "note": "register method"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "who-calls", "PluginRegistry"], "ok": true, "summary": {"callers": 2, "caller_paths": ["app/bootstrap.py"]}, "note": "import + construct in bootstrap"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "blast-radius", "PluginRegistry"], "ok": true, "summary": {"impact_paths": ["app/bootstrap.py"], "window": "sound"}, "note": "sound window; docs_strings.py excluded"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {"class": "PluginRegistry", "methods": ["register", "create"]}, "note": ""},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {"constructs": true, "calls_register": true}, "note": "reg.register('metrics', MetricsPlugin)"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {"class": "MetricsPlugin"}, "note": "plugin registered by bootstrap; review for name validation impact"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {"noise": true}, "note": "prose-only mention of PluginRegistry"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --root workdir index", "ok": true},
+    {"cmd": "agentgraph --root workdir find PluginRegistry", "ok": true},
+    {"cmd": "agentgraph --root workdir find register", "ok": true},
+    {"cmd": "agentgraph --root workdir who-calls PluginRegistry", "ok": true},
+    {"cmd": "agentgraph --root workdir blast-radius PluginRegistry", "ok": true}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

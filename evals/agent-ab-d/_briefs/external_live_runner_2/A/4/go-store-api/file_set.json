@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "cli", "args": ["index", "--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 11, "refs": 19}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["find", "Get"], "ok": true, "summary": {"defs": ["MemRepo.Get", "RedisCache.Get"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["who-calls", "Get"], "ok": true, "summary": {"callers": 1, "implementors": 7, "high_freq_name": true}, "note": "mcp_or_cli_call; implementors separated"},
+    {"tool": "cli", "args": ["blast-radius", "Get"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["api/handlers.go", "store/store.go"]}, "note": "mcp_or_cli_call"},
+    {"tool": "cli", "args": ["callers", "Get"], "ok": true, "summary": {"call_sites": 1, "implementor_edges": 7}, "note": "mcp_or_cli_call"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {"interface_and_impls": true}, "note": "Repository/Cache Get + MemRepo/RedisCache"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {"call_site": true}, "note": "LoadUser calls r.Get"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {"noise": true}, "note": "bootstrap no Repository import — excluded"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {"noise": true}, "note": "metrics no Repository — excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

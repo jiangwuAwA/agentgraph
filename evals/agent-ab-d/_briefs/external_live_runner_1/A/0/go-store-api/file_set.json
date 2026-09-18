@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph.index", "args": ["--root", "workdir"], "ok": true, "summary": {"files": 4, "symbols": 11}, "note": "single-root go index"},
+    {"tool": "agentgraph.who_calls", "args": ["Get"], "ok": true, "summary": {"callers": ["api/handlers.go:6"], "implementors": ["store/store.go MemRepo/RedisCache"]}, "note": "high_freq_name=true; implementors separated"},
+    {"tool": "agentgraph.find", "args": ["Get"], "ok": true, "summary": {"defs": ["MemRepo.Get", "RedisCache.Get"]}, "note": ""},
+    {"tool": "agentgraph.blast_radius", "args": ["Get"], "ok": true, "summary": {"nodes": ["api/handlers.go", "store/store.go"]}, "note": "window=sound"},
+    {"tool": "read", "args": ["store/store.go", "api/handlers.go", "cmd/main.go", "internal/metrics.go"], "ok": true, "summary": {"noise_excluded": ["cmd/main.go", "internal/metrics.go"]}, "note": "issue: implementors + call sites"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

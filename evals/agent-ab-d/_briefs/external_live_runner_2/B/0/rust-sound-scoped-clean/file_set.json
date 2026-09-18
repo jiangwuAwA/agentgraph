@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": 2}, "note": "roots clean and dirty; scoped to clean"},
+    {"tool": "grep", "args": ["batch_write"], "ok": true, "summary": {"matches": 12}, "note": "true hits in clean; dirty hits are comments/shadow names"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"definition": true, "caller": true}, "note": "batch_write definition and verbose caller"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"reexport": true, "call": true}, "note": "re-exports and calls batch_write"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"name_collision_noise": true}, "note": "batch_write only in comments; batch_write_shadow unrelated"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"name_collision_noise": true}, "note": "comment string only, no true edge"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

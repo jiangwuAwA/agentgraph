@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["workdir", "PluginRegistry|\\.register\\("], "ok": true, "summary": {"matches": 6}, "note": "hits in registry.py, bootstrap.py, docs_strings.py (prose noise)"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {}, "note": "PluginRegistry definition; register() is the method under change"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {}, "note": "constructs PluginRegistry and calls reg.register — true constructor/caller"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {}, "note": "noise: documentation string only"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {}, "note": "MetricsPlugin factory only; does not construct or call the registry"},
+    {"tool": "grep", "args": ["workdir", "register|PluginRegistry|create\\("], "ok": true, "summary": {"matches": 9}, "note": "confirmed only registry.py + bootstrap.py have real edges"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

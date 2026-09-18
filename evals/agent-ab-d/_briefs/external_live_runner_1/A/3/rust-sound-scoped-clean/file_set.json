@@ -1,0 +1,32 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"]}, "note": "multi-root manifest"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/packages/clean/src/write.rs"], "ok": true, "summary": {"role": "definition", "symbols": ["batch_write", "batch_write_verbose"]}, "note": "clean::batch_write under change"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/packages/clean/src/lib.rs"], "ok": true, "summary": {"role": "true_clean_dependent", "symbols": ["pub use write::batch_write", "flush_all"]}, "note": "re-export + flush_all calls batch_write"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/packages/dirty/src/lib.rs"], "ok": true, "summary": {"role": "noise_collision", "sound": false}, "note": "unsafe/transmute; batch_write name only in comments/shadow"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/workdir/packages/dirty/src/shadow.rs"], "ok": true, "summary": {"role": "noise_collision"}, "note": "shadow_write; no true batch_write edge"},
+    {"tool": "agentgraph_index", "args": ["--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"], "files": 4}, "note": "shared workspace store"},
+    {"tool": "agentgraph_who_calls", "args": ["batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"callers_by_root": {"clean": ["src/lib.rs:3 import", "src/lib.rs:6 flush_all"]}, "dirty": "no true callers"}, "note": "dirty name collisions dropped"},
+    {"tool": "agentgraph_blast_radius", "args": ["batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json", "--workspace-root", "clean"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact": ["clean/src/lib.rs"]}, "note": "scoped sound on clean root only"},
+    {"tool": "agentgraph_subset", "args": ["--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"clean": {"sound_eligible": true, "violations": 0}, "dirty": {"sound_eligible": false, "violations": 3, "kinds": ["transmute", "unsafe"]}, "recommendation": "scoped --sound on clean; avoid dirty"}, "note": "union sound claim off; recommend scoped sound on clean"},
+    {"tool": "agentgraph_find", "args": ["batch_write", "--workspace", "rust-sound-scoped-clean/workdir/workspace.json"], "ok": true, "summary": {"defs": ["clean/src/write.rs batch_write"]}, "note": "no dirty definition"}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --workspace rust-sound-scoped-clean/workdir/workspace.json",
+    "agentgraph.exe who-calls batch_write --workspace rust-sound-scoped-clean/workdir/workspace.json",
+    "agentgraph.exe blast-radius batch_write --workspace rust-sound-scoped-clean/workdir/workspace.json --workspace-root clean",
+    "agentgraph.exe subset --workspace rust-sound-scoped-clean/workdir/workspace.json",
+    "agentgraph.exe find batch_write --workspace rust-sound-scoped-clean/workdir/workspace.json"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

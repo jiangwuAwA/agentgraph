@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "read", "args": ["go-store-api/workdir/store/store.go"], "ok": true, "summary": {"role": "definition+implementors", "symbols": ["Repository.Get", "MemRepo.Get", "RedisCache.Get"]}, "note": "Repository.Get under change; MemRepo/RedisCache implementors in same file"},
+    {"tool": "read", "args": ["go-store-api/workdir/api/handlers.go"], "ok": true, "summary": {"role": "call_site", "symbols": ["LoadUser"]}, "note": "LoadUser calls r.Get(id)"},
+    {"tool": "read", "args": ["go-store-api/workdir/cmd/main.go"], "ok": true, "summary": {"role": "noise"}, "note": "bootstrap noise; no Repository dependency"},
+    {"tool": "read", "args": ["go-store-api/workdir/internal/metrics.go"], "ok": true, "summary": {"role": "noise"}, "note": "metrics noise; no Repository dependency"},
+    {"tool": "agentgraph_index", "args": ["--root", "go-store-api/workdir"], "ok": true, "summary": {"files": 4, "symbols": 11, "references": 19}, "note": "single-root index"},
+    {"tool": "agentgraph_who_calls", "args": ["Get", "--root", "go-store-api/workdir"], "ok": true, "summary": {"callers": ["api/handlers.go:6"], "implementors": ["store/store.go:16 MemRepo.Get", "store/store.go:34 RedisCache.Get"], "implementor_count": 7, "high_freq_name": true}, "note": "callers first then implementors; package noise excluded"},
+    {"tool": "agentgraph_blast_radius", "args": ["Get", "--root", "go-store-api/workdir"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "paths": ["api/handlers.go", "store/store.go"]}, "note": "blast limited to store+api"},
+    {"tool": "agentgraph_find", "args": ["Get", "--root", "go-store-api/workdir"], "ok": true, "summary": {"defs": ["MemRepo.Get", "RedisCache.Get"]}, "note": ""}
+  ],
+  "mcp_or_cli_calls": [
+    "agentgraph.exe index --root go-store-api/workdir",
+    "agentgraph.exe who-calls Get --root go-store-api/workdir",
+    "agentgraph.exe blast-radius Get --root go-store-api/workdir",
+    "agentgraph.exe find Get --root go-store-api/workdir"
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

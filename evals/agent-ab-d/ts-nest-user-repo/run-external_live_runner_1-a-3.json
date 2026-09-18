@@ -1,0 +1,348 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_1",
+  "task_id": "ts-nest-user-repo",
+  "seed": 3,
+  "run_id": "external_live_runner_1-a-3",
+  "fixture": "fixtures/eval-agent-tasks/ts-nest-user-repo",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_1/A/3/ts-nest-user-repo",
+  "symbol": "UserRepository",
+  "model_note": "xiaomi/mimo-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 3,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 3,
+    "read_budget": 6,
+    "read_files": [
+      "ts-nest-user-repo/workdir/src/user.repository.ts",
+      "ts-nest-user-repo/workdir/src/user.service.ts",
+      "ts-nest-user-repo/workdir/src/user.controller.ts",
+      "ts-nest-user-repo/workdir/src/user.module.ts",
+      "ts-nest-user-repo/workdir/src/health.ts",
+      "ts-nest-user-repo/workdir/src/unrelated.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 3,
+    "task_order": [
+      "rust-sound-scoped-clean",
+      "py-plugin-registry",
+      "rust-real-noise-dense",
+      "ts-multi-root-client",
+      "rust-trait-handler",
+      "ts-nest-user-repo",
+      "rust-cross-crate-blast",
+      "go-store-api"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "runner_order": [
+      "external_live_runner_2",
+      "external_live_runner_1",
+      "scripted_isolated_runner"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "ts-nest-user-repo",
+    "title": "Change UserRepository contract in a Nest-like DI app",
+    "language": "typescript",
+    "issue": "Product wants UserRepository.find to return null instead of throwing when a user is missing. Before editing, identify the blast radius: which files must be reviewed, and which files are noise that mention unrelated concerns.",
+    "symbol": "UserRepository",
+    "expected_files": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.module.ts"
+    ],
+    "noise_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/user.repository.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "definition",
+        "symbols": [
+          "UserRepository",
+          "UserRepository.find"
+        ]
+      },
+      "note": "find must return null instead of throwing",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/user.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "direct_consumer",
+        "symbols": [
+          "UserService",
+          "UserService.load"
+        ]
+      },
+      "note": "calls userRepo.find(id)",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/user.controller.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "transitive_consumer",
+        "symbols": [
+          "UserController",
+          "UserController.load"
+        ]
+      },
+      "note": "returns users.load; will observe null vs throw",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/user.module.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "di_wiring"
+      },
+      "note": "providers registration only; no find call — excluded from review set",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/health.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "noise"
+      },
+      "note": "no UserRepository dependency",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "ts-nest-user-repo/workdir/src/unrelated.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "role": "noise"
+      },
+      "note": "MetricsClient; no UserRepository dependency",
+      "seq": 6
+    },
+    {
+      "tool": "agentgraph_index",
+      "args": [
+        "--root",
+        "ts-nest-user-repo/workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 6,
+        "symbols": 15,
+        "references": 25
+      },
+      "note": "",
+      "seq": 7
+    },
+    {
+      "tool": "agentgraph_who_calls",
+      "args": [
+        "UserRepository",
+        "--root",
+        "ts-nest-user-repo/workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": [
+          "src/user.module.ts",
+          "src/user.service.ts"
+        ]
+      },
+      "note": "DI import/registration sites",
+      "seq": 8
+    },
+    {
+      "tool": "agentgraph_who_calls",
+      "args": [
+        "find",
+        "--root",
+        "ts-nest-user-repo/workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": [
+          "src/user.service.ts:9 UserService.load"
+        ]
+      },
+      "note": "true find call site",
+      "seq": 9
+    },
+    {
+      "tool": "agentgraph_blast_radius",
+      "args": [
+        "UserRepository",
+        "--root",
+        "ts-nest-user-repo/workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "paths": [
+          "src/user.module.ts",
+          "src/user.service.ts",
+          "src/user.controller.ts"
+        ]
+      },
+      "note": "registration edges noted; method-contract review set kept on find path",
+      "seq": 10
+    },
+    {
+      "tool": "agentgraph_find",
+      "args": [
+        "UserRepository",
+        "--root",
+        "ts-nest-user-repo/workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "defs": [
+          "src/user.repository.ts UserRepository"
+        ]
+      },
+      "note": "",
+      "seq": 11
+    }
+  ],
+  "file_set": [
+    "src/user.controller.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 0.6667,
+    "expected_hit": [
+      "src/user.repository.ts",
+      "src/user.service.ts"
+    ],
+    "expected_miss": [
+      "src/user.module.ts"
+    ],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/user.controller.ts",
+      "src/user.repository.ts",
+      "src/user.service.ts"
+    ],
+    "file_set_size": 3,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/ts-nest-user-repo/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-pro",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

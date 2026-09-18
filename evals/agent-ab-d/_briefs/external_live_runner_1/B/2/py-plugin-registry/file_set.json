@@ -1,0 +1,20 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["PluginRegistry|register|plugin", "workdir"], "ok": true, "summary": {"hits": 11}, "note": "class in registry.py; construct+call in bootstrap.py; docs_strings prose noise"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {"class": "PluginRegistry", "method": "register"}, "note": "definition under change — register must validate names"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {"constructs": true, "calls_register": true}, "note": "true construct + call site of PluginRegistry.register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {}, "note": "noise: plugin payload class, not registry construct/call"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {}, "note": "noise: prose mention of PluginRegistry.register only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

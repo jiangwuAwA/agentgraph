@@ -1,0 +1,35 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.module.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "index"], "ok": true, "summary": {"files": 6, "symbols": 15, "references": 25}, "note": "indexed single-root workdir"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "UserRepository"], "ok": true, "summary": {"defs": 1, "path": "src/user.repository.ts"}, "note": "class definition"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "find", "find"], "ok": true, "summary": {"defs": 1, "qualified": "UserRepository.find", "path": "src/user.repository.ts"}, "note": "find method under change"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "who-calls", "UserRepository"], "ok": true, "summary": {"callers": 4, "caller_paths": ["src/user.module.ts", "src/user.service.ts"]}, "note": "DI registration + ctor inject"},
+    {"tool": "agentgraph_cli", "args": ["--root", "workdir", "blast-radius", "UserRepository"], "ok": true, "summary": {"impact_paths": ["src/user.repository.ts", "src/user.service.ts", "src/user.module.ts", "src/user.controller.ts"], "window": "sound"}, "note": "transitive blast through UserService to controller"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {"find_throws": true}, "note": "contract change target"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {"calls_find": true, "method": "load"}, "note": "direct consumer"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {"providers": ["UserService", "UserRepository"]}, "note": "DI registration"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {"calls": "UserService.load"}, "note": "transitive consumer via service"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {"noise": true}, "note": "no user-repo dependency"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {"noise": true}, "note": "MetricsClient, no UserRepository dependency"}
+  ],
+  "mcp_or_cli_calls": [
+    {"cmd": "agentgraph --root workdir index", "ok": true},
+    {"cmd": "agentgraph --root workdir find UserRepository", "ok": true},
+    {"cmd": "agentgraph --root workdir find find", "ok": true},
+    {"cmd": "agentgraph --root workdir who-calls UserRepository", "ok": true},
+    {"cmd": "agentgraph --root workdir blast-radius UserRepository", "ok": true}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

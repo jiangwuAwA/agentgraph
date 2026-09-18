@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "grep", "args": ["workdir", "\\bGet\\b"], "ok": true, "summary": {"matches": 5}, "note": "Get hits only in store/store.go (interface+MemRepo+RedisCache) and api/handlers.go (call site)"},
+    {"tool": "read", "args": ["store/store.go"], "ok": true, "summary": {}, "note": "Repository.Get / Cache.Get interfaces; MemRepo.Get and RedisCache.Get implementors"},
+    {"tool": "read", "args": ["api/handlers.go"], "ok": true, "summary": {}, "note": "LoadUser calls r.Get(id) — true call site"},
+    {"tool": "read", "args": ["cmd/main.go"], "ok": true, "summary": {}, "note": "noise: bootstrap does not import store.Repository"},
+    {"tool": "read", "args": ["internal/metrics.go"], "ok": true, "summary": {}, "note": "noise: no Repository dependency"},
+    {"tool": "grep", "args": ["workdir", "Repository|store\\."], "ok": true, "summary": {"matches": 6}, "note": "only handlers.go and store.go have real edges; cmd/metrics comments are noise"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

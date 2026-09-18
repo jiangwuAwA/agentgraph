@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
@@ -15,41 +17,14 @@ fn fixture_src() -> PathBuf {
 
 /// Process-unique tag: pid + monotonic counter + wall clock (macOS CI collision guard).
 fn unique_tag() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{}-{n}-{c}", std::process::id())
-}
-
-fn copy_dir(src: &Path, dst: &Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for e in std::fs::read_dir(src).unwrap() {
-        let e = e.unwrap();
-        let name = e.file_name();
-        // Never copy a pre-existing index DB into the isolated fixture.
-        if name == ".agentgraph" {
-            continue;
-        }
-        let t = dst.join(&name);
-        if e.file_type().unwrap().is_dir() {
-            copy_dir(&e.path(), &t);
-        } else {
-            let _ = std::fs::copy(e.path(), &t);
-        }
-    }
+    common::unique_tag()
 }
 
 fn isolated_fixture() -> PathBuf {
-    let src = fixture_src();
-    let dst = std::env::temp_dir().join(format!("agentgraph-l2-esm-{}", unique_tag()));
-    let _ = std::fs::remove_dir_all(&dst);
-    copy_dir(&src, &dst);
-    dst
+    common::copy_fixture_to_temp(
+        &fixture_src(),
+        &format!("agentgraph-l2-esm-{}", unique_tag()),
+    )
 }
 
 fn run(root: &Path, args: &[&str]) -> (bool, String, String) {

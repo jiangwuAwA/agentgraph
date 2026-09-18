@@ -10,6 +10,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
+mod common;
+
 fn extract(src: &str, path: &str) -> ExtractedFile {
     let known = HashSet::new();
     extract_file(src, Language::TypeScript, path, &known).expect("extract")
@@ -54,30 +56,20 @@ fn dump_refs(out: &ExtractedFile) -> String {
 }
 
 fn temp_db(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r18-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-r18-{name}"))
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "agentgraph-r18-watch-{}-{}",
-        tag,
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src/mod_a")).unwrap();
-    std::fs::write(
+    let dir = common::temp_root(&format!("agentgraph-r18-watch-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src/mod_a"));
+    let _ = std::fs::write(
         dir.join("src/mod_a/helper.ts"),
         "export function helper() { return 1; }\n",
-    )
-    .unwrap();
-    std::fs::write(
+    );
+    let _ = std::fs::write(
         dir.join("src/caller.ts"),
         "import { helper } from './mod_a/helper';\nexport function run() { return helper(); }\n",
-    )
-    .unwrap();
+    );
     dir
 }
 
@@ -277,8 +269,7 @@ fn scip_export_after_incremental_delete_omits_deleted_doc() {
 
     let out1 = dir.join("before.scip.json");
     // root for file_uri — use a fake project root under temp
-    let proj =
-        std::env::temp_dir().join(format!("agentgraph-r18-scip-proj-{}", std::process::id()));
+    let proj = common::temp_root("agentgraph-r18-scip-proj");
     let _ = std::fs::remove_dir_all(&proj);
     let _ = std::fs::create_dir_all(proj.join("src"));
     let _ = std::fs::write(proj.join("src/a.ts"), a_src);

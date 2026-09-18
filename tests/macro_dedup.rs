@@ -5,13 +5,14 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_pair(tag: &str) -> (PathBuf, PathBuf) {
-    let base = std::env::temp_dir().join(format!("agentgraph-dedup-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root(&format!("agentgraph-dedup-{tag}"));
     let root = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -445,11 +446,7 @@ pub fn clone() -> i32 { helper() }
 ///   the source Exact row only (no dual path+name+enclosing).
 #[test]
 fn e2e_golden_l0_miss_expand_finds_mapped_source_crate_path() {
-    let base = std::env::temp_dir().join(format!(
-        "agentgraph-e2e-macro-golden-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("agentgraph-e2e-macro-golden");
     let root = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(root.join("crates/demo/src")).unwrap();

@@ -15,14 +15,15 @@ use agentgraph::viz::{
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-graph-html-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-graph-html-{name}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
@@ -518,11 +519,7 @@ fn reference_record_callers_builder_renders() {
 /// Track M1: HTML shows mapped source path + MACRO badge when sidecar rows present.
 #[test]
 fn cli_graph_with_macro_shows_mapped_path_and_badge() {
-    let base = std::env::temp_dir().join(format!(
-        "agentgraph-graph-html-macro-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("agentgraph-graph-html-macro");
     let root = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     // Source layout uses workspace crate path; expanded uses crate-dir layout.
@@ -595,11 +592,7 @@ pub fn fmt() -> i32 { helper() }
 /// `--sound && --with-macro` fails closed; `--sound` page never carries MACRO badge.
 #[test]
 fn graph_macro_badge_and_sound_mutex_contract() {
-    let base = std::env::temp_dir().join(format!(
-        "agentgraph-graph-html-mutex-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("agentgraph-graph-html-mutex");
     let root = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(root.join("crates/demo/src")).unwrap();

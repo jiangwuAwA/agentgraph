@@ -82,6 +82,35 @@ Helpers live in `agentgraph::query::recipes` (`decide_blast_window`,
 `sound_candidates` from `subset` when the **global** window is disabled but a
 sibling root is clean.
 
+---
+
+## MCP `graph` — HTML for Agents (no shell-out)
+
+MCP tool **`graph`** returns the same self-contained HTML as CLI
+`agentgraph graph`, plus machine honesty fields, without spawning a CLI:
+
+```text
+agentgraph graph <sym> --depth 3 --out graph.html   # CLI file write
+# MCP tools/call graph:
+#   { symbol, depth, direction, sound, with_macro, auto_window,
+#     include_recommendation, out, workspace_db, root_id }
+# payload:
+#   { html, html_bytes, sha256, path, window, subset_ok, promise_tier,
+#     recommendation, note, node_count, edge_count }
+```
+
+| Behavior | Detail |
+|---|---|
+| Default delivery | **String-only** — `html` in JSON, `path=null`. File write only when `out` is set and resolves under the workspace root jail |
+| Window | `sound=true` + `subset_ok` → `window=sound`; `sound=true` + dirty S → `window=disabled` + honest disabled HTML + `recommendation` (never labeled OK sound) |
+| `auto_window` | Reuses blast_radius decision: sound only when `subset_ok`; else `window=default` — never blind recall |
+| Mutex | `sound` + `with_macro` rejected (also sound vs `exact_only` / `include_dynamic`) |
+| Honesty | `note` always: not a complete runtime graph; `recommendation` when `include_recommendation` is true (default) |
+
+Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
+`build_graph_html_payload`, `resolve_out_under_root`). See
+[graph-html.md](graph-html.md).
+
 ## Other patterns
 
 - **Find → callers → impact** on one workspace root: pass

@@ -6,11 +6,10 @@ use agentgraph::model::{ConfidenceFilter, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentgraph-p1-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+    common::temp_root(&format!("agentgraph-p1-{tag}"))
 }
 
 #[test]

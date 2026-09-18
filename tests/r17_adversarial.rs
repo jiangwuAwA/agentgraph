@@ -8,6 +8,8 @@ use agentgraph::model::{Confidence, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn extract(src: &str, path: &str) -> ExtractedFile {
     let known = HashSet::new();
     extract_file(src, Language::TypeScript, path, &known).expect("extract")
@@ -52,10 +54,7 @@ fn dump_refs(out: &ExtractedFile) -> String {
 }
 
 fn temp_db(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r17-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-r17-{name}"))
 }
 
 // ── Surface 9: incremental delete — nest heuristic edges must not remain ──

@@ -128,10 +128,55 @@ S state, not a stale last-full-index-only snapshot. See
 | Sound walk data | `Store::impact_sound` / `Store::callers_sound` |
 | Macro badges | `add_macro_impact_rows` / `add_macro_caller_rows` |
 | CLI | `src/cli.rs` → `Commands::Graph` (`--sound`) |
-| Tests | `tests/graph_html.rs` |
+| MCP tool | `graph` → `src/viz/graph_tool.rs` → `run_graph_html` + `build_graph_html_payload` |
+| Tests | `tests/graph_html.rs`, `tests/mcp_graph_html.rs` |
 
 Reuse: same store queries and confidence filters as `impact` / `callers` (`Query::impact_filtered` / `callers_filtered`); `--sound` uses the L2 sound walk.  
 Read-only against the main index; the only write is the output HTML file.
+
+---
+
+## MCP tool `graph` (Agents)
+
+Agents call MCP `graph` instead of shelling out to the CLI. The tool returns a
+JSON payload whose `html` field is the **full self-contained page** (same
+renderer as CLI — offline, no CDN).
+
+```text
+# tools/call arguments (JSON field names — not clap flags)
+symbol / name, depth (default 3), direction (impact|callers|both),
+sound, with_macro, exact_only, include_dynamic,
+auto_window, include_recommendation (default true),
+out, workspace_db, root_id
+```
+
+| Payload field (JSON) | Meaning |
+|---|---|
+| `html` (string) | Full HTML document (honesty footer always present) |
+| `html_bytes` / `sha256` (meta) | Size + content digest for cache/pin |
+| `path` (string\|null) | Written file path when `out` provided; else `null` (string-only default) |
+| `window` (enum) | `sound` \| `default` \| `disabled` — **never** `sound` when `subset_ok=false` |
+| `subset_ok` / `promise_tier` (S gate) | Same S gate language as CLI `--sound` |
+| `recommendation` (string\|null) | Short zh/en honesty sentence (omitted/`null` when `include_recommendation` is false) |
+| `note` (honesty) | Always: not a complete runtime graph |
+| `node_count` / `edge_count` (ints) | Neighborhood size |
+
+**Sound honesty (MCP):**
+
+- `sound=true` + clean root → `window=sound`, `subset_ok=true`, S-qualified banner on the page.
+- `sound=true` + dirty/S-violated root → payload returns honest fields
+  (`window=disabled`, `promise_tier=disabled`, `recommendation` present) and
+  `html` is still a **disabled** page (banner: NOT a sound graph). The tool
+  does **not** claim sound OK.
+- `auto_window=true` reuses blast_radius: sound only when `subset_ok`; else
+  `window=default` (Exact+Heuristic) — never blind recall.
+- `sound` + `with_macro` is **fail-closed** (tool error), same as CLI.
+
+**Root jail (`out`):** default is string-only. If `out` is provided, the path
+must resolve under the server workspace root (canonicalize + `..` reject);
+writes outside the jail fail unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
+
+Reproduce: `cargo test --test mcp_graph_html`.
 
 ---
 

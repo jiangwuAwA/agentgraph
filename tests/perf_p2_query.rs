@@ -7,9 +7,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod common;
+
 fn build_store(n_files: usize) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-p2-q-{n_files}"));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-p2-q-{n_files}"));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("index.db");
     let mut store = Store::open(&db).unwrap();

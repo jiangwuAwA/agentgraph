@@ -8,9 +8,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Instant;
 
+mod common;
+
 fn seed_db(tag: &str) -> (PathBuf, Store) {
-    let dir = std::env::temp_dir().join(format!("agentgraph-cache-{tag}"));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-cache-{tag}"));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("index.db");
     let mut store = Store::open(&db).unwrap();

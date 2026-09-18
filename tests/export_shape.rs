@@ -7,11 +7,10 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+mod common;
+
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-export-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    common::temp_root(&format!("agentgraph-export-{name}"))
 }
 
 fn seed_store(db: &Path) -> Store {

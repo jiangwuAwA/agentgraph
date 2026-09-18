@@ -11,14 +11,15 @@ use std::process::{Command, Output, Stdio};
 
 use agentgraph::index::Indexer;
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-s-recert-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-s-recert-{name}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 

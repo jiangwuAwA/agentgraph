@@ -6,11 +6,10 @@ use agentgraph::model::{Confidence, EdgeKind, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentgraph-perf-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+    common::temp_root(&format!("agentgraph-perf-{tag}"))
 }
 
 fn seed_store(tag: &str) -> (PathBuf, Store) {

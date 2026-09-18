@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
@@ -28,30 +30,9 @@ fn run_ag(root: &Path, args: &[&str]) -> (bool, String, String) {
 
 fn copy_fixture_to_temp(rel: &str, tag: &str) -> PathBuf {
     let src = fixture(rel);
-    let dst = std::env::temp_dir().join(format!("agentgraph-l2-sound-{tag}"));
-    let _ = std::fs::remove_dir_all(&dst);
-    copy_dir(&src, &dst);
     // Do NOT canonicalize here: on Windows that yields `\\?\` UNC paths which
     // Node (differential tracer) rejects. Indexer::new canonicalizes internally.
-    dst
-}
-
-fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for e in std::fs::read_dir(src).unwrap() {
-        let e = e.unwrap();
-        let name = e.file_name();
-        // Never copy a pre-existing index DB into the isolated fixture.
-        if name == ".agentgraph" {
-            continue;
-        }
-        let t = dst.join(&name);
-        if e.file_type().unwrap().is_dir() {
-            copy_dir(&e.path(), &t);
-        } else {
-            let _ = std::fs::copy(e.path(), &t);
-        }
-    }
+    common::copy_fixture_to_temp(&src, &format!("agentgraph-l2-sound-{tag}"))
 }
 
 fn index_clean() -> PathBuf {
@@ -69,15 +50,7 @@ fn index_clean() -> PathBuf {
 /// collided into one temp dir → evil `src/evil.js` violations landed in the
 /// auth index). The AtomicU64 makes collisions impossible.
 fn unique_tag() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{}-{n}-{c}", std::process::id())
+    common::unique_tag()
 }
 
 #[test]

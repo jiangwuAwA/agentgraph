@@ -10,11 +10,10 @@ use agentgraph::model::{Confidence, EdgeKind, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_db(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-l3-inv-{tag}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-l3-inv-{tag}"))
 }
 
 /// I1: every call_expression AST node yields ≥1 Exact call ref (strengthened R4).

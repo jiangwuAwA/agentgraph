@@ -9,18 +9,16 @@ use agentgraph::model::Language;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+mod common;
+
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r23-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-r23-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
 fn temp_db(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r23-db-{tag}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-r23-db-{tag}"))
 }
 
 // ── Surface: oversized / minified S violations must survive prune ─────

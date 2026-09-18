@@ -4,9 +4,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+mod common;
+
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-watch-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-watch-{tag}"));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::write(
         dir.join("src/a.ts"),

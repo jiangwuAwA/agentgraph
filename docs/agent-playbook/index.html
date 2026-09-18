@@ -102,6 +102,19 @@ MCP: who_calls</pre>
       <li>Exact 调用在低 <code>--limit</code> 下<strong>不会</strong>被 implementor 挤掉（R31）</li>
     </ul>
   </div>
+  <div class="card">
+    <h3>HTML 关系图 <span class="pill ok">graph</span></h3>
+    <pre>agentgraph graph &lt;symbol&gt; [--depth N] [--direction impact|callers|both] [--sound] [--out path.html]
+MCP: graph  →  { html, window, subset_ok, promise_tier, recommendation, node_count, edge_count, sha256 }</pre>
+    <ul>
+      <li>Agent 不必 shell 到 CLI：MCP <code>graph</code> 直接返回<strong>自包含 HTML 字符串</strong>（离线、无 CDN）</li>
+      <li>默认 <code>path=null</code>（纯字符串）；提供 <code>out</code> 时才写盘，且必须在 workspace root jail 内</li>
+      <li><code>sound=true</code>：仅当 <code>subset_ok=true</code> 才标 <code>window=sound</code>；违例时 <code>window=disabled</code> + honest disabled HTML + recommendation</li>
+      <li><code>auto_window=true</code>：复用 blast_radius 选窗（subset_ok → sound，否则 default，绝不盲 recall）</li>
+      <li><code>sound</code> 与 <code>with_macro</code> 互斥（fail-closed）</li>
+      <li>字段含 <code>html_bytes</code> / <code>sha256</code>（可缓存/比对）与 <code>note</code>（非完整运行时图）</li>
+    </ul>
+  </div>
 </section>
 
 <section>
@@ -139,7 +152,8 @@ agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
   <table>
     <tr><th>字段</th><th>含义</th></tr>
     <tr><td><code>edge_role</code></td><td>call | implementor | registration | dynamic</td></tr>
-    <tr><td><code>window</code></td><td>sound | default（blast_radius 自动选择）</td></tr>
+    <tr><td><code>window</code></td><td>sound | default | disabled（blast_radius / MCP graph）</td></tr>
+    <tr><td><code>html</code> / <code>sha256</code></td><td>MCP graph 自包含 HTML + 内容摘要</td></tr>
     <tr><td><code>promise_tier</code></td><td>ast_modeled | lexical_v1 | mixed | disabled</td></tr>
     <tr><td><code>sound_candidates</code></td><td>还可做 scoped sound 的 root/path</td></tr>
     <tr><td><code>baseline_stale</code></td><td>watch/增量后 diff 基线未刷新</td></tr>
@@ -154,7 +168,8 @@ agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
   <div class="card">
     <ul>
       <li>没有「零漏报 / 生态 sound / 宏完整」</li>
-      <li><code>--sound</code> 与 <code>--with-macro</code> 互斥</li>
+      <li><code>--sound</code> 与 <code>--with-macro</code> 互斥（CLI + MCP graph 同）</li>
+      <li>MCP <code>graph</code> 在 <code>subset_ok=false</code> 时<strong>不得</strong>把 <code>window</code> 标成 sound</li>
       <li>workspace union 的 sound = <strong>最弱 root</strong></li>
       <li>L1 / implementor 是<strong>候选</strong>，不是运行时完备调用图</li>
     </ul>
@@ -163,7 +178,8 @@ agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
 
 <footer>
   源码文档：<code>docs/agent-recipes.md</code> · <code>docs/sound-subset.md</code> · <code>docs/workspace.md</code> ·
-  <code>docs/noise-governance.md</code> · <code>docs/macro-sidecar.md</code>
+  <code>docs/noise-governance.md</code> · <code>docs/macro-sidecar.md</code> ·
+  <code>docs/graph-html.md</code>
   <br />本页为离线说明，不连接网络；与 CLI/MCP 实现同步维护。
 </footer>
 </body>

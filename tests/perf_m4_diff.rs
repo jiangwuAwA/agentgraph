@@ -24,6 +24,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+mod common;
+
 const FIXTURE_N: usize = 200;
 const DIFF_CLI_BUDGET: Duration = Duration::from_secs(2);
 const RECERT_REFRESH_BUDGET: Duration = Duration::from_millis(500);
@@ -35,10 +37,7 @@ fn bin() -> &'static str {
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-m4p-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+    common::temp_root(&format!("agentgraph-m4p-{name}"))
 }
 
 fn write_fixture(root: &Path, n: usize) {
@@ -289,7 +288,7 @@ fn m4p_diff_and_s_recert_budgets() {
     let snippet = vec![
         format!("# M4-P local bench snippet ({})", machine_note()),
         format!("- fixture: {FIXTURE_N} synthetic TS files (gen_fixture.ps1 shape)"),
-        format!("- full index --force wall: {idx_t:?}"),
+        format!("- full index -force wall: {idx_t:?}"),
         format!(
             "- CLI diff cold: {cold_t:?} (budget < {DIFF_CLI_BUDGET:?}, process spawn included)"
         ),

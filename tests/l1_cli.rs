@@ -3,13 +3,14 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+mod common;
+
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-l1-cli-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-l1-cli-{name}"));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::write(
         dir.join("src/app.ts"),
@@ -132,8 +133,7 @@ fn cli_impact_default_includes_heuristic_via_bfs() {
 // ── Track M3: new Heuristic rule ids in default callers/impact ─────────
 
 fn m3_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-l1-cli-m3-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-l1-cli-m3-{name}"));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::write(
         dir.join("src/routes.ts"),

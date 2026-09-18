@@ -11,11 +11,10 @@ use agentgraph::model::Language;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_db(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-sid-test-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-sid-test-{name}"))
 }
 
 #[test]

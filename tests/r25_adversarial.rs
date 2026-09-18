@@ -14,10 +14,11 @@ use agentgraph::index::Indexer;
 use agentgraph::model::{Confidence, Language};
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r25-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-r25-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
@@ -236,10 +237,7 @@ fn index_paths_outside_root_no_mint_no_crash() {
         "export function ok() { return 1; }\n",
     )
     .unwrap();
-    let outside = root
-        .parent()
-        .unwrap()
-        .join(format!("agentgraph-r25-outside-{}.ts", std::process::id()));
+    let outside = common::unique_temp_dir("agentgraph-r25-outside").with_extension("ts");
     std::fs::write(&outside, "export function evil() { return 1; }\n").unwrap();
 
     let indexer = Indexer::new(&root).expect("indexer");

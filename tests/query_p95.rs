@@ -9,9 +9,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+mod common;
+
 fn seed(n: usize) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-q-slo-{n}"));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root(&format!("agentgraph-q-slo-{n}"));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("index.db");
     let mut store = Store::open(&db).unwrap();

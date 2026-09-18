@@ -114,7 +114,7 @@ agentgraph watch --interval 5
 agentgraph --root /path/to/repo mcp
 ```
 
-工具：`index`、`find_symbol`、`callers`、`impact`、**`blast_radius`** / **`who_calls`**（高层 Agent 配方：自动窗口 + implementor 分离 —— [docs/agent-recipes.md](docs/agent-recipes.md)）、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）、**`workspace_status`**（多根健康度 —— [docs/workspace.md](docs/workspace.md)）、可选 **`macro_status`** / **`macro_rebuild`**（P2/M1 旁路，默认关闭 —— [docs/macro-sidecar.md](docs/macro-sidecar.md)）。查询工具可选 `workspace_db` / `root_id` 过滤（默认关闭）。
+工具：`index`、`find_symbol`、`callers`、`impact`、**`blast_radius`** / **`who_calls`**（高层 Agent 配方：自动窗口 + implementor 分离 —— [docs/agent-recipes.md](docs/agent-recipes.md)）、**`graph`**（自包含 HTML 邻域图 + 诚实字段 —— 默认纯字符串，可选根目录 jail 内 `out`；[docs/graph-html.md](docs/graph-html.md)）、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）、**`workspace_status`**（多根健康度 —— [docs/workspace.md](docs/workspace.md)）、可选 **`macro_status`** / **`macro_rebuild`**（P2/M1 旁路，默认关闭 —— [docs/macro-sidecar.md](docs/macro-sidecar.md)）。查询工具可选 `workspace_db` / `root_id` 过滤（默认关闭）。
 
 **安全：** 每次调用的 `root` 默认限制在服务器启动时的根目录内；需显式设置 `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1` 才可越界。
 

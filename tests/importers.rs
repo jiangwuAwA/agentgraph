@@ -3,10 +3,11 @@ use agentgraph::index::store::Store;
 use agentgraph::model::Language;
 use std::collections::HashSet;
 
+mod common;
+
 #[test]
 fn importers_of_file_returns_resolved_imports() {
-    let dir = std::env::temp_dir().join("agentgraph-test-importers");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-importers");
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("index.db");
     let mut store = Store::open(&db).unwrap();

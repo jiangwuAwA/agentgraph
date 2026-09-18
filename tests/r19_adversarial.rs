@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
+mod common;
+
 fn extract_lang(src: &str, path: &str, lang: Language) -> ExtractedFile {
     let known = HashSet::new();
     extract_file(src, lang, path, &known).expect("extract")
@@ -24,13 +26,8 @@ fn dump_refs(out: &ExtractedFile) -> String {
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "agentgraph-r19-watch-{}-{}",
-        tag,
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-r19-watch-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
@@ -244,8 +241,7 @@ fn js_import_named_eval_as_leaves_s() {
 fn find_symbol_fuzzy_percent_underscore_no_panic() {
     use agentgraph::index::store::Store;
 
-    let dir = std::env::temp_dir().join(format!("agentgraph-r19-find-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-r19-find");
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("index.db");
     let mut store = Store::open(&db).unwrap();

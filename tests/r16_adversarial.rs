@@ -5,6 +5,8 @@ use agentgraph::index::subset::scan_subset;
 use agentgraph::model::{Confidence, Language};
 use std::collections::HashSet;
 
+mod common;
+
 fn extract(src: &str, path: &str) -> ExtractedFile {
     let known = HashSet::new();
     extract_file(src, Language::TypeScript, path, &known).expect("extract")
@@ -529,7 +531,7 @@ fn store_unicode_symbol_name_callers() {
     use agentgraph::model::Confidence;
     use std::path::PathBuf;
 
-    let dir = std::env::temp_dir().join(format!("ag_r16_unicode_{}", std::process::id()));
+    let dir = common::temp_root("ag_r16_unicode");
     let _ = std::fs::create_dir_all(&dir);
     let db = dir.join("t.db");
     let mut store = Store::open(&db).expect("open");

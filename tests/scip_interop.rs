@@ -6,6 +6,8 @@ use agentgraph::model::Language;
 use std::collections::HashSet;
 use std::path::Path;
 
+mod common;
+
 fn seed(db: &Path) -> Store {
     let mut store = Store::open(db).unwrap();
     let known: HashSet<String> = HashSet::new();
@@ -32,8 +34,7 @@ export function loginHandler() {
 
 #[test]
 fn scip_json_parses_with_official_crate() {
-    let dir = std::env::temp_dir().join("agentgraph-scip-interop");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-scip-interop");
     std::fs::create_dir_all(&dir).unwrap();
     let store = seed(&dir.join("index.db"));
     let out = dir.join("index.scip.json");
@@ -71,8 +72,7 @@ fn scip_json_parses_with_official_crate() {
 
 #[test]
 fn scip_binary_export_parses_with_official_crate() {
-    let dir = std::env::temp_dir().join("agentgraph-scip-bin");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-scip-bin");
     std::fs::create_dir_all(&dir).unwrap();
     let store = seed(&dir.join("index.db"));
     let out = dir.join("index.scip");

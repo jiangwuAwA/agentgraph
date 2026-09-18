@@ -6,11 +6,10 @@ use agentgraph::model::{Confidence, ConfidenceFilter, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 fn temp_dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentgraph-l2-prod-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+    common::temp_root(&format!("agentgraph-l2-prod-{tag}"))
 }
 
 fn seed_js(tag: &str, src: &str) -> Store {

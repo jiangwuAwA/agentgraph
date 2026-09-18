@@ -6,15 +6,14 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("ag-r26-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
-    base
+    common::temp_root(&format!("ag-r26-{tag}"))
 }
 
 fn run(root: &Path, args: &[&str]) -> Output {
@@ -120,8 +119,7 @@ pub fn fmt() -> i32 { unsafe { helper() } }
     );
 
     // Operator follows guidance: move shadow outside --root, then reindex.
-    let sibling = std::env::temp_dir().join(format!("ag-r26-outside-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&sibling);
+    let sibling = common::temp_root("ag-r26-outside");
     std::fs::rename(&expanded, &sibling).expect("move expanded outside root");
     let idx2 = run(&root, &["index", "--force"]);
     assert!(idx2.status.success(), "{}", stderr(&idx2));

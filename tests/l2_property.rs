@@ -11,6 +11,8 @@ use agentgraph::model::{Confidence, ConfidenceFilter, Language};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+mod common;
+
 /// xorshift64* — tiny deterministic PRNG for reproducible programs.
 struct Rng(u64);
 impl Rng {
@@ -49,10 +51,7 @@ fn gen_s_js(seed: u64, n_funcs: usize) -> (String, Vec<(String, String)>) {
 }
 
 fn temp_db(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-l2-prop-{tag}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.join("index.db")
+    common::temp_db(&format!("agentgraph-l2-prop-{tag}"))
 }
 
 #[test]

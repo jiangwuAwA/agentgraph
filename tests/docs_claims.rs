@@ -13,6 +13,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod common;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -77,11 +79,8 @@ fn run_checker(args: &[&str]) -> CheckResult {
 }
 
 fn write_temp_doc(name: &str, contents: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "agentgraph-m5-docs-{}-{}",
-        std::process::id(),
-        name.replace(['/', '\\', ' '], "_")
-    ));
+    let safe = name.replace(['/', '\\', ' '], "_");
+    let dir = common::temp_root(&format!("agentgraph-m5-docs-{safe}"));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let path = dir.join("doc.md");
     std::fs::write(&path, contents).expect("write temp doc");

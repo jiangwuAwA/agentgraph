@@ -9,10 +9,10 @@ use agentgraph::index::macro_map::{
 };
 use std::path::{Path, PathBuf};
 
+mod common;
+
 fn temp_roots(tag: &str) -> (PathBuf, PathBuf) {
-    let base =
-        std::env::temp_dir().join(format!("agentgraph-pathmap-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root(&format!("agentgraph-pathmap-{tag}"));
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(source.join("src")).unwrap();
@@ -175,8 +175,7 @@ fn path_map_meta_roundtrip_in_test() {
 /// `crates/event-engine/src/lib.rs` when the source crate layout exists.
 #[test]
 fn golden_event_engine_lib_maps_to_crate_src() {
-    let base =
-        std::env::temp_dir().join(format!("agentgraph-pathmap-golden-{}", std::process::id()));
+    let base = common::temp_root("agentgraph-pathmap-golden");
     let _ = std::fs::remove_dir_all(&base);
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
@@ -202,8 +201,7 @@ fn golden_event_engine_lib_maps_to_crate_src() {
 /// `crates/<unknown>/src/...` — path stays unmappable (mapped=false).
 #[test]
 fn unknown_crate_dir_is_unmappable() {
-    let base =
-        std::env::temp_dir().join(format!("agentgraph-pathmap-unknown-{}", std::process::id()));
+    let base = common::temp_root("agentgraph-pathmap-unknown");
     let _ = std::fs::remove_dir_all(&base);
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");

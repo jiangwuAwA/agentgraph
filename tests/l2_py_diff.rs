@@ -8,6 +8,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
@@ -21,39 +23,15 @@ fn tracer_script() -> PathBuf {
 }
 
 fn unique_tag() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{}-{n}-{c}", std::process::id())
+    common::unique_tag()
 }
 
 fn copy_dir(src: &Path, dst: &Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for e in std::fs::read_dir(src).unwrap().flatten() {
-        let name = e.file_name();
-        if name == ".agentgraph" {
-            continue;
-        }
-        let t = dst.join(&name);
-        if e.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            copy_dir(&e.path(), &t);
-        } else {
-            let _ = std::fs::copy(e.path(), t);
-        }
-    }
+    common::copy_dir(src, dst)
 }
 
 fn copy_to_temp(tag: &str) -> PathBuf {
-    let src = fixture_src();
-    let dst = std::env::temp_dir().join(format!("agentgraph-l2-py-{tag}"));
-    let _ = std::fs::remove_dir_all(&dst);
-    copy_dir(&src, &dst);
-    dst
+    common::copy_fixture_to_temp(&fixture_src(), &format!("agentgraph-l2-py-{tag}"))
 }
 
 fn which_python() -> Option<String> {
@@ -155,8 +133,7 @@ fn py_clean_fixture_stays_in_s() {
 #[test]
 fn py_eval_fixture_leaves_s_disabled_promise() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/eval-l2/s-py-evil");
-    let dst = std::env::temp_dir().join(format!("agentgraph-l2-py-evil-{}", unique_tag()));
-    let _ = std::fs::remove_dir_all(&dst);
+    let dst = common::temp_root(&format!("agentgraph-l2-py-evil-{}", unique_tag()));
     copy_dir(&src, &dst);
     let (ok, _, err) = run_ag(&dst, &["index", "--force"]);
     assert!(ok, "index failed: {err}");

@@ -4,14 +4,15 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-e2e-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-e2e-{name}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
@@ -395,9 +396,9 @@ fn e2e_mcp_root_jail_rejects_dotdot_escape() {
     let base = temp_root("mcp-jail");
     write_fixture(&base);
 
-    let parent = base.parent().unwrap().to_path_buf();
-    let outside = parent.join("agentgraph-e2e-mcp-jail-outside");
-    let _ = std::fs::remove_dir_all(&outside);
+    // Unique sibling under the same OS temp parent so `base/../<name>` is the
+    // outside dir we assert against (must stay unique under parallel tests).
+    let outside = common::temp_root("agentgraph-e2e-mcp-jail-outside");
     std::fs::create_dir_all(outside.join("src")).unwrap();
     std::fs::write(
         outside.join("src/x.ts"),
@@ -405,7 +406,8 @@ fn e2e_mcp_root_jail_rejects_dotdot_escape() {
     )
     .unwrap();
 
-    let escape = base.join("..").join("agentgraph-e2e-mcp-jail-outside");
+    let outside_name = outside.file_name().unwrap().to_owned();
+    let escape = base.join("..").join(&outside_name);
     let escape_json = serde_json::to_string(&escape.to_string_lossy()).unwrap();
 
     let mut child = Command::new(bin())

@@ -4,10 +4,11 @@ use agentgraph::index::store::Store;
 use agentgraph::model::{ConfidenceFilter, EdgeKind, Language};
 use std::collections::HashSet;
 
+mod common;
+
 #[test]
 fn return_type_propagates_via_define_edges() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     let known: HashSet<String> = HashSet::new();
@@ -63,8 +64,7 @@ function run(s: Store) { s.save(); }
 
 #[test]
 fn go_ambiguous_factory_name_is_not_upgraded() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual-ambig");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual-ambig");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     let a = r#"
@@ -110,8 +110,7 @@ func main() {
 
 #[test]
 fn go_factory_becomes_ambiguous_revokes_sticky_upgrade() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual-revoke");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual-revoke");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     let main = r#"
@@ -165,8 +164,7 @@ func createThing() {}
 
 #[test]
 fn go_method_return_type_does_not_type_package_factory() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual-method");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual-method");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     let src = r#"
@@ -200,8 +198,7 @@ func main() {
 
 #[test]
 fn go_factory_return_type_change_reupgrades_sticky() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual-reup");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual-reup");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     let main = r#"
@@ -256,8 +253,7 @@ func main() {
 
 #[test]
 fn go_single_typed_factory_name_collision_not_exact_upgrade() {
-    let dir = std::env::temp_dir().join("agentgraph-test-qual-single-typed");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::temp_root("agentgraph-test-qual-single-typed");
     std::fs::create_dir_all(&dir).unwrap();
     let mut store = Store::open(&dir.join("index.db")).unwrap();
     // Only Server factory has a return type; Client factory does not.

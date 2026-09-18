@@ -4,10 +4,11 @@ use agentgraph::index::walker::collect_source_files_with_stats;
 use agentgraph::index::Indexer;
 use std::path::PathBuf;
 
+mod common;
+
 #[test]
 fn testdata_source_files_are_counted_as_noise_skipped() {
-    let root = std::env::temp_dir().join(format!("agentgraph-noise-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = common::temp_root("agentgraph-noise");
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::create_dir_all(root.join("testdata")).unwrap();
     std::fs::write(root.join("src/a.ts"), "export function a() { return 1; }\n").unwrap();

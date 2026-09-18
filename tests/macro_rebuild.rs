@@ -5,14 +5,14 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_pair(tag: &str) -> (PathBuf, PathBuf) {
-    let base =
-        std::env::temp_dir().join(format!("agentgraph-rebuild-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root(&format!("agentgraph-rebuild-{tag}"));
     let root = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(root.join("src")).unwrap();

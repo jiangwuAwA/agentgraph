@@ -14,6 +14,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
+mod common;
+
 /// Minimal mock OpenAI-compatible server: returns 200 for the first `ok_count`
 /// requests, then 500 (server error) to trigger the abort path.
 fn spawn_mock_llm(ok_count: usize) -> (String, Arc<AtomicUsize>) {
@@ -49,9 +51,8 @@ fn spawn_mock_llm(ok_count: usize) -> (String, Arc<AtomicUsize>) {
 }
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-enrich-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-enrich-{name}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 

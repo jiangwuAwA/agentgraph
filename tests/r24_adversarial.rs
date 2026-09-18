@@ -9,10 +9,11 @@ use agentgraph::index::Indexer;
 use agentgraph::model::Language;
 use std::path::{Path, PathBuf};
 
+mod common;
+
 fn temp_root(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r24-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-r24-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 

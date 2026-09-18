@@ -6,6 +6,13 @@
 //! Honesty: rendered edges are **indexed** L0/L1 (and optional L1 dynamic /
 //! macro sidecar) candidates — not a complete runtime graph.
 
+pub mod graph_tool;
+
+pub use graph_tool::{
+    build_graph_html_payload, run_graph_html, sha256_hex, GraphHtmlArgs, GraphHtmlPayloadInput,
+    GRAPH_HTML_NOTE,
+};
+
 use crate::model::{Confidence, EdgeRole, ImpactNode, ReferenceRecord};
 use serde_json::json;
 

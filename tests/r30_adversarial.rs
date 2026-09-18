@@ -12,14 +12,15 @@ use agentgraph::index::subset::{is_sound_eligible, SoundClass};
 use agentgraph::index::Indexer;
 use agentgraph::model::Confidence;
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("agentgraph-r30-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    let dir = common::temp_root(&format!("agentgraph-r30-{name}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
     dir
 }
 
@@ -53,8 +54,7 @@ fn parse_json(out: &Output) -> serde_json::Value {
 /// `crates/<crate>/src/<leaf>`. mapped=false (return None) is the honest result.
 #[test]
 fn path_map_does_not_invent_when_crate_dir_exists_but_file_deleted() {
-    let base = std::env::temp_dir().join(format!("ag-r30-invent-file-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("ag-r30-invent-file");
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     // Crate directory exists; the specific leaf file does not.
@@ -89,8 +89,7 @@ fn path_map_does_not_invent_when_crate_dir_exists_but_file_deleted() {
 /// does not → must return None (no fail-open invent via `source/<first>.is_dir()`).
 #[test]
 fn path_map_does_not_invent_via_first_component_dir_only() {
-    let base = std::env::temp_dir().join(format!("ag-r30-invent-dir-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("ag-r30-invent-dir");
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     // Source has a top-level `pluginx/` dir (unrelated leaf).
@@ -115,8 +114,7 @@ fn path_map_does_not_invent_via_first_component_dir_only() {
 /// Explicit **exact** operator pairs remain trusted (operator override).
 #[test]
 fn path_map_prefix_pair_does_not_invent_missing_leaf() {
-    let base = std::env::temp_dir().join(format!("ag-r30-prefix-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("ag-r30-prefix");
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(source.join("crates/event-engine/src")).unwrap();
@@ -179,8 +177,7 @@ fn path_map_prefix_pair_does_not_invent_missing_leaf() {
 /// must still map when the file actually exists (fix must not over-fail-close).
 #[test]
 fn path_map_maps_existing_flat_crate_src_layout() {
-    let base = std::env::temp_dir().join(format!("ag-r30-flat-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+    let base = common::temp_root("ag-r30-flat");
     let source = base.join("src-root");
     let expanded = base.join("expanded-shadow");
     std::fs::create_dir_all(source.join("event-engine/src")).unwrap();

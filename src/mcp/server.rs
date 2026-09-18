@@ -157,6 +157,29 @@ fn tools_list() -> Value {
                 }
             },
             {
+                "name": "graph",
+                "description": "Self-contained HTML neighborhood graph for a symbol (CLI `agentgraph graph` parity — no shell-out). Returns JSON with `html` (offline, no CDN) plus honesty fields: window (sound|default|disabled), subset_ok, promise_tier, recommendation, note (not a complete runtime graph), node_count/edge_count, html_bytes, sha256. sound=true uses L2 S-qualified edges; when subset_ok=false the payload does **not** claim sound (honest disabled HTML still returned). sound + with_macro mutually exclusive (also exclusive with exact_only/include_dynamic). auto_window=true picks sound vs default like blast_radius (never blind recall). String-only by default; optional `out` writes HTML under the workspace root jail. include_recommendation default true. Optional workspace_db / root_id filter (default off).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string", "description": "Query symbol name (alias: name)"},
+                        "name": {"type": "string", "description": "Alias for symbol (CLI parity)"},
+                        "depth": {"type": "integer", "default": 3, "description": "Impact BFS depth (default 3)"},
+                        "direction": {"type": "string", "enum": ["impact", "callers", "both"], "default": "impact"},
+                        "sound": {"type": "boolean", "default": false, "description": "L2 sound-eligible walk; disabled honesty UX when subset_ok=false. Mutually exclusive with with_macro / exact_only / include_dynamic."},
+                        "with_macro": {"type": "boolean", "default": false, "description": "Union optional macro sidecar candidates (MACRO badge). Default off. Mutually exclusive with sound. Not sound-certified."},
+                        "exact_only": {"type": "boolean", "default": false},
+                        "include_dynamic": {"type": "boolean", "default": false},
+                        "auto_window": {"type": "boolean", "default": false, "description": "Reuse blast_radius auto-window: sound when subset_ok else default — never blind recall."},
+                        "include_recommendation": {"type": "boolean", "default": true},
+                        "out": {"type": "string", "description": "Optional relative/absolute HTML path under the workspace root jail; omitted → string-only (path=null)"},
+                        "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional; multi-root)"},
+                        "root_id": {"type": "string", "description": "Filter rows to this workspace root_id (optional; default = union all roots)"}
+                    },
+                    "required": ["symbol"]
+                }
+            },
+            {
                 "name": "who_calls",
                 "description": "High-level who-calls recipe (agent-friendly). noisy=false (default) uses the store callers payload builder: implementors separated/collapsed from call sites + high-frequency names demoted (cap implementors). noisy=true merges implementors into callers (old noisy shape). Always returns callers + implementors sections, edge_role tags, high_freq_name, promise_tier, subset_ok, recommendation, note (not a complete runtime graph). Window is default Exact+Heuristic — not a runtime call graph. Optional workspace_db / root_id filter (default off).",
                 "inputSchema": {
@@ -654,6 +677,69 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     &root.to_string_lossy(),
                     &recipe_args,
                 )?;
+                let payload = mcp_print_rows(payload, &store)?;
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
+            }
+            "graph" => {
+                let sym = args
+                    .get("symbol")
+                    .or_else(|| args.get("name"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("symbol (or name) required"))?;
+                let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+                let direction_s = args
+                    .get("direction")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("impact");
+                let direction =
+                    crate::viz::GraphDirection::parse(direction_s).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "direction must be impact|callers|both (got '{direction_s}')"
+                        )
+                    })?;
+                let sound = args.get("sound").and_then(|v| v.as_bool()).unwrap_or(false);
+                let with_macro = args
+                    .get("with_macro")
+                    .or_else(|| args.get("include_macro"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let exact_only = args
+                    .get("exact_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let include_dynamic = args
+                    .get("include_dynamic")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let auto_window = args
+                    .get("auto_window")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let include_recommendation = args
+                    .get("include_recommendation")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                let out = args
+                    .get("out")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let (indexer, root_filter) = open_mcp_store(&root, &args)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let gargs = crate::viz::GraphHtmlArgs {
+                    symbol: sym.to_string(),
+                    depth,
+                    direction,
+                    sound,
+                    with_macro,
+                    exact_only,
+                    include_dynamic,
+                    include_recommendation,
+                    auto_window,
+                    out,
+                    root_id: root_filter.clone(),
+                };
+                let payload = crate::viz::run_graph_html(&store, &indexer, &root, &gargs)?;
                 let payload = mcp_print_rows(payload, &store)?;
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }

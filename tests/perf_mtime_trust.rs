@@ -7,6 +7,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+mod common;
+
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn env_lock_path() -> PathBuf {
@@ -45,10 +47,9 @@ impl FileEnvGuard {
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentgraph-mtime-{tag}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(d.join("src")).unwrap();
-    d
+    let dir = common::temp_root(&format!("agentgraph-mtime-{tag}"));
+    let _ = std::fs::create_dir_all(dir.join("src"));
+    dir
 }
 
 #[test]

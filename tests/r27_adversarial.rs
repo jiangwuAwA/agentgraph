@@ -8,15 +8,14 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+mod common;
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_agentgraph")
 }
 
 fn temp_root(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("ag-r27-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
-    base
+    common::temp_root(&format!("ag-r27-{tag}"))
 }
 
 fn run_in(cwd: &Path, root: &Path, args: &[&str]) -> Output {

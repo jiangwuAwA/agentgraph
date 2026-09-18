@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod common;
+
 fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_agentgraph"))
 }
@@ -14,13 +16,7 @@ fn fixture_src() -> PathBuf {
 
 fn copy_to_temp(tag: &str) -> PathBuf {
     let src = fixture_src();
-    let dst = std::env::temp_dir().join(format!("agentgraph-l2-go-{tag}"));
-    let _ = std::fs::remove_dir_all(&dst);
-    std::fs::create_dir_all(&dst).unwrap();
-    for e in std::fs::read_dir(&src).unwrap().flatten() {
-        let _ = std::fs::copy(e.path(), dst.join(e.file_name()));
-    }
-    dst
+    common::copy_fixture_to_temp(&src, &format!("agentgraph-l2-go-{tag}"))
 }
 
 fn which_go() -> Option<PathBuf> {

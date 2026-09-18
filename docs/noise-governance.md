@@ -51,9 +51,13 @@ Callers / impact / HTML graph rows carry JSON field **`edge_role`**.
 - `implementors[]` = trait/interface implementor candidates
 - `--limit N` applies **per section** in Separate mode
 - `--exact-only` stays pure Exact calls (plain array; no implementor section)
-- `--include-implementors` merges all roles into one array (old noisy shape + tags)
+- `--include-implementors` merges all roles into one array (old noisy shape + tags);
+  under a tight `--limit` non-implementor rows sort first so Exact call sites are
+  not dropped behind path-ordered implementor flood
 - `--implementors-only` returns `{implementors, implementor_count, implementors_truncated, …}`
 - `--include-implementors` + `--implementors-only` are mutually exclusive
+- Role-partition fetch is **role-biased SQL** (non-impl with user limit, then
+  unbounded implementors) — Exact callers are never starved by implementor flood
 
 CLI + MCP share the same payload builder (`src/query/mod.rs::build_callers_payload`).
 

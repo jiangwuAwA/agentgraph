@@ -66,7 +66,9 @@ pub enum CallersRoleMode {
     ImplementorsOnly,
 }
 
-/// Safety fetch cap when partitioning roles (do not SQL-LIMIT-starve one side).
+/// Safety fetch cap when partitioning roles (legacy helper; product path now
+/// uses role-biased SQL in `Store::callers_for_roles` — non-impl first, then
+/// unbounded implementors — so Exact callers are never LIMIT-starved).
 pub fn role_fetch_cap(limit: usize) -> usize {
     limit.saturating_mul(8).clamp(200, 10_000)
 }
@@ -116,8 +118,15 @@ pub fn build_callers_payload(
 
     match mode {
         CallersRoleMode::IncludeImplementors => {
-            // Old noisy merge: every row in one array, still tagged with edge_role.
-            let mut all: Vec<Value> = hits.iter().map(|r| r.to_query_json()).collect();
+            // Merge-all shape, but under a tight --limit do not let implementor
+            // flood path-sort ahead of Exact/registration call sites (noise
+            // governance: Exact calls stay visible). Stable non-impl first.
+            let mut ordered: Vec<(bool, Value)> = hits
+                .iter()
+                .map(|r| (r.edge_role() != EdgeRole::Implementor, r.to_query_json()))
+                .collect();
+            ordered.sort_by_key(|(keep_first, _)| !keep_first);
+            let mut all: Vec<Value> = ordered.into_iter().map(|(_, v)| v).collect();
             all.truncate(limit.max(1));
             Value::Array(all)
         }

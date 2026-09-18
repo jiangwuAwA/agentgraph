@@ -1109,8 +1109,14 @@ impl Store {
 
     /// Fetch callers rows for role-separated payload building.
     ///
-    /// Uses a widened fetch cap so Exact calls are not starved by a flood of
-    /// implementor edges under a single shared SQL LIMIT (noise governance).
+    /// Noise governance contract (docs/noise-governance.md): Exact / registration
+    /// caller rows must not be starved by an implementor flood under a shared
+    /// SQL `LIMIT` (path-ordered implementors would fill the window first).
+    /// Two role-biased fetches — non-implementor edges with the **user** limit
+    /// (callers[] section), then implementor edges unbounded (payload applies
+    /// HIGH_FREQ / limit caps). Non-impl rows are listed first so
+    /// `--include-implementors` truncation also prefers call sites over
+    /// implementor candidates.
     pub fn callers_for_roles(
         &self,
         name: &str,
@@ -1118,8 +1124,15 @@ impl Store {
         filter: ConfidenceFilter,
         root_id: Option<&str>,
     ) -> Result<Vec<ReferenceRecord>> {
-        let fetch = crate::query::role_fetch_cap(limit);
-        self.callers_filtered_in(name, fetch, filter, root_id)
+        let n = limit.max(1);
+        // Cache key reuses callers_filtered_in shape but we store the *merged*
+        // role-partitioned window under a synthetic limit key derived from n.
+        // Direct uncached role fetches avoid double-counting cache slots.
+        let mut hits =
+            self.callers_uncached_opt_role(name, Some(n), filter, root_id, Some(false))?;
+        let impls = self.callers_uncached_opt_role(name, None, filter, root_id, Some(true))?;
+        hits.extend(impls);
+        Ok(hits)
     }
 
     pub fn callers_filtered_in(
@@ -1175,6 +1188,19 @@ impl Store {
         filter: ConfidenceFilter,
         root_id: Option<&str>,
     ) -> Result<Vec<ReferenceRecord>> {
+        self.callers_uncached_opt_role(name, limit, filter, root_id, None)
+    }
+
+    /// `role_bias`: `Some(true)` = implementor rule_ids only; `Some(false)` =
+    /// non-implementor only; `None` = no role filter (legacy / sound walk).
+    fn callers_uncached_opt_role(
+        &self,
+        name: &str,
+        limit: Option<usize>,
+        filter: ConfidenceFilter,
+        root_id: Option<&str>,
+        role_bias: Option<bool>,
+    ) -> Result<Vec<ReferenceRecord>> {
         // Qualified form `Type.method` / `Type::method` → filter on qualifier+name only.
         let (bare, qual_dot) = if let Some((q, n)) = name.rsplit_once("::") {
             (n.to_string(), format!("{q}.{n}"))
@@ -1199,10 +1225,21 @@ impl Store {
             (None, Some(_)) => (String::new(), "root_id = ?2".to_string()),
             (None, None) => (String::new(), "1=1".to_string()),
         };
+        // L1 implementor rule_ids (must stay in sync with model::IMPLEMENTOR_RULES).
+        let role_sql = match role_bias {
+            None => "1=1".to_string(),
+            Some(true) => "rule_id IN ('rs.di.impl_trait','rs.di.dyn_trait_method',\
+                 'go.di.interface_impl','go.di.interface_impl_v2','go.di.interface_assert')"
+                .to_string(),
+            Some(false) => "(rule_id IS NULL OR rule_id NOT IN ('rs.di.impl_trait',\
+                 'rs.di.dyn_trait_method','go.di.interface_impl','go.di.interface_impl_v2',\
+                 'go.di.interface_assert'))"
+                .to_string(),
+        };
         let sql = if qual_dot.is_empty() {
             format!(
                 "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
-                 FROM refs WHERE name = ?1 AND {conf} AND {root_sql}
+                 FROM refs WHERE name = ?1 AND {conf} AND {root_sql} AND {role_sql}
                  ORDER BY root_id, path, line{limit_sql}"
             )
         } else {
@@ -1212,7 +1249,7 @@ impl Store {
                  WHERE (qual_name = ?1 OR name = ?1
                         OR (qualifier || '.' || name) = ?1
                         OR (qualifier || '::' || name) = ?1)
-                   AND {conf} AND {root_sql}
+                   AND {conf} AND {root_sql} AND {role_sql}
                  ORDER BY root_id, path, line{limit_sql}"
             )
         };

@@ -549,6 +549,32 @@ fn flags_summary(f: &GraphFlags) -> String {
 }
 
 fn honesty_line(data: &GraphVizData) -> String {
+    // Track M4: sound pages must never oversell; violated S is not a sound graph.
+    if data.flags.sound {
+        return match data.subset_ok {
+            Some(true) => {
+                let mut s = String::from(
+                    "S-qualified sound-eligible edges only (modeled L2) — not a complete runtime graph · \
+                     仅 S 合格 sound 边（已建模 L2），非完整运行时图 · subset_ok=true",
+                );
+                if let Some(tier) = &data.promise_tier {
+                    s.push_str(&format!(" · promise_tier={tier}"));
+                }
+                s.push_str(
+                    " · engineering S gate, not ecosystem sound · 工程 S 门，非生态 sound",
+                );
+                s
+            }
+            Some(false) => String::from(
+                "S VIOLATED — this page is NOT a sound graph · S 违例 — 本页不是 sound 图 · \
+                 sound walk disabled · promise_tier=disabled · not a complete runtime graph · 非完整运行时图",
+            ),
+            None => String::from(
+                "sound flag set but subset status unknown — not a complete runtime graph · \
+                 已请求 sound 但 S 状态未知，非完整运行时图",
+            ),
+        };
+    }
     let mut s = String::from(
         "L0/L1 candidates, not a complete runtime graph · L0/L1 候选边，非完整运行时图",
     );
@@ -739,10 +765,22 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
     let flags = flags_summary(&data.flags);
     let query_esc = escape_html(&data.query);
     let empty_block = if data.nodes.len() <= 1 && edges.is_empty() {
-        format!(
-            r#"<div class="empty-state" id="empty-state">无已索引关系（空图） · <strong>Empty neighborhood</strong> — no indexed L0/L1 edges for <code>{q}</code>. 请先运行 <code>agentgraph index</code>，或检查符号名。图仍已生成：这只是诚实的空态，不是完整图。</div>"#,
-            q = query_esc
-        )
+        if data.flags.sound && data.subset_ok == Some(false) {
+            format!(
+                r#"<div class="empty-state" id="empty-state">S 违例，sound 图已禁用 · <strong>S violated — sound graph disabled</strong> for <code>{q}</code>. 即使存在 sound-eligible 候选边，本页也不得当作 sound 图。请先修复 subset 违例（<code>agentgraph subset</code>）。</div>"#,
+                q = query_esc
+            )
+        } else if data.flags.sound {
+            format!(
+                r#"<div class="empty-state" id="empty-state">无 sound-eligible 已索引关系（空图） · <strong>Empty sound neighborhood</strong> — no sound-eligible edges for <code>{q}</code>. 请先运行 <code>agentgraph index</code>，或检查符号名。图仍已生成：这只是诚实的空态，不是完整图。</div>"#,
+                q = query_esc
+            )
+        } else {
+            format!(
+                r#"<div class="empty-state" id="empty-state">无已索引关系（空图） · <strong>Empty neighborhood</strong> — no indexed L0/L1 edges for <code>{q}</code>. 请先运行 <code>agentgraph index</code>，或检查符号名。图仍已生成：这只是诚实的空态，不是完整图。</div>"#,
+                q = query_esc
+            )
+        }
     } else {
         String::new()
     };
@@ -754,8 +792,20 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
         String::new()
     };
 
-    let sound_block = match (data.subset_ok, &data.promise_tier) {
-        (Some(ok), Some(tier)) => format!(
+    let sound_block = match (data.flags.sound, data.subset_ok, &data.promise_tier) {
+        (true, Some(false), Some(tier)) => format!(
+            r#"<div class="sound-line sound-disabled">⚠ S violated — sound graph DISABLED · S 违例 — sound 图已禁用 · subset_ok=false · promise_tier={tier} · 本页不得当作 sound 图使用 / do not treat this page as a sound graph</div>"#
+        ),
+        (true, Some(true), Some(tier)) => format!(
+            r#"<div class="sound-line sound-ok">subset_ok=true · promise_tier={tier} · sound-eligible modeled edges only (engineering S gate, not ecosystem sound)</div>"#
+        ),
+        (true, _, tier) => {
+            let t = tier.clone().unwrap_or_else(|| "unknown".into());
+            format!(
+                r#"<div class="sound-line">sound requested · promise_tier={t} · subset status unknown</div>"#
+            )
+        }
+        (_, Some(ok), Some(tier)) => format!(
             r#"<div class="sound-line">subset_ok={ok} · promise_tier={tier} · sound flags 仅在 S 子集内有意义</div>"#
         ),
         _ => String::new(),
@@ -856,6 +906,12 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
     background: #eff6ff; border: 1px solid #93c5fd; font-size: 0.85rem;
   }}
   .trunc-notice {{ background: #fef3c7; border-color: #fcd34d; color: #92400e; }}
+  .sound-disabled {{
+    background: #fef2f2; border-color: #fca5a5; color: #991b1b; font-weight: 600;
+  }}
+  .sound-ok {{
+    background: #ecfdf5; border-color: #6ee7b7; color: #065f46;
+  }}
   footer {{ padding: 8px 20px 20px; color: var(--muted); font-size: 0.8rem; }}
 </style>
 </head>

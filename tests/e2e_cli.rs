@@ -752,3 +752,135 @@ fn which_scip() -> Option<PathBuf> {
     }
     None
 }
+
+/// Track M4 CLI surface: `diff` subcommand + `graph --sound` flags/help + honesty strings.
+#[test]
+fn e2e_m4_diff_and_graph_sound_cli_surface() {
+    // Top-level help lists diff.
+    let h = Command::new(bin())
+        .args(["--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("help");
+    let htext = stdout(&h);
+    assert!(
+        htext.contains("diff"),
+        "top-level help must list diff: {htext}"
+    );
+    assert!(htext.contains("graph"), "top-level help must list graph");
+
+    // diff --help documents flags + honesty.
+    let dh = Command::new(bin())
+        .args(["diff", "--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("diff help");
+    let dtext = stdout(&dh);
+    assert!(
+        dtext.contains("--exact-only") || dtext.contains("exact-only"),
+        "diff help must document --exact-only: {dtext}"
+    );
+    assert!(
+        dtext.contains("--limit") || dtext.contains("limit"),
+        "diff help must document --limit"
+    );
+    assert!(
+        dtext.contains("--write-snapshot") || dtext.contains("write-snapshot"),
+        "diff help must document --write-snapshot"
+    );
+    assert!(
+        dtext.to_lowercase().contains("indexed") && dtext.to_lowercase().contains("runtime"),
+        "diff help must state honesty (indexed edges, not runtime): {dtext}"
+    );
+
+    // graph --help documents --sound.
+    let gh = Command::new(bin())
+        .args(["graph", "--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("graph help");
+    let gtext = stdout(&gh);
+    assert!(
+        gtext.contains("--sound") || gtext.contains("sound"),
+        "graph help must document --sound: {gtext}"
+    );
+
+    // Runtime: diff after index + edit; payload honesty strings.
+    let root = temp_root("m4-cli");
+    write_fixture(&root);
+    assert!(run(&root, &["index", "--force"]).status.success());
+
+    // Empty-ish diff after second index with no source change.
+    let d0 = run(&root, &["diff"]);
+    assert!(d0.status.success(), "diff after index: {}", stderr(&d0));
+    let p0: serde_json::Value = serde_json::from_str(&stdout(&d0)).unwrap();
+    let note = p0["note"].as_str().unwrap_or("");
+    assert!(
+        note.contains("indexed edges") && note.to_lowercase().contains("not a runtime"),
+        "payload honesty required: {note}"
+    );
+
+    // graph --sound && --with-macro mutual exclusion (CLI).
+    let combo = run(
+        &root,
+        &["graph", "validateEmail", "--sound", "--with-macro"],
+    );
+    assert!(!combo.status.success(), "graph sound+with-macro must fail");
+    let err = stderr(&combo).to_lowercase();
+    assert!(
+        err.contains("mutually") || err.contains("with-macro"),
+        "mutex err: {err}"
+    );
+
+    // graph --sound on clean fixture writes HTML + success.
+    let html_out = root.join("m4-sound.html");
+    let html_s = html_out.to_string_lossy().to_string();
+    let gs = run(
+        &root,
+        &[
+            "graph",
+            "validateEmail",
+            "--sound",
+            "--out",
+            html_s.as_str(),
+        ],
+    );
+    assert!(gs.status.success(), "clean graph --sound: {}", stderr(&gs));
+    let html = std::fs::read_to_string(&html_out).unwrap();
+    assert!(
+        html.contains("ast_modeled") && html.contains("subset_ok"),
+        "sound HTML header fields expected"
+    );
+
+    // MCP tools/list includes graph_diff when implemented.
+    let mcp = Command::new(bin())
+        .arg("--root")
+        .arg(&root)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+    let mut child = mcp;
+    {
+        use std::io::Write;
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{}}}}"#
+        )
+        .unwrap();
+    }
+    let out = child.wait_with_output().expect("mcp output");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("graph_diff"),
+        "MCP tools/list must expose graph_diff (Track M4): {text}"
+    );
+}

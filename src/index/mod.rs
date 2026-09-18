@@ -1,3 +1,4 @@
+pub mod diff;
 pub mod export;
 pub mod extract;
 pub mod llm;
@@ -543,6 +544,8 @@ impl Indexer {
                 "index noop: skipped {skipped} unchanged ({} meta), failed {failed_read}; {} symbols, {} refs",
                 meta_skipped, stats.symbols, stats.references
             );
+            // M4: full index (including noop) refreshes the diff baseline snapshot.
+            let _ = diff::write_index_snapshot(&self.root, &store);
             return Ok(stats);
         }
 
@@ -688,6 +691,10 @@ impl Indexer {
             stats.described
         );
         eprintln!("resolved_symbol_id on {linked} ref(s); upgraded {upgraded} qualifier(s)");
+        // M4: dual sidecar snapshot + meta.index_seq for `agentgraph diff`.
+        if let Err(e) = diff::write_index_snapshot(&self.root, &store) {
+            eprintln!("warn: failed to write refs snapshot: {e:#}");
+        }
         Ok(stats)
     }
 
@@ -884,6 +891,15 @@ impl Indexer {
         }
         let mut stats = store.stats(&self.root.to_string_lossy())?;
         stats.failed_files = failed_read;
+        // M4 S re-cert: dirty-file subset refresh so `--sound` / `subset` reflect
+        // current disk after watch / index_paths (not only last full index).
+        if !dirty_paths.is_empty() || !deleted.is_empty() {
+            let mut recert: Vec<String> = dirty_paths.clone();
+            recert.extend(deleted.iter().cloned());
+            if let Err(e) = store.refresh_subset_for_paths(&recert) {
+                eprintln!("warn: S re-cert refresh failed: {e:#}");
+            }
+        }
         Ok(stats)
     }
 

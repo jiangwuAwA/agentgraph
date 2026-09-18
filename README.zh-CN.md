@@ -26,6 +26,8 @@ agentgraph index
 agentgraph find createUser
 agentgraph callers validateEmail
 agentgraph impact validateEmail --depth 3
+agentgraph graph validateEmail --depth 2   # 离线 HTML 图
+agentgraph diff                             # 已索引边集合差（相对 index 快照基线）
 agentgraph importers src/auth.ts
 agentgraph export scip --out index.scip   # 官方 scip CLI 可读
 ```
@@ -45,6 +47,8 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 | `find` | 符号定义（精确；`--fuzzy` 为 LIKE 模糊） |
 | `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`） |
 | `impact` | 真 BFS 爆炸半径（默认 Exact+Heuristic） |
+| `graph` | 离线自包含 HTML 代码图；`--sound` 仅渲染 sound-eligible 边并展示 `subset_ok`/`promise_tier` —— 见 [docs/graph-html.md](docs/graph-html.md) |
+| `diff` | 相对 `index` 时写入的快照基线，做**已索引边集合差**（非运行时调用图 diff）—— 见 [docs/graph-diff.md](docs/graph-diff.md) |
 | `related` | 定义 + 导入方 + 引用（用于收敛阅读范围） |
 | `importers` | 谁 import 了该文件 |
 
@@ -107,7 +111,7 @@ agentgraph watch --interval 5
 agentgraph --root /path/to/repo mcp
 ```
 
-工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）。
+工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）。
 
 **安全：** 每次调用的 `root` 默认限制在服务器启动时的根目录内；需显式设置 `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1` 才可越界。
 

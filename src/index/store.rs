@@ -527,6 +527,12 @@ impl Store {
         let mut deleted = false;
         for path in existing {
             if !keep.contains(path.as_str()) {
+                // M4: drop S violations explicitly (FK cascade is ON, but keep
+                // prune fail-safe so deleted files cannot leave subset debt).
+                self.conn.execute(
+                    "DELETE FROM subset_violations WHERE path = ?1",
+                    params![path],
+                )?;
                 self.conn
                     .execute("DELETE FROM files WHERE path = ?1", params![path])?;
                 deleted = true;
@@ -1635,6 +1641,82 @@ impl Store {
             .conn
             .query_row("SELECT COUNT(*) FROM subset_violations", [], |r| r.get(0))?;
         Ok(n as usize)
+    }
+
+    /// M4 S re-cert: re-scan subset violations for dirty paths from **current disk**.
+    ///
+    /// - Path missing on disk → delete stored violations for that path.
+    /// - Path still marked `parse_error` (files.hash) → leave the minted violation.
+    /// - Otherwise re-read + `subset::scan_subset` and replace stored rows.
+    ///
+    /// Does **not** re-extract symbols/refs. Returns the number of paths whose
+    /// violation rows were rewritten.
+    pub fn refresh_subset_for_paths(&mut self, paths: &[String]) -> Result<usize> {
+        use crate::model::Language;
+        if paths.is_empty() {
+            return Ok(0);
+        }
+        let mut refreshed = 0usize;
+        for path in paths {
+            let abs = {
+                // Paths are repo-relative (`src/a.ts`). Resolve against db parent's parent
+                // (db lives at <root>/.agentgraph/index.db).
+                let root = self
+                    .conn
+                    .path()
+                    .map(|p| {
+                        let db = std::path::Path::new(p);
+                        db.parent()
+                            .and_then(|ag| ag.parent())
+                            .map(|r| r.to_path_buf())
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default();
+                if root.as_os_str().is_empty() {
+                    continue;
+                }
+                root.join(path)
+            };
+            if !abs.exists() {
+                self.conn.execute(
+                    "DELETE FROM subset_violations WHERE path = ?1",
+                    params![path],
+                )?;
+                refreshed += 1;
+                continue;
+            }
+            // Leave intentional parse_error keep-set rows alone.
+            if let Ok(Some(meta)) = self.file_meta(path) {
+                if meta.hash == "parse-error" {
+                    continue;
+                }
+            }
+            let Some(lang) = Language::from_path(path) else {
+                continue;
+            };
+            let Ok(src) = std::fs::read_to_string(&abs) else {
+                let _ = self.record_parse_error(path, "read/UTF-8 failure — cannot certify S");
+                refreshed += 1;
+                continue;
+            };
+            let report = super::subset::scan_subset(&src, lang, path);
+            self.conn.execute(
+                "DELETE FROM subset_violations WHERE path = ?1",
+                params![path],
+            )?;
+            {
+                let mut stmt = self.conn.prepare(
+                    "INSERT INTO subset_violations(path, kind, line, snippet)
+                     VALUES(?1, ?2, ?3, ?4)",
+                )?;
+                for v in &report.violations {
+                    stmt.execute(params![path, v.kind, v.line as i64, v.snippet])?;
+                }
+            }
+            refreshed += 1;
+        }
+        self.cache.borrow_mut().clear();
+        Ok(refreshed)
     }
 
     fn ref_is_sound(&self, r: &ReferenceRecord) -> bool {

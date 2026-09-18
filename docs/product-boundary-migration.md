@@ -310,10 +310,12 @@ Py/Go AST S + 差分 + 文档：**约 2–4 周**（视 tracer 基建是否复�
 
 ### 4.6 验收
 
-- [ ] Agent 可用 CLI/MCP 回答：「索引层面，改文件后哪些调用边新增？」
-- [ ] watch 后 `--sound` 不使用陈旧 S。
-- [ ] HTML `--sound` 在违例时**不**展示为合格 sound 图。
-- [ ] 文档与实现一致；全门禁绿。
+- [x] Agent 可用 CLI/MCP 回答：「索引层面，改文件后哪些调用边新增？」（`agentgraph diff` / MCP `graph_diff`；honesty: indexed edges only）
+- [x] watch 后 `--sound` 不使用陈旧 S。（`index_paths` + `refresh_subset_for_paths`；`tests/s_recert_watch.rs`）
+- [x] HTML `--sound` 在违例时**不**展示为合格 sound 图。（仍写 HTML；`subset_ok=false` 标记 disabled；exit 非 0；`tests/graph_html.rs`）
+- [x] 文档与实现一致；全门禁绿。（`docs/graph-diff.md`、`graph-html.md`、`sound-subset.md`；workspace 多 root 记为 backlog）
+
+**M4 落地备注：** workspace `index --workspace` 未做，backlog 见 `docs/graph-diff.md`；推荐将来单库 + `root_id`。
 
 ### 4.7 粗估
 
@@ -463,6 +465,52 @@ macro status
 | M3 L1 规则 | fixtures + eval harness | 可选金标边（期望文件可进产品仓） |
 | M4 diff/workspace | 产品测试 | 不阻塞 |
 | 任何 track | **不依赖**私有仓 CI | 不进 agentgraph required CI |
+
+---
+
+## 附录 D — M1–M3 落地核验（2026-09-18）
+
+**门禁抽检：** 相关测试全绿（`macro_pathmap/dedup/rebuild/sidecar`、`l2_lang_subset`、`l2_promise_lang`、`l2_py_diff`、`l2_property`、`l2_go_diff`、`l1_rules_m3`、`l1_eval`、`l1_cli`、`docs_claims`、`e2e_cli`、`graph_html`）。CI 已跑 `scripts/check_docs_claims.py`（M5 骨架提前落地）。
+
+### 已落地（与清单对齐）
+
+| Track | 关键交付 |
+|---|---|
+| **M1** | `src/index/macro_map.rs`；de-dup 默认 ON + `--no-macro-dedup`；`--exact-only --with-macro` 忽略 sidecar；`meta.source_fingerprint` / `stale` / `path_map` / `dedup_stats` / `rebuild_policy`；CLI `macro rebuild` + MCP `macro_rebuild`；HTML MACRO 徽章 + mapped path；`docs/macro-sidecar.md` + `eval-macro-expand.md` §8 + README en/zh + AGENTS |
+| **M2** | `scan_py`/`scan_go` tree-sitter AST；全语言 `promise_tier=ast_modeled`；type-only `typeof Function` 保持 in S；`l2_py_diff` + `scripts/py_trace.py`；`l2_property` 覆盖 S_py/S_go；`sound-subset`/`eval-l2`/AGENTS/PLAN L2 文实一致 |
+| **M3** | `rs.di.dyn_trait_method`(A)、`go.di.interface_impl_v2`(B)、`py.di.entry_points`+Security(C)、`ts.framework.register`(D)、`rs.di.linkme_distributed_slice`(E)；`tests/l1_rules_m3.rs`；`fixtures/eval-l1` 多数包 + golden；`eval-l1.md` 规则表与 sound allowlist（dyn_trait/entry_points **不** allowlist） |
+
+### 残差 / 缺漏（按严重度）
+
+| ID | Track | 缺漏 | 严重度 | 建议动作 |
+|---|---|---|---|---|
+| G1 | M3 | **M3-E linkme 无 eval-l1 fixture/golden**（仅 unit 测试） | 中 | 补 `fixtures/eval-l1/rust-linkme/` + golden.json 条目 |
+| G2 | M3 | **eval-l1-real 无 M3 形状**（无 dyn Trait / go iface v2 / linkme / express router / entry_points 的真实向 corpus） | 中 | 在 `fixtures/eval-l1-real/` 加 1–2 个 multi-module 形状；或在 stock 对照报告里补 M3 后 delta（不提交源码） |
+| G3 | M3 | `tests/l1_cli.rs` / `store_impact.rs` **未**为新 Heuristic 扩默认含边 / `--exact-only` / impact BFS 用例 | 中 | 各加 1–2 个表驱动用例（rule_id 级） |
+| G4 | M1 | 验收金标「L0 无 → expand 有 → **map 后 crates/… 源码路径**」未做成**一条端到端**测试（现有：expand-only 查询 + path-map golden 分离） | 中 | 在 `macro_dedup`/`macro_sidecar` 加 crates 目录布局 fixture |
+| G5 | M2+M5 | `fixtures/eval-goldens/` 仅 nest + inventory；**缺** M3 包与 M2 S_py/S_go clean/evil 公开金标 | 中 | 扩 golden.json + 对应 mini 目录（README 已写 “for M1–M3” 但未齐） |
+| G6 | 全 | **README.md / README.zh-CN.md 未写 M2** `promise_tier=ast_modeled` / typeof Function 诚实句（仅 AGENTS/eval-l2/sound-subset） | 中 | README L2 段对齐 sound-subset 一句 |
+| G7 | 文档 | `eval-stock-boundary.md` 仍写 **「path map not automatic」**，与 M1 产品化矛盾 | 中 | 改为 “product path maps; stock dual-index notes are pre-M1 spike” |
+| G8 | 文档 | `docs/graph-html.md` 未记录 M1 mapped path / MACRO 徽章（实现与测试已有） | 低 | 补一小节 |
+| G9 | 文档 | **PLAN.md 里程碑 M1–M5 与产品边界 Track M1–M5 同名冲突**；§3.3/§2.2 未列 shipped M3 rule_id / Track M1 宏候选产品路径 | 中 | PLAN 加术语区分 + 链到本文档；补 rule 列表 |
+| G10 | M1 | 清单中的 `--macro-default` **未实现**（`--with-macro` 仍默认 OFF，符合「默认源码 L0/L1」） | 低（有意） | 维持默认 OFF；将清单项标为 **explicit opt-in only** 或以后再做配置 |
+| G11 | M1 | `scripts/expand_index_diff.py` 未接产品 path-map（清单标可选） | 低 | 保持 operator spike；或对照脚本改调用 `macro_map` |
+| G12 | 清单 | 本文 §1.6/§2.6/§3.6 验收复选框尚未勾选；实现状态以本附录为准 | 低 | 残差关闭后统一勾选 |
+
+### 有意不做成「缺漏」的产品选择
+
+1. **宏旁路默认仍 OFF**：没有 `--macro-default` 自动 union —— 与全局原则 1 一致；产品句是「可选候选 + 映射去重」，不是默认宏完整图。  
+2. **origin 保持 `macro_expanded`**：清单允许 `macro_candidate`；实现选前者以免破坏已有消费者。  
+3. **`--sound` ∩ `--with-macro` 互斥**：M1 明确非目标，已用测试锁死。  
+4. **M3-A dyn / M3-C entry_points 不进 sound allowlist**：开放域，已写入 `sound-subset.md`。
+
+### 残差关闭顺序（建议）
+
+1. G7 + G6 + G9（文档文实，半天级，避免再超售/再混淆）  
+2. G1 + G5（公开金标补齐，支撑后续回归）  
+3. G4 + G3（测试钉死产品语义）  
+4. G2（真实向 eval，可与 stock operator 对照并行）  
+5. G10/G11/G12 收尾  
 
 ---
 

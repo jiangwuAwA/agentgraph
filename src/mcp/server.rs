@@ -172,10 +172,23 @@ fn tools_list() -> Value {
             },
             {
                 "name": "subset",
-                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may emit its (weakened) eligibility promise; it is still not a runtime call-graph theorem.",
+                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may emit its (weakened) eligibility promise; it is still not a runtime call-graph theorem. After watch/index_paths, violations reflect current disk (S re-cert on dirty files).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
+                }
+            },
+            {
+                "name": "graph_diff",
+                "description": "Indexed-edge set difference vs the snapshot baseline written at index time (Track M4). added/removed ref rows (name+path+line+confidence+enclosing). Honesty: indexed edges only; NOT a runtime call-graph diff. Fails when no baseline exists (run index first). exact_only filters to Exact edges; write_snapshot promotes current live refs as the new baseline.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "exact_only": {"type": "boolean", "default": false, "description": "Only Exact (L0) edges in the set difference"},
+                        "limit": {"type": "integer", "description": "Cap rows per side (summary stays full)"},
+                        "snapshot": {"type": "string", "description": "Explicit snapshot JSON path (optional)"},
+                        "write_snapshot": {"type": "boolean", "default": false, "description": "Promote current live refs as baseline after the diff"}
+                    }
                 }
             },
             {
@@ -634,6 +647,42 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     "promise_languages": languages,
                 });
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
+            }
+            "graph_diff" => {
+                let exact_only = args
+                    .get("exact_only")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                let write_snapshot = args
+                    .get("write_snapshot")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let snap_arg = args
+                    .get("snapshot")
+                    .and_then(|v| v.as_str())
+                    .map(std::path::PathBuf::from);
+                let indexer = Indexer::new(&root)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let d = crate::index::diff::run_diff(
+                    &indexer.root,
+                    &store,
+                    exact_only,
+                    limit,
+                    snap_arg.as_deref(),
+                )?;
+                if write_snapshot {
+                    let snap = crate::index::diff::write_baseline_snapshot(&indexer.root, &store)?;
+                    eprintln!(
+                        "graph_diff: wrote baseline snapshot ({} edges)",
+                        snap.edges.len()
+                    );
+                }
+                Ok(ok_text(serde_json::to_string_pretty(&d)?))
             }
             "related_files" => {
                 let sym = args

@@ -227,6 +227,7 @@ DEFAULT_DOCS = [
     "docs/sound-subset.md",
     "docs/macro-sidecar.md",
     "docs/graph-html.md",
+    "docs/graph-diff.md",
     "docs/eval-l1.md",
     "docs/eval-l2.md",
     "docs/eval-large-repo.md",
@@ -244,6 +245,7 @@ DEFAULT_FLAG_DOCS = [
     "README.zh-CN.md",
     "AGENTS.md",
     "docs/graph-html.md",
+    "docs/graph-diff.md",
     "docs/macro-sidecar.md",
     "docs/sound-subset.md",
 ]
@@ -462,7 +464,9 @@ _AGENTGRAPH_CMD_RE = re.compile(
     r"(?m)^\s*(?:cargo run(?:\s+--quiet)?\s+--\s+)?agentgraph\b((?:\s+(?:--[\w-]+(?:[=\s]\S+)?|[\w./\\:-]+))*)"
 )
 _TABLE_CMD_RE = re.compile(r"(?m)^\|\s*`([a-z][a-z0-9-]*(?:\s+[a-z][a-z0-9-]*)?)`\s*\|")
-_BACKTICK_CMD_RE = re.compile(r"`(macro status|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp)`")
+_BACKTICK_CMD_RE = re.compile(
+    r"`(macro status|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp|diff)`"
+)
 
 
 def extract_doc_cli_mentions(text: str) -> Tuple[Set[str], Set[str]]:
@@ -506,7 +510,7 @@ def extract_doc_cli_mentions(text: str) -> Tuple[Set[str], Set[str]]:
             if cmd in {
                 "index", "stats", "find", "callers", "impact", "related",
                 "importers", "enrich", "watch", "subset", "export", "mcp",
-                "bench-query", "macro", "graph",
+                "bench-query", "macro", "graph", "diff",
             }:
                 commands.add(cmd)
             i += 1

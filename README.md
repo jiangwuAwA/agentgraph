@@ -37,12 +37,28 @@ Index lives at `<root>/.agentgraph/index.db` (add to `.gitignore`).
 
 ```bash
 agentgraph graph helper --depth 2 --out graph.html
+agentgraph graph helper --sound --out graph-sound.html   # S-qualified edges + subset_ok header
 # open graph.html in a browser — no network
 ```
 
 Impact-style BFS neighborhood with confidence colors (Exact / Heuristic / DynamicCandidate),
 bilingual UI, click-to-inspect nodes. **Shows indexed L0/L1 candidates, not a complete
-runtime graph.** Empty neighborhood still writes a page. Details: [docs/graph-html.md](docs/graph-html.md).
+runtime graph.** Empty neighborhood still writes a page. `--sound` shows only
+sound-eligible modeled edges when `subset_ok`; violated S still writes HTML but marks
+the page disabled (exit non-zero) — not labeled a sound graph.
+Details: [docs/graph-html.md](docs/graph-html.md).
+
+### Indexed-edge diff
+
+```bash
+agentgraph index
+# edit call sites
+agentgraph index
+agentgraph diff                 # added/removed indexed edges vs snapshot baseline
+agentgraph diff --exact-only --limit 20
+```
+
+Snapshot written at full `index` time (`<root>/.agentgraph/refs.snapshot.json` + previous generation). No baseline → fail-loud. **Honesty:** indexed edges only; not a runtime call-graph diff. Details: [docs/graph-diff.md](docs/graph-diff.md).
 
 Incremental index skips rehash when **mtime+size match**. On network/FAT volumes
 or tools that preserve mtime across content edits, set `AGENTGRAPH_TRUST_MTIME=0`
@@ -61,7 +77,8 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
 | `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`) |
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
-| `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view) — see [docs/graph-html.md](docs/graph-html.md) |
+| `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view); `--sound` renders S-qualified edges with `subset_ok` / `promise_tier` header — see [docs/graph-html.md](docs/graph-html.md) |
+| `diff` | Indexed-edge set difference vs snapshot baseline written at `index` time (not a runtime call-graph diff) — see [docs/graph-diff.md](docs/graph-diff.md) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
 | `macro status` | Optional macro-expanded sidecar (P2/M1, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / `subset_violation_count` / `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy` |
@@ -117,7 +134,7 @@ Concurrent OpenAI-compatible labels; successes are persisted even if the run lat
 agentgraph watch --interval 5
 ```
 
-Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the watcher fails. Reindexes changed source paths (path-scoped when possible).
+Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the watcher fails. Reindexes changed source paths (path-scoped when possible). Dirty-file reindex re-certifies S subset violations for those paths so `--sound` / `subset` reflect current disk ([docs/sound-subset.md](docs/sound-subset.md)).
 
 ## MCP server
 
@@ -125,7 +142,7 @@ Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the 
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), **`graph_diff`** (indexed-edge snapshot diff; not runtime semantics — [docs/graph-diff.md](docs/graph-diff.md)), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

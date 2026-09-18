@@ -146,6 +146,24 @@ pub enum Commands {
     },
     /// Scan the index for language-subset S violations (L2)
     Subset,
+    /// Compare indexed edge set against the snapshot baseline written at `index` time.
+    ///
+    /// Honesty: indexed edges only (name+path+line+confidence+enclosing);
+    /// **not** a runtime call-graph diff. No baseline → fail-loud (run `index` first).
+    Diff {
+        /// Only Exact (L0) edges participate in the set difference
+        #[arg(long, default_value_t = false)]
+        exact_only: bool,
+        /// Cap rows returned per side (summary counters stay full)
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Explicit snapshot JSON (default: <root>/.agentgraph/refs.snapshot[.prev].json)
+        #[arg(long)]
+        snapshot: Option<PathBuf>,
+        /// After printing the diff, promote current live refs as the new baseline
+        #[arg(long, default_value_t = false)]
+        write_snapshot: bool,
+    },
     /// Export index as SCIP protobuf binary (official scip CLI) or LSIF JSONL
     Export {
         #[arg(value_parser = ["scip", "scip-json", "lsif"])]
@@ -216,6 +234,12 @@ pub enum Commands {
         /// Debug: keep duplicate sidecar rows under --with-macro (default de-dup ON)
         #[arg(long, default_value_t = false)]
         no_macro_dedup: bool,
+        /// L2: render only sound-eligible edges; header shows subset_ok + promise_tier.
+        /// Mutually exclusive with --with-macro (and with --exact-only / --include-dynamic).
+        /// When subset_ok=false the HTML is still written but is **not** labeled a
+        /// sound graph (disabled honesty UX); process exits non-zero.
+        #[arg(long, default_value_t = false)]
+        sound: bool,
     },
 }
 
@@ -665,6 +689,31 @@ pub fn run(cli: Cli) -> Result<()> {
                 std::process::exit(2);
             }
         }
+        Commands::Diff {
+            exact_only,
+            limit,
+            snapshot,
+            write_snapshot,
+        } => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let d = crate::index::diff::run_diff(
+                &indexer.root,
+                &store,
+                exact_only,
+                limit,
+                snapshot.as_deref(),
+            )?;
+            if write_snapshot {
+                let snap = crate::index::diff::write_baseline_snapshot(&indexer.root, &store)?;
+                eprintln!(
+                    "wrote baseline snapshot ({} edges, index_seq={})",
+                    snap.edges.len(),
+                    snap.index_seq
+                );
+            }
+            println!("{}", serde_json::to_string_pretty(&d)?);
+        }
         Commands::BenchQuery {
             samples,
             prefix,
@@ -778,9 +827,22 @@ pub fn run(cli: Cli) -> Result<()> {
             include_dynamic,
             with_macro,
             no_macro_dedup,
+            sound,
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            if sound && with_macro {
+                bail!(
+                    "--sound is mutually exclusive with --with-macro \
+                     (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
+                );
+            }
+            if sound && (exact_only || include_dynamic) {
+                bail!(
+                    "--sound is mutually exclusive with --exact-only / --include-dynamic \
+                     (sound walk uses its own eligibility filter)"
+                );
+            }
             let direction: GraphDirection = if impact {
                 GraphDirection::Impact
             } else {
@@ -791,7 +853,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 exact_only,
                 include_dynamic,
                 with_macro,
-                sound: false,
+                sound,
                 direction,
             };
             // Render cap is MAX_GRAPH_NODES; query limit is slightly higher so BFS
@@ -803,6 +865,90 @@ pub fn run(cli: Cli) -> Result<()> {
                 dedup: !no_macro_dedup,
                 ignore_sidecar,
             };
+
+            // Track M4: sound-eligible neighborhood + S status on the page.
+            if sound {
+                let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
+                let (mut data, subset_ok, promise_tier) = match direction {
+                    GraphDirection::Callers => {
+                        let (hits, violations) = store.callers_sound(&name, query_limit)?;
+                        let subset_ok = violations.is_empty();
+                        let (tier, _p) =
+                            crate::index::subset::select_sound_promise(subset_ok, &languages);
+                        (
+                            build_callers_graph(&name, &hits, flags.clone()),
+                            subset_ok,
+                            tier.as_str().to_string(),
+                        )
+                    }
+                    GraphDirection::Both => {
+                        let (ih, iv) = store.impact_sound(&name, depth, query_limit)?;
+                        let (ch, cv) = store.callers_sound(&name, query_limit)?;
+                        let subset_ok = iv.is_empty() && cv.is_empty();
+                        let (tier, _p) =
+                            crate::index::subset::select_sound_promise(subset_ok, &languages);
+                        let a = build_impact_graph(&name, &ih, flags.clone(), depth);
+                        let b = build_callers_graph(&name, &ch, flags.clone());
+                        let mut d = merge_graphs(a, b);
+                        d.depth = depth;
+                        (d, subset_ok, tier.as_str().to_string())
+                    }
+                    GraphDirection::Impact => {
+                        let (hits, violations) = store.impact_sound(&name, depth, query_limit)?;
+                        let subset_ok = violations.is_empty();
+                        let (tier, _p) =
+                            crate::index::subset::select_sound_promise(subset_ok, &languages);
+                        (
+                            build_impact_graph(&name, &hits, flags.clone(), depth),
+                            subset_ok,
+                            tier.as_str().to_string(),
+                        )
+                    }
+                };
+                data.flags.sound = true;
+                data.subset_ok = Some(subset_ok);
+                data.promise_tier = Some(promise_tier);
+                if !subset_ok {
+                    data.empty_note = Some(
+                        "S violated — sound walk disabled; this page is NOT a sound graph. \
+                         Best-effort sound-eligible candidates only (promise_tier=disabled)."
+                            .to_string(),
+                    );
+                }
+
+                let out_path = match out {
+                    Some(p) => p,
+                    None => indexer.root.join(".agentgraph").join("graph.html"),
+                };
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let html = render_graph_html(&data);
+                std::fs::write(&out_path, html)?;
+                println!(
+                    "wrote graph → {} ({} nodes / {} edges, direction={}, depth={}, sound=true, subset_ok={})",
+                    out_path.display(),
+                    data.nodes.len(),
+                    data.edges.len(),
+                    direction.as_str(),
+                    depth,
+                    subset_ok
+                );
+                if !subset_ok {
+                    eprintln!(
+                        "note: subset_ok=false — HTML written but **not** a sound graph \
+                         (promise_tier=disabled; see docs/sound-subset.md)"
+                    );
+                    std::process::exit(2);
+                }
+                if data.nodes.len() <= 1 && data.edges.is_empty() {
+                    eprintln!(
+                        "note: no sound-eligible indexed edges for '{name}' — empty graph written \
+                         (S-qualified walk; not a complete runtime graph)"
+                    );
+                }
+                return Ok(());
+            }
 
             let mut data = match direction {
                 GraphDirection::Callers => {
@@ -947,7 +1093,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             };
 
-            // Optional sound flags are not part of graph CLI today; leave subset_ok unset.
+            // Non-sound graph path: subset_ok stays unset on the page.
             let _ = &mut data;
 
             let out_path = match out {

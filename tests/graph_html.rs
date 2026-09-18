@@ -520,3 +520,158 @@ pub fn fmt() -> i32 { helper() }
     // Honesty line still present.
     assert!(html.contains("not a complete runtime graph"));
 }
+
+// ---------- Track M4: graph --sound ----------
+
+#[test]
+fn graph_sound_renders_s_qualified_header_on_clean_fixture() {
+    let root = temp_root("sound-ok");
+    write_fixture(&root);
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success(), "index: {}", stderr(&idx));
+
+    let out_path = root.join("sound-ok.html");
+    let out_s = out_path.to_string_lossy().to_string();
+    let g = run(
+        &root,
+        &["graph", "helper", "--sound", "--out", out_s.as_str()],
+    );
+    assert!(
+        g.status.success(),
+        "clean --sound graph must succeed: stdout={} stderr={}",
+        stdout(&g),
+        stderr(&g)
+    );
+    let html = std::fs::read_to_string(&out_path).expect("read sound html");
+    assert!(
+        html.contains("subset_ok=true") || html.contains("subset_ok\":true"),
+        "header must show subset_ok=true: {}",
+        &html[..html.len().min(2500)]
+    );
+    assert!(
+        html.contains("ast_modeled"),
+        "header must show promise_tier=ast_modeled"
+    );
+    // Sound page honesty: S-qualified / sound-eligible — still not a complete runtime graph.
+    assert!(
+        html.contains("not a complete runtime graph") || html.contains("非完整运行时图"),
+        "honesty line required"
+    );
+    assert!(
+        html.contains("sound") || html.contains("S-qualified") || html.contains("S 合格"),
+        "sound mode must be labeled: {}",
+        &html[..html.len().min(2500)]
+    );
+    // JSON payload carries sound flag + tier.
+    assert!(html.contains("\"sound\""));
+    assert!(html.contains("ast_modeled"));
+}
+
+#[test]
+fn graph_sound_violation_still_writes_honest_disabled_page() {
+    let root = temp_root("sound-bad");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/app.js"),
+        r#"
+export function helper(x) { return x + 1; }
+export function createUser(email) {
+  helper(1);
+  return eval(email);
+}
+"#,
+    )
+    .unwrap();
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success(), "index: {}", stderr(&idx));
+
+    let out_path = root.join("sound-bad.html");
+    let out_s = out_path.to_string_lossy().to_string();
+    let g = run(
+        &root,
+        &["graph", "helper", "--sound", "--out", out_s.as_str()],
+    );
+    // Spec §4.4: subset_ok=false → still write HTML, exit non-zero.
+    assert!(
+        !g.status.success(),
+        "violated --sound graph must exit non-zero; stdout={} stderr={}",
+        stdout(&g),
+        stderr(&g)
+    );
+    assert!(
+        out_path.exists(),
+        "HTML must still be written when subset_ok=false"
+    );
+    let html = std::fs::read_to_string(&out_path).expect("read violated sound html");
+    assert!(
+        html.contains("subset_ok=false") || html.contains("subset_ok\":false"),
+        "page must record subset_ok=false: {}",
+        &html[..html.len().min(2500)]
+    );
+    assert!(
+        html.contains("disabled") || html.contains("NOT a sound") || html.contains("不是 sound"),
+        "page must clearly mark sound as disabled / not a sound graph"
+    );
+    // Must NOT label this page as a sound graph.
+    assert!(
+        !html.contains("S-qualified sound-eligible edges only"),
+        "violated page must not use the OK sound-graph label"
+    );
+    assert!(
+        html.contains("promise_tier=disabled") || html.contains("disabled"),
+        "promise_tier disabled expected"
+    );
+}
+
+#[test]
+fn graph_sound_mutually_exclusive_with_with_macro() {
+    let root = temp_root("sound-mutex");
+    write_fixture(&root);
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success());
+
+    let g = run(&root, &["graph", "helper", "--sound", "--with-macro"]);
+    assert!(
+        !g.status.success(),
+        "graph --sound && --with-macro must fail closed"
+    );
+    let err = stderr(&g).to_lowercase();
+    assert!(
+        err.contains("mutually") || err.contains("with-macro") || err.contains("with_macro"),
+        "mutex error required: {err}"
+    );
+
+    // Also mutually exclusive with confidence-window flags (same as callers/impact --sound).
+    let g2 = run(&root, &["graph", "helper", "--sound", "--exact-only"]);
+    assert!(
+        !g2.status.success(),
+        "graph --sound && --exact-only must fail closed"
+    );
+}
+
+#[test]
+fn render_sound_violation_page_marks_disabled() {
+    let mut data = sample_data();
+    data.flags.sound = true;
+    data.subset_ok = Some(false);
+    data.promise_tier = Some("disabled".into());
+    let html = render_graph_html(&data);
+    assert!(html.contains("subset_ok=false") || html.contains("false"));
+    assert!(html.contains("disabled"));
+    assert!(
+        !html.contains("S-qualified sound-eligible edges only"),
+        "OK sound label must not appear when subset_ok=false"
+    );
+}
+
+#[test]
+fn render_sound_ok_page_includes_tier_header() {
+    let mut data = sample_data();
+    data.flags.sound = true;
+    data.subset_ok = Some(true);
+    data.promise_tier = Some("ast_modeled".into());
+    let html = render_graph_html(&data);
+    assert!(html.contains("ast_modeled"));
+    assert!(html.contains("subset_ok=true") || html.contains("true"));
+    assert!(html.contains("sound") || html.contains("S-qualified"));
+}

@@ -83,6 +83,30 @@ Regression: `tests/r25_adversarial.rs` (`skip_path_completeness_matrix`,
 `parse_error_cleared_when_file_recovers`); R24 keep-set tests in
 `tests/r24_adversarial.rs`.
 
+## S re-certification after watch / `index_paths` (Track M4)
+
+`impact --sound` / `callers --sound` / `subset` / `graph --sound` must reflect
+**current disk**, not a stale last-full-index-only snapshot.
+
+After a dirty-file reindex (`watch` → `index_paths`, or explicit path-scoped
+index):
+
+1. Successfully re-extracted files write fresh subset rows via
+   `replace_file_with_subset_meta` (`scan_subset` per dirty file).
+2. Store API `refresh_subset_for_paths` re-scans dirty paths from disk
+   (delete stale violations / insert current ones; leave intentional
+   `parse_error` keep-set rows).
+3. Deleted violating files are pruned from `subset_violations` (explicit
+   delete + FK cascade) so they cannot leave permanent S debt.
+
+Cost note: re-cert is **per dirty path** (re-read + tree-sitter scan), not a
+full-corpus rescan. Full `index` still runs the corpus-wide scan. See
+[eval-query-p95.md](eval-query-p95.md) for query p95 (re-cert is on the index
+path, not the query path).
+
+Regression: `tests/s_recert_watch.rs` (eval write → `index_paths` →
+`promise_tier=disabled`; fix file → violation cleared).
+
 ## S_js (TypeScript / JavaScript)
 
 A program is in S_js when **all** of the following hold:
@@ -244,5 +268,9 @@ provider resolution lives outside the indexed program and is **not** claimed.
 - Soundness outside S  
 - Completeness for unmodeled frameworks  
 - Replacing CodeQL  
+- Using expand/sidecar edges as sound-certified (they are not)
+
+Related API-surface productization (Track M4): [graph-diff.md](graph-diff.md)
+(indexed-edge snapshot diff), [graph-html.md](graph-html.md) (`graph --sound`).
 
 See [PLAN.md](../PLAN.md) §4 and [eval-l2.md](eval-l2.md).

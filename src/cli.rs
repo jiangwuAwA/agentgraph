@@ -308,6 +308,31 @@ fn main_impact_json(hits: &[crate::model::ImpactNode]) -> Vec<serde_json::Value>
     hits.iter().map(|n| n.to_query_json()).collect()
 }
 
+/// Workspace store? (`meta.workspace=1` or any non-empty root_id).
+fn store_is_workspace(store: &crate::index::store::Store) -> bool {
+    if store.is_workspace().unwrap_or(false) {
+        return true;
+    }
+    store
+        .workspace_roots_meta()
+        .map(|r| r.iter().any(|x| !x.id.is_empty()))
+        .unwrap_or(false)
+}
+
+/// Tag query JSON rows with `root_id` / `root_path` when the store is workspace.
+fn print_query_json(value: &serde_json::Value, store: &crate::index::store::Store) -> Result<()> {
+    let mut v = value.clone();
+    let workspace = store_is_workspace(store);
+    crate::model::ensure_workspace_root_ids(&mut v, workspace);
+    if workspace {
+        if let Ok(roots) = store.workspace_roots_meta() {
+            crate::model::inject_root_paths(&mut v, &roots);
+        }
+    }
+    println!("{}", serde_json::to_string_pretty(&v)?);
+    Ok(())
+}
+
 /// Extract sidecar union rows from a with-macro payload (array or wrapped object).
 #[allow(dead_code)]
 pub fn union_rows_payload(v: &serde_json::Value) -> Option<&serde_json::Value> {
@@ -316,6 +341,32 @@ pub fn union_rows_payload(v: &serde_json::Value) -> Option<&serde_json::Value> {
     } else {
         v.get("callers").or_else(|| v.get("impact"))
     }
+}
+
+/// Macro sidecar is **per-root**. Workspace multi-root + `--with-macro` without
+/// a single-root filter is rejected (clear error; sidecars live under each
+/// `<root>/.agentgraph/index.macro.db`).
+fn guard_macro_workspace(
+    store: &crate::index::store::Store,
+    with_macro: bool,
+    root_filter: Option<&str>,
+) -> Result<()> {
+    if !with_macro {
+        return Ok(());
+    }
+    if !store_is_workspace(store) {
+        return Ok(());
+    }
+    let roots = store.workspace_roots_meta().unwrap_or_default();
+    let multi = roots.iter().filter(|r| !r.id.is_empty()).count() > 1;
+    if multi && root_filter.is_none() {
+        bail!(
+            "--with-macro + workspace multi-root requires a single --workspace-root filter \
+             (macro sidecar is per-root at <root>/.agentgraph/index.macro.db; \
+             union across roots has no shared sidecar — see docs/macro-sidecar.md)"
+        );
+    }
+    Ok(())
 }
 
 /// Resolve which store the CLI should open for this invocation.
@@ -477,7 +528,7 @@ pub fn run(cli: Cli) -> Result<()> {
             if hits.is_empty() {
                 bail!("no symbol matching '{name}' — run `agentgraph index` first?");
             }
-            println!("{}", serde_json::to_string_pretty(&hits)?);
+            print_query_json(&serde_json::json!(hits), &store)?;
         }
         Commands::Callers {
             name,
@@ -506,6 +557,7 @@ pub fn run(cli: Cli) -> Result<()> {
                      (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
                 );
             }
+            guard_macro_workspace(&store, with_macro, rf)?;
             if sound {
                 if exact_only || include_dynamic || recall {
                     bail!(
@@ -537,7 +589,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     "subset_violations": violations,
                     "callers": mapped,
                 });
-                println!("{}", serde_json::to_string_pretty(&payload)?);
+                print_query_json(&payload, &store)?;
                 return Ok(());
             }
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
@@ -550,12 +602,7 @@ pub fn run(cli: Cli) -> Result<()> {
             // M1: --exact-only --with-macro → ignore sidecar (spec §1.4).
             let ignore_sidecar = exact_only;
             if with_macro && ignore_sidecar {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&crate::query::build_callers_payload(
-                        &name, hits, limit, role_mode,
-                    ))?
-                );
+                print_query_json(&role_payload, &store)?;
                 return Ok(());
             }
             if with_macro {
@@ -599,12 +646,12 @@ pub fn run(cli: Cli) -> Result<()> {
                         "dedup_stats": stats,
                         "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup; main rows carry edge_role",
                     });
-                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                    print_query_json(&payload, &store)?;
                     return Ok(());
                 }
                 // Absent sidecar → fall through to role payload.
             }
-            println!("{}", serde_json::to_string_pretty(&role_payload)?);
+            print_query_json(&role_payload, &store)?;
             let _ = main_rows; // used above when with_macro sidecar present
         }
         Commands::Impact {
@@ -628,6 +675,7 @@ pub fn run(cli: Cli) -> Result<()> {
                      (macro sidecar is not sound-certified; no subset_ok claim for expanded-only rows)"
                 );
             }
+            guard_macro_workspace(&store, with_macro, rf)?;
             if sound {
                 if exact_only || include_dynamic || recall {
                     bail!(
@@ -639,6 +687,8 @@ pub fn run(cli: Cli) -> Result<()> {
                 let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
                 let (promise_tier, promise) =
                     crate::index::subset::select_sound_promise(subset_ok, &languages);
+                let mapped: Vec<serde_json::Value> =
+                    hits.iter().map(|n| n.to_query_json()).collect();
                 let payload = serde_json::json!({
                     "mode": "sound",
                     "subset_ok": subset_ok,
@@ -646,9 +696,9 @@ pub fn run(cli: Cli) -> Result<()> {
                     "promise": promise,
                     "promise_languages": languages,
                     "subset_violations": violations,
-                    "impact": hits,
+                    "impact": mapped,
                 });
-                println!("{}", serde_json::to_string_pretty(&payload)?);
+                print_query_json(&payload, &store)?;
                 return Ok(());
             }
             let filter = parse_query_flags(exact_only, include_dynamic, recall);
@@ -656,7 +706,7 @@ pub fn run(cli: Cli) -> Result<()> {
 
             let ignore_sidecar = exact_only;
             if with_macro && ignore_sidecar {
-                println!("{}", serde_json::to_string_pretty(&hits)?);
+                print_query_json(&serde_json::json!(main_impact_json(&hits)), &store)?;
                 return Ok(());
             }
             if with_macro {
@@ -699,12 +749,12 @@ pub fn run(cli: Cli) -> Result<()> {
                         "dedup_stats": stats,
                         "note": "sidecar union is optional candidates (not sound); de-dup ON unless --no-macro-dedup",
                     });
-                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                    print_query_json(&payload, &store)?;
                 } else {
-                    println!("{}", serde_json::to_string_pretty(&main_rows)?);
+                    print_query_json(&serde_json::json!(main_rows), &store)?;
                 }
             } else {
-                println!("{}", serde_json::to_string_pretty(&hits)?);
+                print_query_json(&serde_json::json!(main_impact_json(&hits)), &store)?;
             }
         }
         Commands::Related { name, limit } => {
@@ -821,7 +871,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 "by_root": if per_root.is_empty() { serde_json::Value::Null } else { serde_json::json!(per_root) },
                 "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1); workspace union subset_ok = weakest selected root",
             });
-            println!("{}", serde_json::to_string_pretty(&payload)?);
+            print_query_json(&payload, &store)?;
             if !violations.is_empty() {
                 std::process::exit(2);
             }
@@ -861,7 +911,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     }
                 );
             }
-            println!("{}", serde_json::to_string_pretty(&d)?);
+            print_query_json(&serde_json::to_value(&d)?, &store)?;
         }
         Commands::BenchQuery {
             samples,
@@ -953,9 +1003,28 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Macro { command } => match command {
             MacroCmd::Status => {
                 let status = indexer.macro_status()?;
-                println!("{}", serde_json::to_string_pretty(&status)?);
+                let mut payload = serde_json::to_value(&status)?;
+                if workspace_mode || store_is_workspace(&indexer.open_store()?) {
+                    if let Some(obj) = payload.as_object_mut() {
+                        obj.insert(
+                            "workspace_note".into(),
+                            serde_json::json!(
+                                "macro sidecar is per-root at <root>/.agentgraph/index.macro.db; \
+                                 workspace multi-root queries need --workspace-root to select which sidecar \
+                                 (union across roots without a filter is rejected)"
+                            ),
+                        );
+                    }
+                }
+                println!("{}", serde_json::to_string_pretty(&payload)?);
             }
             MacroCmd::Rebuild { force } => {
+                if workspace_mode {
+                    bail!(
+                        "macro rebuild + workspace multi-root is not supported in one command; \
+                         rebuild sidecars per classic --root (sidecar is per-root .agentgraph/index.macro.db)"
+                    );
+                }
                 let result = indexer.macro_rebuild(force)?;
                 let status = indexer.macro_status()?;
                 let payload = serde_json::json!({
@@ -980,6 +1049,8 @@ pub fn run(cli: Cli) -> Result<()> {
         } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let rf = root_filter.as_deref();
             if sound && with_macro {
                 bail!(
                     "--sound is mutually exclusive with --with-macro \
@@ -992,6 +1063,7 @@ pub fn run(cli: Cli) -> Result<()> {
                      (sound walk uses its own eligibility filter)"
                 );
             }
+            guard_macro_workspace(&store, with_macro, rf)?;
             let direction: GraphDirection = if impact {
                 GraphDirection::Impact
             } else {
@@ -1008,7 +1080,6 @@ pub fn run(cli: Cli) -> Result<()> {
             // Render cap is MAX_GRAPH_NODES; query limit is slightly higher so BFS
             // has room before the viz cap truncates.
             let query_limit = crate::viz::MAX_GRAPH_NODES.saturating_add(50).max(100);
-            let q = Query::new(&store);
             let ignore_sidecar = exact_only && with_macro;
             let opts = UnionOptions {
                 dedup: !no_macro_dedup,
@@ -1016,11 +1087,12 @@ pub fn run(cli: Cli) -> Result<()> {
             };
 
             // Track M4: sound-eligible neighborhood + S status on the page.
+            // Track M4-W polish: --workspace-root scopes graph queries + root_id badges.
             if sound {
                 let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
                 let (mut data, subset_ok, promise_tier) = match direction {
                     GraphDirection::Callers => {
-                        let (hits, violations) = store.callers_sound(&name, query_limit)?;
+                        let (hits, violations) = store.callers_sound_in(&name, query_limit, rf)?;
                         let subset_ok = violations.is_empty();
                         let (tier, _p) =
                             crate::index::subset::select_sound_promise(subset_ok, &languages);
@@ -1031,8 +1103,8 @@ pub fn run(cli: Cli) -> Result<()> {
                         )
                     }
                     GraphDirection::Both => {
-                        let (ih, iv) = store.impact_sound(&name, depth, query_limit)?;
-                        let (ch, cv) = store.callers_sound(&name, query_limit)?;
+                        let (ih, iv) = store.impact_sound_in(&name, depth, query_limit, rf)?;
+                        let (ch, cv) = store.callers_sound_in(&name, query_limit, rf)?;
                         let subset_ok = iv.is_empty() && cv.is_empty();
                         let (tier, _p) =
                             crate::index::subset::select_sound_promise(subset_ok, &languages);
@@ -1043,7 +1115,8 @@ pub fn run(cli: Cli) -> Result<()> {
                         (d, subset_ok, tier.as_str().to_string())
                     }
                     GraphDirection::Impact => {
-                        let (hits, violations) = store.impact_sound(&name, depth, query_limit)?;
+                        let (hits, violations) =
+                            store.impact_sound_in(&name, depth, query_limit, rf)?;
                         let subset_ok = violations.is_empty();
                         let (tier, _p) =
                             crate::index::subset::select_sound_promise(subset_ok, &languages);
@@ -1057,6 +1130,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 data.flags.sound = true;
                 data.subset_ok = Some(subset_ok);
                 data.promise_tier = Some(promise_tier);
+                data.root_filter = root_filter.clone();
                 if !subset_ok {
                     data.empty_note = Some(
                         "S violated — sound walk disabled; this page is NOT a sound graph. \
@@ -1101,7 +1175,7 @@ pub fn run(cli: Cli) -> Result<()> {
 
             let mut data = match direction {
                 GraphDirection::Callers => {
-                    let hits = q.callers_filtered(&name, query_limit, filter)?;
+                    let hits = store.callers_filtered_in(&name, query_limit, filter, rf)?;
                     let mut d = build_callers_graph(&name, &hits, flags.clone());
                     if with_macro && !opts.ignore_sidecar {
                         if let Some(side) = indexer.open_macro_store()? {
@@ -1153,8 +1227,9 @@ pub fn run(cli: Cli) -> Result<()> {
                     d
                 }
                 GraphDirection::Both => {
-                    let impact_hits = q.impact_filtered(&name, depth, query_limit, filter)?;
-                    let callers_hits = q.callers_filtered(&name, query_limit, filter)?;
+                    let impact_hits =
+                        store.impact_filtered_in(&name, depth, query_limit, filter, rf)?;
+                    let callers_hits = store.callers_filtered_in(&name, query_limit, filter, rf)?;
                     let a = build_impact_graph(&name, &impact_hits, flags.clone(), depth);
                     let b = build_callers_graph(&name, &callers_hits, flags.clone());
                     let mut d = merge_graphs(a, b);
@@ -1207,7 +1282,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     d
                 }
                 GraphDirection::Impact => {
-                    let hits = q.impact_filtered(&name, depth, query_limit, filter)?;
+                    let hits = store.impact_filtered_in(&name, depth, query_limit, filter, rf)?;
                     let mut d = build_impact_graph(&name, &hits, flags.clone(), depth);
                     if with_macro && !opts.ignore_sidecar {
                         if let Some(side) = indexer.open_macro_store()? {
@@ -1243,6 +1318,7 @@ pub fn run(cli: Cli) -> Result<()> {
             };
 
             // Non-sound graph path: subset_ok stays unset on the page.
+            data.root_filter = root_filter.clone();
             let _ = &mut data;
 
             let out_path = match out {

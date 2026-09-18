@@ -18,6 +18,7 @@ agentgraph graph <symbol> \
   [--impact] \
   [--exact-only] [--include-dynamic] [--with-macro] \
   [--sound]
+# global (also on graph): --workspace / --workspace-root / --workspace-db
 ```
 
 | Flag | Meaning |
@@ -32,6 +33,7 @@ agentgraph graph <symbol> \
 | `--include-dynamic` | Also DynamicCandidate (noisier) |
 | `--with-macro` | Union optional macro sidecar rows (badge `origin=macro_expanded`) |
 | `--sound` | L2: only sound-eligible edges; header shows `subset_ok` + `promise_tier`. **Mutually exclusive** with `--with-macro` and with `--exact-only` / `--include-dynamic` |
+| `--workspace-root` (global) | Scope graph queries to one workspace `root_id`; HTML nodes carry a `root_id` badge (`data-root-id`) when present |
 
 **Default `--out`:** when omitted, writes `<root>/.agentgraph/graph.html` (creates the directory).  
 Open the file in any browser. **No network**, no CDN, no build step.
@@ -61,14 +63,15 @@ Empty neighborhood is **not** a hard failure (non-sound path): the deliverable i
    With `--sound` + `subset_ok=false`:  
    `S VIOLATED — this page is NOT a sound graph … promise_tier=disabled`
 3. **Sound banner** (when `--sound`) — `subset_ok` + `promise_tier`; red “DISABLED” style when violated.
-4. **Legend** — Exact (green) / Heuristic (amber) / DynamicCandidate (purple) / macro badge / edge-role badges (IMP implementor · REG registration · DYN dynamic).
+4. **Legend** — Exact (green) / Heuristic (amber) / DynamicCandidate (purple) / macro badge / edge-role badges (IMP implementor · REG registration · DYN dynamic) / workspace `root_id` badge.
 5. **SVG graph** — radial BFS layout, center = query symbol, rings = depth.
-6. **Node labels** — name, `d{depth}`, confidence; `path:line` in tooltip / info panel; `data-edge-role` + role badge when the row is not a plain call.
+6. **Node labels** — name, `d{depth}`, confidence; `path:line` in tooltip / info panel; `data-edge-role` + role badge when the row is not a plain call; `data-root-id` + root badge when the row carries a workspace `root_id`.
 7. **Click** — highlights neighbors, fills the info panel (path, line, origin, edge kinds, edge role).
 8. **Macro badge** — `MACRO` + distinct stroke when `origin=macro_expanded` (`--with-macro`).
 9. **Edge-role badges** — `IMP` / `REG` / `DYN` for implementor / registration / dynamic rows (noise governance); call edges have no role badge. See [noise-governance.md](noise-governance.md).
-10. **Cap** — at most **300 nodes**; truncation notice if more would have been drawn.
-11. **XSS** — all names/paths HTML-escaped; JSON blob uses `\u003c` escapes.
+10. **Workspace root badge** — `root_id` text on nodes from a multi-root store; `--workspace-root` filters the neighborhood. See [workspace.md](workspace.md).
+11. **Cap** — at most **300 nodes**; truncation notice if more would have been drawn.
+12. **XSS** — all names/paths HTML-escaped; JSON blob uses `\u003c` escapes.
 
 ---
 

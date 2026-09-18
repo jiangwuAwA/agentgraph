@@ -1191,10 +1191,13 @@ impl Store {
         };
 
         let conf = confidence_where(filter);
-        let limit_sql = if limit.is_some() { " LIMIT ?2" } else { "" };
-        let root_sql = match root_id {
-            None => "1=1".to_string(),
-            Some(_) => "root_id = ?3".to_string(),
+        // Parameter ordinals shift when LIMIT is omitted so `root_id = ?N`
+        // always matches the params![…] vector length.
+        let (limit_sql, root_sql) = match (limit, root_id) {
+            (Some(_), Some(_)) => (" LIMIT ?2".to_string(), "root_id = ?3".to_string()),
+            (Some(_), None) => (" LIMIT ?2".to_string(), "1=1".to_string()),
+            (None, Some(_)) => (String::new(), "root_id = ?2".to_string()),
+            (None, None) => (String::new(), "1=1".to_string()),
         };
         let sql = if qual_dot.is_empty() {
             format!(
@@ -2113,8 +2116,8 @@ impl Store {
     /// S-violations; `root_id=Some` scopes to one workspace root.
     pub fn subset_violations_in(&self, root_id: Option<&str>) -> Result<Vec<SubsetViolation>> {
         let sql = match root_id {
-            None => "SELECT path, kind, line, snippet FROM subset_violations ORDER BY root_id, path, line".to_string(),
-            Some(_) => "SELECT path, kind, line, snippet FROM subset_violations WHERE root_id = ?1 ORDER BY path, line".to_string(),
+            None => "SELECT path, kind, line, snippet, root_id FROM subset_violations ORDER BY root_id, path, line".to_string(),
+            Some(_) => "SELECT path, kind, line, snippet, root_id FROM subset_violations WHERE root_id = ?1 ORDER BY path, line".to_string(),
         };
         let mut stmt = self.conn.prepare(&sql)?;
         let map_row = |r: &rusqlite::Row<'_>| -> rusqlite::Result<SubsetViolation> {
@@ -2123,6 +2126,7 @@ impl Store {
                 kind: r.get(1)?,
                 line: r.get::<_, i64>(2)? as usize,
                 snippet: r.get(3)?,
+                root_id: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
             })
         };
         let rows = match root_id {
@@ -2436,11 +2440,53 @@ impl Store {
                         references: 0,
                         subset_violations: 0,
                         languages: None,
+                        exact_refs: 0,
+                        heuristic_refs: 0,
+                        dynamic_refs: 0,
+                        index_seq: None,
+                        missing: false,
+                        promise_tier: None,
                     });
             entry.files = nfiles;
             entry.symbols = nsym as usize;
             entry.references = nref as usize;
             entry.subset_violations = nviol as usize;
+            // Confidence split for status polish (P1).
+            let nexact: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM refs WHERE root_id = ?1 AND confidence = 'exact'",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            let nheur: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM refs WHERE root_id = ?1 AND confidence = 'heuristic'",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            let ndyn: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM refs WHERE root_id = ?1 AND confidence = 'dynamic_candidate'",
+                params![rid],
+                |r| r.get(0),
+            )?;
+            entry.exact_refs = nexact as usize;
+            entry.heuristic_refs = nheur as usize;
+            entry.dynamic_refs = ndyn as usize;
+            entry.index_seq = self
+                .get_meta("index_seq")?
+                .and_then(|s| s.parse::<u64>().ok());
+            entry.missing = !entry.path.is_empty() && !std::path::Path::new(&entry.path).is_dir();
+            entry.promise_tier = Some(if entry.subset_violations == 0 {
+                let langs: Vec<String> = entry
+                    .languages
+                    .clone()
+                    .unwrap_or_else(|| vec!["typescript".to_string()]);
+                crate::index::subset::sound_promise_tier(true, &langs)
+                    .as_str()
+                    .to_string()
+            } else {
+                crate::index::subset::SoundPromiseTier::Disabled
+                    .as_str()
+                    .to_string()
+            });
             if entry.languages.is_none() {
                 entry.languages = Some(langs);
             }

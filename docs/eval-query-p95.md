@@ -105,10 +105,45 @@ CI test: `tests/perf_m4_diff.rs`. Budgets asserted there: CLI `diff` cold/warm
 p95 &lt; 2s; `refresh_subset_for_paths` max &lt; 500 ms; `index_paths` dirty max
 &lt; 2s. Full-corpus scan is smoke-only (&lt; 30s).
 
+## Workspace multi-root smoke budget (M4-W polish)
+
+**Scope:** `index --workspace-root` ×2 + `workspace status` + a few root-filtered
+queries on a shared store. Soft SLO-style ceiling on a named fixture — **not** a
+production guarantee.
+
+**Fixture:** 2 synthetic TypeScript roots × 100 files each (same shape as
+`scripts/gen_fixture.ps1 -N 100` under two roots).
+
+| Path | Loose CI budget | Notes |
+|---|---|---|
+| Workspace full index (2×100 files, release) | **&lt; 30s** (CI soft); smoke only | One shared SQLite + `root_id` |
+| `workspace status` (warm) | **&lt; 2s** CLI wall-clock (process spawn included) | Per-root counts + promise_tier + index_seq |
+| Root-filtered `find` / `callers` (warm, in-process) | **&lt; 50ms** p95 (same as classic query SLO) | SQL `root_id = ?` filter |
+
+**Reproduce (operator smoke):**
+
+```bash
+# two-root workspace smoke (temp dirs; no private stock required)
+powershell -File scripts/gen_fixture.ps1 -N 100 -Out tmp/ws-smoke/api
+powershell -File scripts/gen_fixture.ps1 -N 100 -Out tmp/ws-smoke/web
+agentgraph index --workspace-root tmp/ws-smoke/api --workspace-root tmp/ws-smoke/web \
+  --workspace-db tmp/ws-smoke/ws.db --force
+agentgraph workspace status --workspace-db tmp/ws-smoke/ws.db
+agentgraph find helper --workspace-root tmp/ws-smoke/api --workspace-db tmp/ws-smoke/ws.db
+```
+
+Honesty: numbers are fixture + machine local. Multi-root index cost is roughly
+the sum of per-root classic indexes plus one store open — not a free lunch, and
+not a claim about arbitrary monorepos.
+
+CI soft gate: extend `tests/workspace_index.rs` (status fields + partial reindex);
+full 2×100 timing stays operator smoke.
+
 ## Related
 
 - Index incremental SLO: [perf-plan.md](perf-plan.md)
 - L2 S-sound: [sound-subset.md](sound-subset.md)
 - Indexed-edge diff semantics: [graph-diff.md](graph-diff.md)
+- Multi-root workspace product surface: [workspace.md](workspace.md)
 - mtime escape hatch: `AGENTGRAPH_TRUST_MTIME=0` forces content-hash every file.
 

@@ -60,6 +60,19 @@ Keep the expanded tree **outside** the indexed project root (sibling directory).
 
 **Hard reject (R26/R27, unchanged):** equal / under / contains `--root` fails closed **before** main reindex. Relative `--macro-expanded-root` resolves against `--root`, not cwd.
 
+### Workspace multi-root + macro sidecar (M4-W polish)
+
+The macro sidecar is **per-root** at `<root>/.agentgraph/index.macro.db` — not
+a single shared DB like the workspace main index.
+
+| Invocation | Behavior |
+|---|---|
+| `index --workspace` / `--workspace-root` + `--macro-expanded-root` | **Rejected** (build sidecars via classic per-root `index`) |
+| `callers/impact/graph --with-macro` + workspace multi-root **without** a single `--workspace-root` filter | **Rejected** with a clear error (no shared sidecar across roots) |
+| `--with-macro` + `--workspace-root <one-root>` | Allowed; sidecar path resolves under that root |
+| `macro status` + workspace flags | Reports classic `--root` sidecar + `workspace_note` explaining per-root sidecar policy |
+| `macro rebuild` + workspace flags | **Rejected** — rebuild sidecars per classic `--root` |
+
 Index payload includes `macro_sidecar` with `source_fingerprint`, `path_map_present`, `stale`.
 
 ### Status

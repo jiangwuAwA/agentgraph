@@ -70,6 +70,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **S re-cert after watch (M4):** dirty-file `index_paths` re-scans subset violations for those paths (`scan_subset` + `Store::refresh_subset_for_paths`); recovered files clear stale rows; deleted violating files are pruned from `subset_violations`. `impact/callers --sound`, `subset`, and `graph --sound` reflect **current disk**. Regression: `tests/s_recert_watch.rs`. See [docs/sound-subset.md](docs/sound-subset.md).
 
+**Workspace multi-root (M4-W, L0 shipped):** `index --workspace <manifest>` / repeated `--workspace-root` + `--workspace-db` indexes multiple project roots into **one** SQLite store tagged with `root_id` (not N connections, not cross-root type merge). Queries accept `--workspace-root` filters; default union tags every query JSON row with `root_id` (+ `root_path` on find). `workspace status` reports per-root files/symbols/refs/exact/heur/violations + `promise_tier` + `index_seq` + `missing`. `graph --workspace-root` filters + HTML `root_id` badge. Macro sidecar stays **per-root**; `--with-macro` + multi-root without a single root filter is rejected. Global `--sound` promise = **weakest selected root**. Watch remains classic `--root` (not multi-root). See [docs/workspace.md](docs/workspace.md).
+
 ## Commits
 
 - Prefer small, test-backed commits.

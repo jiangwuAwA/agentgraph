@@ -884,3 +884,78 @@ fn e2e_m4_diff_and_graph_sound_cli_surface() {
         "MCP tools/list must expose graph_diff (Track M4): {text}"
     );
 }
+
+/// Track M4-W polish: workspace flags in help + MCP workspace_status/filter schema.
+#[test]
+fn e2e_workspace_help_and_mcp_schema() {
+    let h = Command::new(bin())
+        .args(["--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("help");
+    let htext = stdout(&h);
+    assert!(
+        htext.contains("workspace"),
+        "top-level help must list workspace: {htext}"
+    );
+    assert!(
+        htext.contains("--workspace-root") || htext.contains("workspace-root"),
+        "top-level help must list --workspace-root: {htext}"
+    );
+    assert!(
+        htext.contains("--workspace-db") || htext.contains("workspace-db"),
+        "top-level help must list --workspace-db: {htext}"
+    );
+
+    let wh = Command::new(bin())
+        .args(["workspace", "--help"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("workspace help");
+    let wtext = stdout(&wh);
+    assert!(
+        wtext.contains("status"),
+        "workspace help must list status: {wtext}"
+    );
+
+    // MCP tools/list includes workspace_status + optional filter args.
+    let root = temp_root("ws-help");
+    let mcp = Command::new(bin())
+        .arg("--root")
+        .arg(&root)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+    let mut child = mcp;
+    {
+        use std::io::Write;
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{}}}}"#
+        )
+        .unwrap();
+    }
+    let out = child.wait_with_output().expect("mcp output");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("workspace_status"),
+        "MCP must expose workspace_status: {text}"
+    );
+    assert!(
+        text.contains("\"root_id\""),
+        "MCP query tools must expose optional root_id filter: {text}"
+    );
+    assert!(
+        text.contains("\"workspace_db\""),
+        "MCP tools must expose optional workspace_db: {text}"
+    );
+}

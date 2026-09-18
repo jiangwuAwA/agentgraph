@@ -126,6 +126,7 @@ fn html_escapes_script_in_symbol_and_path() {
             origin: None,
             is_query: false,
             role: "call",
+            root_id: String::new(),
         }],
         edges: vec![GraphEdge {
             from: "q".into(),
@@ -139,6 +140,7 @@ fn html_escapes_script_in_symbol_and_path() {
         subset_ok: None,
         promise_tier: None,
         empty_note: None,
+        root_filter: None,
     };
     let html = render_graph_html(&data);
     // Raw executable payloads must not appear as HTML tags in the body.
@@ -223,6 +225,7 @@ fn node_cap_truncates_with_notice() {
         origin: None,
         is_query: true,
         role: "call",
+        root_id: String::new(),
     }];
     for i in 0..(MAX_GRAPH_NODES + 40) {
         nodes.push(GraphNode {
@@ -235,6 +238,7 @@ fn node_cap_truncates_with_notice() {
             origin: None,
             is_query: false,
             role: "call",
+            root_id: String::new(),
         });
     }
     let data = GraphVizData {
@@ -249,10 +253,58 @@ fn node_cap_truncates_with_notice() {
         subset_ok: None,
         promise_tier: None,
         empty_note: None,
+        root_filter: None,
     };
     let html = render_graph_html(&data);
     assert!(html.contains("truncated") || html.contains("截断"));
     assert!(html.contains("300") || html.contains(&MAX_GRAPH_NODES.to_string()));
+}
+
+/// P0.3 unit: nodes with root_id render a root badge + data-root-id.
+#[test]
+fn root_id_badge_rendered_when_present() {
+    use agentgraph::model::{Confidence, EdgeKind, ImpactNode};
+    use agentgraph::viz::{build_impact_graph, render_graph_html, GraphDirection, GraphFlags};
+
+    let flags = GraphFlags {
+        exact_only: false,
+        include_dynamic: false,
+        with_macro: false,
+        sound: false,
+        direction: GraphDirection::Impact,
+    };
+    let impact = vec![ImpactNode {
+        name: "helper".into(),
+        path: "src/auth.ts".into(),
+        line: 4,
+        kind: EdgeKind::Call,
+        depth: 1,
+        enclosing: Some("createUser".into()),
+        resolved: Some("helper".into()),
+        confidence: Confidence::Exact,
+        root_id: "api".into(),
+        edge_role: None,
+    }];
+    let data = build_impact_graph("helper", &impact, flags, 2);
+    assert!(
+        data.nodes.iter().any(|n| n.root_id == "api"),
+        "graph nodes must carry root_id from impact rows"
+    );
+    let html = render_graph_html(&data);
+    assert!(
+        html.contains("data-root-id=\"api\"") || html.contains(">api</text>"),
+        "HTML must show root_id badge / data attribute; snippet around root: {}",
+        if html.contains("root") {
+            let i = html.find("root").unwrap_or(0);
+            &html[i.saturating_sub(40)..(i + 80).min(html.len())]
+        } else {
+            "no root string"
+        }
+    );
+    assert!(
+        html.contains("root-badge") || html.contains("root_id"),
+        "legend/badge class expected"
+    );
 }
 
 // ---------- CLI e2e ----------

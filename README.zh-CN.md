@@ -44,13 +44,14 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 
 | 命令 | 用途 |
 |---|---|
-| `find` | 符号定义（精确；`--fuzzy` 为 LIKE 模糊） |
-| `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`、**`edge_role`**）。默认在存在 implementor 时返回 `{callers, implementors, …}` 分离噪声；高频名 demote —— [docs/noise-governance.md](docs/noise-governance.md) |
+| `find` | 符号定义（精确；`--fuzzy` 为 LIKE 模糊）。workspace 行带 `root_id` + `root_path` |
+| `callers` | 调用/导入点 + L1 候选边（含 `module`、`resolved`、`qualifier`、`confidence`、**`edge_role`**、`root_id`）。默认在存在 implementor 时返回 `{callers, implementors, …}` 分离噪声；高频名 demote —— [docs/noise-governance.md](docs/noise-governance.md) |
 | `impact` | 真 BFS 爆炸半径（默认 Exact+Heuristic） |
-| `graph` | 离线自包含 HTML 代码图；`--sound` 仅渲染 sound-eligible 边并展示 `subset_ok`/`promise_tier` —— 见 [docs/graph-html.md](docs/graph-html.md) |
+| `graph` | 离线自包含 HTML 代码图；`--sound` 仅渲染 sound-eligible 边并展示 `subset_ok`/`promise_tier`；`--workspace-root` 可过滤 + 节点 `root_id` 徽章 —— 见 [docs/graph-html.md](docs/graph-html.md) |
 | `diff` | 相对 `index` 时写入的快照基线，做**已索引边集合差**（非运行时调用图 diff）—— 见 [docs/graph-diff.md](docs/graph-diff.md) |
 | `related` | 定义 + 导入方 + 引用（用于收敛阅读范围） |
 | `importers` | 谁 import 了该文件 |
+| `workspace status` | 多根 workspace 索引健康度（每根 files/symbols/refs/exact/heur/violations、`promise_tier`、`index_seq`、`missing`）—— 一行上手：`agentgraph index --workspace-root api --workspace-root web --workspace-db ./ws.db` 后 `workspace status` —— [docs/workspace.md](docs/workspace.md) |
 
 `callers` / `impact`（以及 MCP 工具）的 confidence 窗口：
 
@@ -111,7 +112,7 @@ agentgraph watch --interval 5
 agentgraph --root /path/to/repo mcp
 ```
 
-工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）。
+工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）、**`workspace_status`**（多根健康度 —— [docs/workspace.md](docs/workspace.md)）、可选 **`macro_status`** / **`macro_rebuild`**（P2/M1 旁路，默认关闭 —— [docs/macro-sidecar.md](docs/macro-sidecar.md)）。查询工具可选 `workspace_db` / `root_id` 过滤（默认关闭）。
 
 **安全：** 每次调用的 `root` 默认限制在服务器启动时的根目录内；需显式设置 `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1` 才可越界。
 

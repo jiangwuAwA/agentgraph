@@ -93,6 +93,8 @@ pub struct GraphNode {
     pub is_query: bool,
     /// Edge role: `call` | `implementor` | `registration` | `dynamic`.
     pub role: &'static str,
+    /// Workspace multi-root id (empty for classic single-root).
+    pub root_id: String,
 }
 
 impl GraphNode {
@@ -128,6 +130,8 @@ pub struct GraphVizData {
     pub subset_ok: Option<bool>,
     pub promise_tier: Option<String>,
     pub empty_note: Option<String>,
+    /// Workspace root filter applied to this graph (if any).
+    pub root_filter: Option<String>,
 }
 
 impl GraphVizData {
@@ -148,6 +152,7 @@ impl GraphVizData {
                 "无已索引关系（空图） · Empty neighborhood — no indexed L0/L1 edges for this symbol."
                     .to_string(),
             ),
+            root_filter: None,
         }
     }
 }
@@ -218,6 +223,9 @@ fn push_node(nodes: &mut Vec<GraphNode>, node: GraphNode) {
             existing.path = node.path;
             existing.line = node.line;
         }
+        if existing.root_id.is_empty() && !node.root_id.is_empty() {
+            existing.root_id = node.root_id;
+        }
         return;
     }
     nodes.push(node);
@@ -247,6 +255,7 @@ fn ensure_query_node(nodes: &mut Vec<GraphNode>, query: &str) {
             origin: None,
             is_query: true,
             role: "call",
+            root_id: String::new(),
         },
     );
 }
@@ -287,6 +296,7 @@ fn finalize(
         subset_ok: None,
         promise_tier: None,
         empty_note,
+        root_filter: None,
     }
 }
 
@@ -326,6 +336,7 @@ pub fn build_impact_graph(
                     origin: None,
                     is_query: false,
                     role,
+                    root_id: row.root_id.clone(),
                 },
             );
         }
@@ -351,6 +362,7 @@ pub fn build_impact_graph(
                 origin: None,
                 is_query: false,
                 role,
+                root_id: row.root_id.clone(),
             },
         );
         let _ = is_site;
@@ -397,6 +409,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
                     origin: Some("macro_expanded"),
                     is_query: false,
                     role,
+                    root_id: row.root_id.clone(),
                 },
             );
         }
@@ -419,6 +432,7 @@ pub fn add_macro_impact_rows(data: &mut GraphVizData, query: &str, impact: &[Imp
                 origin: Some("macro_expanded"),
                 is_query: false,
                 role,
+                root_id: row.root_id.clone(),
             },
         );
         push_edge(
@@ -475,6 +489,7 @@ pub fn build_callers_graph(
                 origin: None,
                 is_query: false,
                 role,
+                root_id: row.root_id.clone(),
             },
         );
         push_edge(
@@ -518,6 +533,7 @@ pub fn add_macro_caller_rows(data: &mut GraphVizData, query: &str, callers: &[Re
                 origin: Some("macro_expanded"),
                 is_query: false,
                 role,
+                root_id: row.root_id.clone(),
             },
         );
         push_edge(
@@ -793,6 +809,16 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
         } else {
             String::new()
         };
+        let root_badge = if !n.root_id.is_empty() {
+            format!(
+                r#"<text x="{bx:.1}" y="{by:.1}" text-anchor="middle" class="root-badge">{rid}</text>"#,
+                bx = x,
+                by = y - r - 18.0,
+                rid = escape_html(&n.root_id),
+            )
+        } else {
+            String::new()
+        };
         let role_badge_svg = if !role_txt.is_empty() {
             format!(
                 r#"<text x="{bx:.1}" y="{by:.1}" text-anchor="middle" class="role-badge role-badge-{role}">{badge}</text>"#,
@@ -805,16 +831,27 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
             String::new()
         };
         let query_cls = if n.is_query { " node-query" } else { "" };
-        let badge = format!("{macro_badge}{role_badge_svg}");
+        let root_cls = if n.root_id.is_empty() {
+            String::new()
+        } else {
+            " node-root".to_string()
+        };
+        let badge = format!("{root_badge}{macro_badge}{role_badge_svg}");
         svg_nodes.push_str(&format!(
-            r##"<g class="node{query_cls}{macro_cls}{role_cls} conf-{conf}" data-id="{id}" data-name="{full_name}" data-depth="{depth}" data-confidence="{conf}" data-location="{loc}" data-origin="{origin}" data-edge-role="{role}" transform="translate({x:.1},{y:.1})">
+            r##"<g class="node{query_cls}{macro_cls}{role_cls}{root_cls} conf-{conf}" data-id="{id}" data-name="{full_name}" data-depth="{depth}" data-confidence="{conf}" data-location="{loc}" data-origin="{origin}" data-edge-role="{role}" data-root-id="{root_id}" transform="translate({x:.1},{y:.1})">
   <circle r="{r}" fill="{fill}" stroke="#1e293b" stroke-width="2"/>
   <text y="4" text-anchor="middle" class="node-label">{label}</text>
   <text y="{ty:.1}" text-anchor="middle" class="node-meta">d{depth} · {conf}</text>
-  <title>{full_name} · d{depth} · {conf} · {role} · {loc}</title>
+  <title>{full_name} · d{depth} · {conf} · {role} · {loc}{root_title}</title>
 </g>{badge}"##,
             id = escape_html(&n.id),
             origin = escape_html(n.origin.unwrap_or("")),
+            root_id = escape_html(&n.root_id),
+            root_title = if n.root_id.is_empty() {
+                String::new()
+            } else {
+                format!(" · root={}", escape_html(&n.root_id))
+            },
             ty = r + 14.0,
         ));
     }
@@ -828,6 +865,7 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
   <span class="lg role-lg"><b class="role-badge role-badge-implementor">IMP</b> implementor / 实现边</span>
   <span class="lg role-lg"><b class="role-badge role-badge-registration">REG</b> registration / 注册边</span>
   <span class="lg role-lg"><b class="role-badge role-badge-dynamic">DYN</b> dynamic / 动态边</span>
+  <span class="lg root-lg"><b class="root-badge">root_id</b> workspace root / 工作区根</span>
 </div>"#
     );
 
@@ -958,6 +996,8 @@ pub fn render_graph_html(data: &GraphVizData) -> String {
   .node-label {{ font-size: 11px; fill: #0f172a; pointer-events: none; font-weight: 600; }}
   .node-meta {{ font-size: 9px; fill: var(--muted); pointer-events: none; }}
   .macro-badge {{ font-size: 9px; fill: var(--macro); font-weight: 700; }}
+  .root-badge {{ font-size: 9px; fill: #0f766e; font-weight: 700; }}
+  .root-lg .root-badge {{ display: inline-block; margin-right: 4px; }}
   .role-badge {{ font-size: 9px; font-weight: 700; }}
   .role-badge-implementor {{ fill: {COLOR_ROLE_IMPLEMENTOR}; }}
   .role-badge-registration {{ fill: {COLOR_ROLE_REGISTRATION}; }}

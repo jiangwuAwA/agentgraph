@@ -74,14 +74,15 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 
 | Command | Purpose |
 |---|---|
-| `find` | Symbol definitions (exact; `--fuzzy` for LIKE) |
-| `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`, **`edge_role`**). Default separates implementors into `{callers, implementors, …}` when present; `--include-implementors` / `--implementors-only` / high-freq demote — [docs/noise-governance.md](docs/noise-governance.md) |
+| `find` | Symbol definitions (exact; `--fuzzy` for LIKE). Workspace rows carry `root_id` + `root_path` |
+| `callers` | Call/import sites + L1 candidates (`module`, `resolved`, `qualifier`, `confidence`, **`edge_role`**, `root_id`). Default separates implementors into `{callers, implementors, …}` when present; `--include-implementors` / `--implementors-only` / high-freq demote — [docs/noise-governance.md](docs/noise-governance.md) |
 | `impact` | True BFS blast radius (default Exact+Heuristic) |
-| `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view); `--sound` renders S-qualified edges with `subset_ok` / `promise_tier` header — see [docs/graph-html.md](docs/graph-html.md) |
+| `graph` | Local self-contained HTML code-graph (impact BFS + optional callers view); `--sound` renders S-qualified edges with `subset_ok` / `promise_tier` header; `--workspace-root` scopes + `root_id` badge — see [docs/graph-html.md](docs/graph-html.md) |
 | `diff` | Indexed-edge set difference vs snapshot baseline written at `index` time (not a runtime call-graph diff) — see [docs/graph-diff.md](docs/graph-diff.md) |
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
-| `macro status` | Optional macro-expanded sidecar (P2/M1, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / `subset_violation_count` / `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy` |
+| `workspace status` | Multi-root workspace index health (per-root counts, exact/heur, violations, `promise_tier`, `index_seq`, `missing`) — one-liner: `agentgraph index --workspace-root api --workspace-root web --workspace-db ./ws.db` then `workspace status` — [docs/workspace.md](docs/workspace.md) |
+| `macro status` | Optional macro-expanded sidecar (P2/M1, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / `subset_violation_count` / `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy`. Sidecar is **per-root**; workspace multi-root `--with-macro` needs a single `--workspace-root` filter |
 | `macro rebuild` | Re-index recorded expanded shadow into sidecar (idempotent; no `cargo expand`; not sound) |
 
 Confidence windows on `callers` / `impact` (and MCP tools):
@@ -142,7 +143,7 @@ Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the 
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), **`graph_diff`** (indexed-edge snapshot diff; not runtime semantics — [docs/graph-diff.md](docs/graph-diff.md)), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)).
+Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), **`graph_diff`** (indexed-edge snapshot diff; not runtime semantics — [docs/graph-diff.md](docs/graph-diff.md)), **`workspace_status`** (multi-root health — [docs/workspace.md](docs/workspace.md)), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)). Query tools accept optional `workspace_db` / `root_id` filters (default off).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

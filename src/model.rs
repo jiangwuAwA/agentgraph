@@ -439,6 +439,24 @@ pub struct WorkspaceRootInfo {
     pub subset_violations: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub languages: Option<Vec<String>>,
+    /// Exact-confidence ref edges for this `root_id`.
+    #[serde(default)]
+    pub exact_refs: usize,
+    /// Heuristic-confidence ref edges for this `root_id`.
+    #[serde(default)]
+    pub heuristic_refs: usize,
+    /// DynamicCandidate ref edges for this `root_id`.
+    #[serde(default)]
+    pub dynamic_refs: usize,
+    /// `meta.index_seq` at last full index that touched this store/root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_seq: Option<u64>,
+    /// True when the recorded root path is missing on disk.
+    #[serde(default)]
+    pub missing: bool,
+    /// Per-root sound-promise tier note (weakest = disabled when any violation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promise_tier: Option<String>,
 }
 
 /// `agentgraph workspace status` / MCP `workspace_status` payload.
@@ -457,6 +475,15 @@ pub struct WorkspaceStatus {
     pub references: usize,
     #[serde(default)]
     pub note: String,
+    /// Store-level full-index counter (`meta.index_seq`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_seq: Option<u64>,
+    /// Weakest selected-root promise tier (union sound = weakest root).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promise_tier: Option<String>,
+    /// Root id with the weakest S gate (violations first; empty when clean).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weakest_root: Option<String>,
 }
 
 /// Result of `index --workspace` / `--workspace-root`.
@@ -632,4 +659,86 @@ pub struct EnrichReport {
     pub skipped: usize,
     pub failed: usize,
     pub model: String,
+}
+
+/// True when a JSON object looks like a query-row payload that should carry
+/// `root_id` under workspace multi-root stores.
+fn looks_like_query_row(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+    obj.contains_key("root_id")
+        || (obj.contains_key("path")
+            && (obj.contains_key("name")
+                || obj.contains_key("line")
+                || obj.contains_key("kind")
+                || obj.contains_key("snippet")
+                || obj.contains_key("enclosing")))
+}
+
+/// Force-include `root_id` on default query JSON rows when the store is a
+/// workspace multi-root DB. Empty/missing → `"default"`. Classic single-root
+/// path leaves rows unchanged (`root_id` omitted when empty).
+///
+/// Recurses into arrays and wrapper objects (`{callers,implementors,…}`,
+/// `{mode: sound, callers|impact|violations}`, `{added,removed}`).
+pub fn ensure_workspace_root_ids(value: &mut serde_json::Value, workspace: bool) {
+    if !workspace {
+        return;
+    }
+    match value {
+        serde_json::Value::Object(obj) => {
+            if looks_like_query_row(obj) {
+                let rid = obj.get("root_id").and_then(|v| v.as_str()).unwrap_or("");
+                let out = if rid.is_empty() { "default" } else { rid };
+                obj.insert("root_id".into(), serde_json::json!(out));
+            }
+            let keys: Vec<String> = obj.keys().cloned().collect();
+            for k in keys {
+                if let Some(v) = obj.get_mut(&k) {
+                    ensure_workspace_root_ids(v, true);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                ensure_workspace_root_ids(item, true);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Enrich find/callers/impact JSON rows with `root_path` from workspace meta
+/// so agents can disambiguate the same relative path under two roots.
+pub fn inject_root_paths(value: &mut serde_json::Value, roots: &[WorkspaceRootInfo]) {
+    if roots.is_empty() {
+        return;
+    }
+    match value {
+        serde_json::Value::Object(obj) => {
+            if let Some(rid) = obj.get("root_id").and_then(|v| v.as_str()) {
+                let rid = if rid == "default" { "" } else { rid };
+                if !obj.contains_key("root_path") {
+                    if let Some(meta) = roots
+                        .iter()
+                        .find(|r| r.id == rid || (!rid.is_empty() && r.id == rid))
+                    {
+                        if !meta.path.is_empty() {
+                            obj.insert("root_path".into(), serde_json::json!(meta.path));
+                        }
+                    }
+                }
+            }
+            let keys: Vec<String> = obj.keys().cloned().collect();
+            for k in keys {
+                if let Some(v) = obj.get_mut(&k) {
+                    inject_root_paths(v, roots);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                inject_root_paths(item, roots);
+            }
+        }
+        _ => {}
+    }
 }

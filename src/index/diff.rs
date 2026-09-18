@@ -49,6 +49,9 @@ pub struct SnapshotEdge {
     pub confidence: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enclosing: Option<String>,
+    /// Workspace multi-root id. Empty for classic single-root rows.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
 }
 
 /// On-disk refs snapshot (sidecar JSON).
@@ -184,6 +187,7 @@ pub fn ref_to_edge(r: &ReferenceRecord) -> SnapshotEdge {
         line: r.line,
         confidence: r.confidence.as_str().to_string(),
         enclosing: r.enclosing.clone(),
+        root_id: r.root_id.clone(),
     }
 }
 
@@ -494,6 +498,7 @@ mod tests {
             line,
             confidence: conf.into(),
             enclosing: enc.map(|s| s.to_string()),
+            root_id: String::new(),
         }
     }
 

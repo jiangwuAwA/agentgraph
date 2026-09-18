@@ -627,3 +627,494 @@ fn workspace_nested_roots_warn_not_reject() {
         "expected nesting warning: {err}"
     );
 }
+
+/// Helper: two-root workspace fixture + index → returns (base, api, web, db).
+fn two_root_ws(name: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    let base = temp_dir(name);
+    let root_a = base.join("api");
+    let root_b = base.join("web");
+    std::fs::create_dir_all(&root_a).unwrap();
+    std::fs::create_dir_all(&root_b).unwrap();
+    write_root_a(&root_a);
+    write_root_b(&root_b);
+    let db = base.join("ws.db");
+    let idx = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(idx.status.success(), "index stderr={}", stderr(&idx));
+    (base, root_a, root_b, db)
+}
+
+fn row_has_root_id(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::Object(obj) => {
+            if obj.contains_key("path")
+                && (obj.contains_key("name")
+                    || obj.contains_key("line")
+                    || obj.contains_key("kind"))
+            {
+                return obj.contains_key("root_id")
+                    && obj["root_id"]
+                        .as_str()
+                        .map(|s| !s.is_empty())
+                        .unwrap_or(false);
+            }
+            obj.values().all(row_has_root_id)
+        }
+        serde_json::Value::Array(arr) => arr.iter().all(row_has_root_id),
+        _ => true,
+    }
+}
+
+/// P0.1: every default query JSON row in a workspace store carries `root_id`.
+#[test]
+fn workspace_query_rows_carry_root_id() {
+    let (_base, root_a, root_b, db) = two_root_ws("p0-root-id");
+
+    // find
+    let find = run_raw(&["find", "createUser", "--workspace-db", db.to_str().unwrap()]);
+    assert!(find.status.success(), "{}", stderr(&find));
+    let hits = parse_json(&find);
+    assert!(
+        row_has_root_id(&hits),
+        "find rows must carry root_id: {hits}"
+    );
+
+    // callers (union)
+    let callers = run_raw(&[
+        "callers",
+        "validateEmail",
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+    ]);
+    assert!(callers.status.success(), "{}", stderr(&callers));
+    let crow = parse_json(&callers);
+    assert!(
+        row_has_root_id(&crow),
+        "callers rows must carry root_id: {crow}"
+    );
+
+    // impact
+    let impact = run_raw(&[
+        "impact",
+        "createUser",
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--limit",
+        "20",
+    ]);
+    // impact may succeed with empty neighborhood
+    if impact.status.success() {
+        let irow = parse_json(&impact);
+        if irow.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+            assert!(
+                row_has_root_id(&irow),
+                "impact rows must carry root_id: {irow}"
+            );
+        }
+    }
+
+    // subset / sound payload
+    let subset = run_raw(&["subset", "--workspace-db", db.to_str().unwrap()]);
+    // subset may exit non-zero on violations; payload still printed
+    let sp = parse_json(&subset);
+    if let Some(viols) = sp["violations"].as_array() {
+        if !viols.is_empty() {
+            assert!(
+                viols.iter().all(|v| v.get("root_id").is_some()),
+                "subset violations must carry root_id: {sp}"
+            );
+        }
+    }
+
+    // sound callers scoped to api
+    let sound = run_raw(&[
+        "callers",
+        "validateEmail",
+        "--sound",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    if sound.status.success() {
+        let sp2 = parse_json(&sound);
+        if let Some(rows) = sp2["callers"].as_array() {
+            if !rows.is_empty() {
+                assert!(
+                    rows.iter().all(|r| r.get("root_id").is_some()),
+                    "sound callers must carry root_id: {sp2}"
+                );
+            }
+        }
+    }
+
+    // diff (needs snapshot baseline — may fail if no snapshot written for root)
+    let _ = run_raw(&[
+        "diff",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--write-snapshot",
+    ]);
+    let diff = run_raw(&[
+        "diff",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    if diff.status.success() {
+        let dp = parse_json(&diff);
+        if let Some(added) = dp["added"].as_array() {
+            if !added.is_empty() {
+                assert!(
+                    added.iter().all(|e| e.get("root_id").is_some()),
+                    "diff edges must carry root_id: {dp}"
+                );
+            }
+        }
+    }
+}
+
+/// P1.8: find path display includes root_id + root_path under workspace store.
+#[test]
+fn workspace_find_includes_root_path() {
+    let (_base, _a, _b, db) = two_root_ws("p1-find-path");
+    let find = run_raw(&["find", "createUser", "--workspace-db", db.to_str().unwrap()]);
+    assert!(find.status.success(), "{}", stderr(&find));
+    let hits = parse_json(&find);
+    let arr = hits.as_array().unwrap();
+    assert!(arr
+        .iter()
+        .any(|h| h["root_id"] == "api" && h["path"] == "src/auth.ts"));
+    assert!(
+        arr.iter().any(|h| h
+            .get("root_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.contains("api"))
+            .unwrap_or(false)),
+        "find rows should carry root_path so agents can disambiguate same-relative paths: {hits}"
+    );
+}
+
+/// P1.5: workspace status polish — per-root exact/heur/violations + promise_tier + index_seq.
+#[test]
+fn workspace_status_polish_fields() {
+    let (_base, root_a, root_b, db) = two_root_ws("p1-status");
+    // Make dirty root with eval so violations exist.
+    std::fs::write(
+        root_b.join("src/bad.ts"),
+        "export function bad(c: string) { return eval(c); }\n",
+    )
+    .unwrap();
+    let reidx = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(reidx.status.success(), "{}", stderr(&reidx));
+
+    let status = run_raw(&[
+        "workspace",
+        "status",
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(status.status.success(), "{}", stderr(&status));
+    let st = parse_json(&status);
+    assert!(
+        st["index_seq"].as_u64().is_some(),
+        "status must expose index_seq: {st}"
+    );
+    assert!(
+        st["promise_tier"].as_str().is_some(),
+        "status must expose promise_tier: {st}"
+    );
+    let roots = st["roots"].as_array().unwrap();
+    for r in roots {
+        assert!(
+            r["exact_refs"].as_u64().is_some(),
+            "per-root exact_refs: {r}"
+        );
+        assert!(
+            r["heuristic_refs"].as_u64().is_some(),
+            "per-root heuristic_refs: {r}"
+        );
+        assert!(r.get("missing").is_some(), "per-root missing flag: {r}");
+        assert!(
+            r["promise_tier"].as_str().is_some(),
+            "per-root promise_tier: {r}"
+        );
+        assert!(r["files"].as_u64().is_some() && r["symbols"].as_u64().is_some());
+        assert!(r["references"].as_u64().is_some() && r["subset_violations"].as_u64().is_some());
+    }
+    let dirty = roots.iter().find(|r| r["id"] == "web").unwrap();
+    assert!(dirty["subset_violations"].as_u64().unwrap() >= 1, "{dirty}");
+    assert_eq!(dirty["promise_tier"], "disabled", "{dirty}");
+    // Weakest-root note when any root violates.
+    assert_eq!(st["weakest_root"], "web", "{st}");
+    assert_eq!(st["promise_tier"], "disabled", "{st}");
+}
+
+/// P1.6: partial re-index of one workspace root keeps sibling root rows + meta.
+#[test]
+fn workspace_partial_reindex_keeps_siblings() {
+    let (_base, root_a, root_b, db) = two_root_ws("p1-partial");
+
+    // Re-index only api.
+    let only_api = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(only_api.status.success(), "{}", stderr(&only_api));
+
+    // web rows must still resolve.
+    let find_web = run_raw(&[
+        "find",
+        "onlyInB",
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(
+        find_web.status.success(),
+        "sibling root rows must survive partial reindex: {}",
+        stderr(&find_web)
+    );
+
+    // status still lists both roots.
+    let status = run_raw(&[
+        "workspace",
+        "status",
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    let st = parse_json(&status);
+    let roots = st["roots"].as_array().unwrap();
+    assert!(roots.iter().any(|r| r["id"] == "api"), "{st}");
+    assert!(roots.iter().any(|r| r["id"] == "web"), "{st}");
+}
+
+/// P1.7: nested roots — status lists both after index.
+#[test]
+fn workspace_nested_roots_status_lists_both() {
+    let base = temp_dir("nested-status");
+    let parent = base.join("mono");
+    let child = parent.join("packages/api");
+    std::fs::create_dir_all(&child).unwrap();
+    write_root_a(&parent);
+    write_root_b(&child);
+    let db = base.join("ws.db");
+    let out = run_raw(&[
+        "index",
+        "--workspace-root",
+        parent.to_str().unwrap(),
+        "--workspace-root",
+        child.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let status = run_raw(&[
+        "workspace",
+        "status",
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    let st = parse_json(&status);
+    let roots = st["roots"].as_array().unwrap();
+    assert!(roots.len() >= 2, "nested roots both listed: {st}");
+    assert!(roots.iter().any(|r| r["id"] == "mono"));
+    assert!(
+        roots.iter().any(|r| {
+            r["id"].as_str().map(|s| s.contains("api")).unwrap_or(false)
+                || r["id"] == "packages_api"
+                || r["path"]
+                    .as_str()
+                    .map(|p| p.contains("packages/api"))
+                    .unwrap_or(false)
+        }),
+        "child root listed: {st}"
+    );
+}
+
+/// P0.3: graph --workspace-root filter + HTML root_id badge.
+#[test]
+fn workspace_graph_filter_and_root_badge() {
+    let (_base, root_a, _root_b, db) = two_root_ws("p0-graph");
+    let out_html = db.parent().unwrap().join("ws-graph.html");
+    let graph = run_raw(&[
+        "graph",
+        "createUser",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--out",
+        out_html.to_str().unwrap(),
+    ]);
+    assert!(graph.status.success(), "{}", stderr(&graph));
+    let html = std::fs::read_to_string(&out_html).unwrap();
+    assert!(
+        html.contains("data-root-id") || html.contains("root-badge") || html.contains("root_id"),
+        "graph HTML must surface root_id badge/data for workspace rows"
+    );
+    // Scoped to api — should not include onlyInB (web-only).
+    assert!(
+        !html.contains("onlyInB"),
+        "graph --workspace-root api must not include web-only symbols"
+    );
+}
+
+/// P0.4: --with-macro + multi-root workspace without root filter → clear reject.
+#[test]
+fn workspace_with_macro_multi_root_rejected() {
+    let (_base, root_a, _root_b, db) = two_root_ws("p0-macro-ws");
+    let out = run_raw(&[
+        "callers",
+        "createUser",
+        "--with-macro",
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(
+        !out.status.success(),
+        "with-macro + multi-root without filter must fail"
+    );
+    let err = stderr(&out).to_lowercase();
+    assert!(
+        err.contains("workspace") || err.contains("per-root") || err.contains("workspace-root"),
+        "clear error expected: {err}"
+    );
+
+    // Single-root filter is allowed (may succeed with empty sidecar union).
+    let ok = run_raw(&[
+        "callers",
+        "createUser",
+        "--with-macro",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(
+        ok.status.success(),
+        "with-macro + single root filter should be allowed: {}",
+        stderr(&ok)
+    );
+}
+
+/// P0.2: MCP schema parity — workspace_status + optional root filters default off.
+#[test]
+fn mcp_workspace_status_and_filter_schema() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let (_base, root_a, _b, db) = two_root_ws("p0-mcp-schema");
+    let mut child = Command::new(bin())
+        .arg("--root")
+        .arg(&root_a)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            stdin,
+            r#"{{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{{}}}}"#
+        )
+        .unwrap();
+    }
+    let out = child.wait_with_output().expect("mcp out");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("workspace_status"),
+        "workspace_status tool required: {text}"
+    );
+    assert!(
+        text.contains("root_id"),
+        "root_id filter args required on query tools: {text}"
+    );
+    assert!(
+        text.contains("workspace_db"),
+        "workspace_db filter args required: {text}"
+    );
+    let _ = db;
+}
+
+/// Missing root path → status marks `missing: true`.
+#[test]
+fn workspace_status_missing_root_path() {
+    let base = temp_dir("missing-path");
+    let root_a = base.join("api");
+    let root_b = base.join("web");
+    std::fs::create_dir_all(&root_a).unwrap();
+    std::fs::create_dir_all(&root_b).unwrap();
+    write_root_a(&root_a);
+    write_root_b(&root_b);
+    let db = base.join("ws.db");
+    let idx = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--force",
+    ]);
+    assert!(idx.status.success(), "{}", stderr(&idx));
+
+    // Delete web root path from disk.
+    std::fs::remove_dir_all(&root_b).unwrap();
+
+    let status = run_raw(&[
+        "workspace",
+        "status",
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(status.status.success(), "{}", stderr(&status));
+    let st = parse_json(&status);
+    let web = st["roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == "web")
+        .expect("web root listed");
+    assert_eq!(
+        web["missing"], true,
+        "missing root path must set missing=true: {web}"
+    );
+}

@@ -342,9 +342,41 @@ pub fn index_workspace(
                 references: 0,
                 subset_violations: 0,
                 languages: None,
+                exact_refs: 0,
+                heuristic_refs: 0,
+                dynamic_refs: 0,
+                index_seq: None,
+                missing: false,
+                promise_tier: None,
             })
             .collect();
-        store.set_workspace_roots_meta(&meta)?;
+        // Partial re-index must not drop sibling roots from meta.
+        // Merge: keep existing recorded roots not in this batch; overlay this batch.
+        let existing = store.workspace_roots_meta().unwrap_or_default();
+        let mut merged: Vec<WorkspaceRootInfo> = Vec::new();
+        for r in &meta {
+            let mut slot = r.clone();
+            if let Some(prev) = existing.iter().find(|p| p.id == slot.id) {
+                // Preserve counts until live overlay below; keep path/id.
+                slot.files = prev.files;
+                slot.symbols = prev.symbols;
+                slot.references = prev.references;
+                slot.subset_violations = prev.subset_violations;
+                slot.languages = prev.languages.clone();
+                slot.exact_refs = prev.exact_refs;
+                slot.heuristic_refs = prev.heuristic_refs;
+                slot.dynamic_refs = prev.dynamic_refs;
+                slot.index_seq = prev.index_seq;
+                slot.promise_tier = prev.promise_tier.clone();
+            }
+            merged.push(slot);
+        }
+        for prev in &existing {
+            if !merged.iter().any(|m| m.id == prev.id) {
+                merged.push(prev.clone());
+            }
+        }
+        store.set_workspace_roots_meta(&merged)?;
     }
 
     let mut per_root: Vec<WorkspaceRootInfo> = Vec::new();
@@ -390,28 +422,56 @@ pub fn index_workspace(
                 .map(|b| b.subset_violations)
                 .unwrap_or(0),
             languages: Some(stats.languages.clone()),
+            exact_refs: 0,
+            heuristic_refs: 0,
+            dynamic_refs: 0,
+            index_seq: None,
+            missing: false,
+            promise_tier: None,
         });
     }
 
-    // Refresh meta with final per-root counts.
+    // Refresh meta with final per-root counts (merge: do not drop sibling roots).
     {
         let store = Store::open(db_path)?;
-        store.set_workspace_roots_meta(&per_root)?;
+        let mut merged = store.workspace_roots_meta().unwrap_or_default();
+        for r in &per_root {
+            if let Some(slot) = merged.iter_mut().find(|m| m.id == r.id) {
+                slot.path = r.path.clone();
+                slot.files = r.files;
+                slot.symbols = r.symbols;
+                slot.references = r.references;
+                slot.subset_violations = r.subset_violations;
+                if r.languages.is_some() {
+                    slot.languages = r.languages.clone();
+                }
+            } else {
+                merged.push(r.clone());
+            }
+        }
         let live = store.root_status_rows()?;
-        // Keep recorded paths; overlay counts.
-        let mut merged = per_root;
         for live_r in live {
             if let Some(slot) = merged.iter_mut().find(|m| m.id == live_r.id) {
                 slot.files = live_r.files;
                 slot.symbols = live_r.symbols;
                 slot.references = live_r.references;
                 slot.subset_violations = live_r.subset_violations;
+                slot.exact_refs = live_r.exact_refs;
+                slot.heuristic_refs = live_r.heuristic_refs;
+                slot.dynamic_refs = live_r.dynamic_refs;
+                slot.index_seq = live_r.index_seq;
+                slot.missing = live_r.missing;
+                slot.promise_tier = live_r.promise_tier;
                 if live_r.languages.is_some() {
                     slot.languages = live_r.languages;
                 }
             }
         }
-        per_root = merged;
+        per_root = merged
+            .iter()
+            .filter(|m| roots.iter().any(|r| r.id == m.id) || m.files > 0 || !m.path.is_empty())
+            .cloned()
+            .collect();
         store.set_workspace_roots_meta(&per_root)?;
     }
 
@@ -451,6 +511,43 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
     let roots = store.root_status_rows()?;
     let stats = store.stats(db_path.to_string_lossy().as_ref())?;
     let workspace = store.is_workspace()? || roots.iter().any(|r| !r.id.is_empty());
+    let index_seq = store
+        .get_meta("index_seq")?
+        .and_then(|s| s.parse::<u64>().ok());
+    // Union sound promise = weakest selected root (any violation → disabled).
+    let (weakest_root, promise_tier) = {
+        let mut worst: Option<&crate::model::WorkspaceRootInfo> = None;
+        for r in &roots {
+            if r.subset_violations > 0 {
+                match worst {
+                    Some(w) if w.subset_violations >= r.subset_violations => {}
+                    _ => worst = Some(r),
+                }
+            }
+        }
+        if let Some(w) = worst {
+            (
+                Some(w.id.clone()),
+                Some(
+                    crate::index::subset::SoundPromiseTier::Disabled
+                        .as_str()
+                        .to_string(),
+                ),
+            )
+        } else if !roots.is_empty() {
+            let langs: Vec<String> = stats.languages.clone();
+            (
+                None,
+                Some(
+                    crate::index::subset::sound_promise_tier(true, &langs)
+                        .as_str()
+                        .to_string(),
+                ),
+            )
+        } else {
+            (None, None)
+        }
+    };
     Ok(WorkspaceStatus {
         db_path: db_path.to_string_lossy().into_owned(),
         workspace,
@@ -459,7 +556,11 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
         symbols: stats.symbols,
         references: stats.references,
         note: "per-root counts from root_id column; empty root_id = legacy single-root rows; \
-               --sound + workspace: subset_ok is per selected root (union = weakest root)"
+               --sound + workspace: subset_ok is per selected root (union = weakest root); \
+               macro sidecar is per-root at <root>/.agentgraph/index.macro.db"
             .to_string(),
+        index_seq,
+        promise_tier,
+        weakest_root,
     })
 }

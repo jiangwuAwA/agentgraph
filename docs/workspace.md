@@ -94,6 +94,20 @@ When the store has non-empty `root_id` values (workspace mode), query JSON rows
 include `root_id`. Without workspace flags, `find`/`callers`/`impact` **union
 all roots** and still tag each row with `root_id`.
 
+**Agent-facing polish (Track M4-W):**
+
+| Surface | Behavior |
+|---|---|
+| Default query JSON (find/callers/impact/diff/subset/sound) | Every row that can appear in a multi-root DB includes `root_id` (empty legacy rows serialize as `"default"`). Classic single-root path may omit `root_id`. |
+| `find` path display | Rows also carry `root_path` (recorded workspace root path) so agents do not confuse `src/main.ts` in two roots |
+| `workspace status` | Per-root `files`/`symbols`/`references`/`exact_refs`/`heuristic_refs`/`subset_violations` + `promise_tier` + `index_seq` + `missing:true` when the recorded path is gone; payload-level `promise_tier` + `weakest_root` (union sound = weakest root) |
+| Partial re-index | `index --workspace-root api --workspace-db ws.db` re-indexes/prunes **that** `root_id` only; sibling roots remain in the store and meta |
+| `graph` / `graph --sound` | Global `--workspace-root` filters the neighborhood; HTML nodes show a `root_id` badge (`data-root-id`) when present |
+| Nested roots | Allowed + warned on index; `workspace status` lists **both** roots. Resolution: each root stores **root-relative** paths under its own `root_id`; overlapping files are indexed twice (once per root) — not a shared identity |
+| Macro sidecar | **Per-root** `<root>/.agentgraph/index.macro.db`. `--with-macro` + multi-root workspace **without** a single `--workspace-root` filter is rejected with a clear error |
+| MCP | Tool `workspace_status`; `find_symbol`/`callers`/`impact`/`subset`/`graph_diff` accept optional `workspace_db` + `root_id` (default off) |
+| Watch | Remains classic `--root` (not multi-root rewrite) |
+
 ---
 
 ## Semantics
@@ -109,10 +123,11 @@ all roots** and still tag each row with `root_id`.
 | Query with multiple `--workspace-root` | Union of selected roots (rows tagged) |
 | `subset` / `--sound` | Per-root when filtered; **union = weakest root** (any violation → `subset_ok=false`) |
 | `stats` | Includes `by_root[]` when workspace rows exist |
-| `workspace status` | Per-root files/symbols/refs/subset_violations |
-| Macro sidecar | **Per-root path** `<each-root>/.agentgraph/index.macro.db` (unchanged M1). Workspace main index is single-db; sidecars stay per-root |
+| `workspace status` | Per-root files/symbols/refs/exact_refs/heuristic_refs/subset_violations + `promise_tier` + `index_seq` + `missing` |
+| Macro sidecar | **Per-root path** `<each-root>/.agentgraph/index.macro.db` (unchanged M1). Workspace main index is single-db; sidecars stay per-root. `--with-macro` + multi-root without root filter → **rejected** |
 | Diff snapshots | Workspace full index writes **per-root** sidecars `<root>/.agentgraph/refs.snapshot.<root_id>.json`; classic single-root keeps `refs.snapshot.json` |
 | Event dispatch edges | Linked **within** a root_id only (no cross-root emit↔on) |
+| Watch | Classic `--root` only (not multi-root) |
 
 ### `--sound` + workspace
 
@@ -129,6 +144,10 @@ Document as **per-root `subset_ok`**:
 
 Tool `workspace_status`: optional `workspace_db` / `workspace_root` args;
 returns the same payload as `agentgraph workspace status`.
+
+Query tools (`find_symbol`, `callers`, `impact`, `subset`, `graph_diff`) accept
+optional `workspace_db` + `root_id` (default off). `with_macro` + multi-root
+without `root_id` is rejected (sidecar is per-root).
 
 ---
 

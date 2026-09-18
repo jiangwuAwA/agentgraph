@@ -383,6 +383,7 @@ fn unit_edge_key_and_set_diff() {
         line: 2,
         confidence: "exact".into(),
         enclosing: Some("createUser".into()),
+        root_id: String::new(),
     };
     let mut b = a.clone();
     b.line = 10;

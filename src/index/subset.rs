@@ -223,6 +223,9 @@ pub struct SubsetViolation {
     pub path: String,
     pub line: usize,
     pub snippet: String,
+    /// Workspace multi-root id. Empty for classic single-root stores.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_id: String,
 }
 
 /// Result of scanning one file against S_js / S_rs.
@@ -287,6 +290,7 @@ fn push_v(
         path: path.to_string(),
         line,
         snippet: snippet.chars().take(120).collect(),
+        root_id: String::new(),
     });
 }
 

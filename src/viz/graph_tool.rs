@@ -144,11 +144,20 @@ fn outside_jail_msg(candidate: &Path, root: &Path) -> String {
     )
 }
 
+fn path_under_root(canon: &Path, root_canon: &Path) -> bool {
+    canon == root_canon || canon.starts_with(root_canon)
+}
+
 /// Resolve optional `out` under the MCP workspace root jail.
 ///
 /// Rejects `..` escapes and absolute paths outside the root (unless
-/// `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`). Creates parent dirs only after the
-/// path is confirmed under the root.
+/// `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`).
+///
+/// Windows reparse points (junction / file symlink):
+/// - Nearest **existing** ancestor is canonicalized **before** any `mkdir`
+///   (junction → refuse; do not create directories outside the jail).
+/// - If the resolved leaf already exists, its canonical path must also stay
+///   under the root (file symlink → refuse; write would follow the reparse).
 pub fn resolve_out_under_root(root: &Path, out: &str) -> Result<PathBuf> {
     let allow_any = std::env::var("AGENTGRAPH_MCP_ALLOW_ANY_ROOT")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -179,20 +188,44 @@ pub fn resolve_out_under_root(root: &Path, out: &str) -> Result<PathBuf> {
     // Absolute path outside root: refuse before mkdir.
     if raw.is_absolute() {
         let cand_n = crate::index::parser::normalize_root(&candidate);
-        let under = cand_n == root_canon || cand_n.starts_with(&root_canon);
-        if !under {
+        if !path_under_root(&cand_n, &root_canon) {
             let parent_ok = candidate
                 .parent()
                 .map(|p| {
                     p.exists()
-                        && crate::index::parser::normalize_root(
-                            &p.canonicalize().unwrap_or_else(|_| p.to_path_buf()),
+                        && path_under_root(
+                            &crate::index::parser::normalize_root(
+                                &p.canonicalize().unwrap_or_else(|_| p.to_path_buf()),
+                            ),
+                            &root_canon,
                         )
-                        .starts_with(&root_canon)
                 })
                 .unwrap_or(false);
             if !parent_ok {
                 bail!(outside_jail_msg(&candidate, &root_canon));
+            }
+        }
+    }
+
+    // Fail-closed **before** mkdir: nearest existing ancestor must jail-resolve
+    // under the workspace root. A directory junction pointing outside is
+    // refused here so create_dir_all cannot materialize dirs outside the jail.
+    {
+        let mut probe = candidate.as_path();
+        loop {
+            if probe.as_os_str().is_empty() {
+                break;
+            }
+            if probe.exists() {
+                let a_canon = crate::index::parser::normalize_root(&probe.canonicalize()?);
+                if !path_under_root(&a_canon, &root_canon) {
+                    bail!(outside_jail_msg(&candidate, &root_canon));
+                }
+                break;
+            }
+            match probe.parent() {
+                Some(p) if !p.as_os_str().is_empty() && p != probe => probe = p,
+                _ => break,
             }
         }
     }
@@ -203,13 +236,28 @@ pub fn resolve_out_under_root(root: &Path, out: &str) -> Result<PathBuf> {
         }
         if parent.exists() {
             let p_canon = crate::index::parser::normalize_root(&parent.canonicalize()?);
-            if p_canon != root_canon && !p_canon.starts_with(&root_canon) {
+            if !path_under_root(&p_canon, &root_canon) {
                 bail!(outside_jail_msg(&candidate, &root_canon));
             }
             let name = candidate
                 .file_name()
                 .ok_or_else(|| anyhow::anyhow!("out path missing file name"))?;
-            return Ok(p_canon.join(name));
+            let resolved = p_canon.join(name);
+            // Leaf reparse point (file symlink): write follows the link, so the
+            // canonical leaf must also stay under the root.
+            if resolved.exists() {
+                let f_canon = crate::index::parser::normalize_root(&resolved.canonicalize()?);
+                if !path_under_root(&f_canon, &root_canon) {
+                    bail!(outside_jail_msg(&resolved, &root_canon));
+                }
+            }
+            return Ok(resolved);
+        }
+    }
+    if candidate.exists() {
+        let f_canon = crate::index::parser::normalize_root(&candidate.canonicalize()?);
+        if !path_under_root(&f_canon, &root_canon) {
+            bail!(outside_jail_msg(&candidate, &root_canon));
         }
     }
     Ok(candidate)

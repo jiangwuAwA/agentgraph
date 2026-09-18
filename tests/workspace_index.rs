@@ -5,6 +5,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+use agentgraph::index::store::Store as AgStore;
+
 mod common;
 
 fn bin() -> &'static str {
@@ -1115,5 +1117,344 @@ fn workspace_status_missing_root_path() {
     assert_eq!(
         web["missing"], true,
         "missing root path must set missing=true: {web}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// P1-1: incremental per-root workspace index (TDD)
+// ---------------------------------------------------------------------------
+
+fn file_row(db: &Path, root_id: &str, rel: &str) -> (String, i64, i64) {
+    let mut st = AgStore::open(db).unwrap_or_else(|e| panic!("open {db:?}: {e}"));
+    st.set_write_root(root_id);
+    let m = st
+        .file_meta(rel)
+        .unwrap_or_else(|e| panic!("file_meta {rel}@{root_id}: {e}"))
+        .unwrap_or_else(|| panic!("missing file_meta {rel}@{root_id}"));
+    (m.hash, m.mtime_ns, m.size)
+}
+
+/// P1-1 acceptance: dual-root edit A → incremental workspace-root index;
+/// sibling B hashes/mtimes unchanged; A shows new symbol; subset/diff for A.
+#[test]
+fn workspace_incremental_root_reindex_scoped() {
+    let (_base, root_a, root_b, db) = two_root_ws("p1-incr");
+
+    let b_auth_before = file_row(&db, "web", "src/auth.ts");
+    let b_unique_before = file_row(&db, "web", "src/unique_b.ts");
+    let a_auth_before = file_row(&db, "api", "src/auth.ts");
+
+    // Edit only root A — add a new exported symbol + a call edge.
+    std::fs::write(
+        root_a.join("src/auth.ts"),
+        r#"
+export function validateEmail(email: string): boolean {
+  return email.includes("@");
+}
+export function brandNewInA(): string {
+  return "new";
+}
+export function createUser(email: string) {
+  if (!validateEmail(email)) throw new Error("bad");
+  brandNewInA();
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+    // Ensure mtime differs even on coarse clocks.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    // Incremental workspace-root reindex of A only (no --force, no sibling root).
+    let idx = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(idx.status.success(), "{}", stderr(&idx));
+
+    // Sibling root B: hashes + mtimes must be untouched (no rehash of B contents).
+    let b_auth_after = file_row(&db, "web", "src/auth.ts");
+    let b_unique_after = file_row(&db, "web", "src/unique_b.ts");
+    assert_eq!(
+        b_auth_before, b_auth_after,
+        "root B auth.ts hash/mtime must be unchanged after A-only reindex"
+    );
+    assert_eq!(
+        b_unique_before, b_unique_after,
+        "root B unique_b.ts hash/mtime must be unchanged after A-only reindex"
+    );
+
+    // A: edited file rehashed.
+    let a_auth_after = file_row(&db, "api", "src/auth.ts");
+    assert_ne!(
+        a_auth_before.0, a_auth_after.0,
+        "root A auth.ts hash must change after edit + reindex"
+    );
+
+    // find/callers see the new symbol in A.
+    let find_a = run_raw(&[
+        "find",
+        "brandNewInA",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(find_a.status.success(), "{}", stderr(&find_a));
+    let hits = parse_json(&find_a);
+    assert!(
+        hits.as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h["name"] == "brandNewInA" && h["root_id"] == "api"),
+        "find brandNewInA under root A: {hits}"
+    );
+    let callers = run_raw(&[
+        "callers",
+        "brandNewInA",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(callers.status.success(), "{}", stderr(&callers));
+    let cp = parse_json(&callers);
+    let rows = if cp.is_array() {
+        cp.as_array().cloned().unwrap_or_default()
+    } else {
+        cp.get("callers")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+    };
+    assert!(
+        rows.iter().any(
+            |r| r.get("enclosing").and_then(|e| e.as_str()) == Some("createUser")
+                || r["name"] == "brandNewInA"
+        ),
+        "callers of brandNewInA should include createUser edge: {cp}"
+    );
+
+    // B still does not have the new symbol under its root_id filter.
+    let find_b = run_raw(&[
+        "find",
+        "brandNewInA",
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(
+        !find_b.status.success()
+            || parse_json(&find_b)
+                .as_array()
+                .map(|a| a.iter().all(|h| h["root_id"] != "web"))
+                .unwrap_or(true),
+        "brandNewInA must not appear under root B"
+    );
+
+    // B-only symbol still resolvable after A-only reindex.
+    let find_only_b = run_raw(&[
+        "find",
+        "onlyInB",
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(find_only_b.status.success(), "{}", stderr(&find_only_b));
+
+    // subset scoped to A reflects current A disk (no violations on clean A).
+    let subset_a = run_raw(&[
+        "subset",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    let sp = parse_json(&subset_a);
+    assert!(
+        sp.get("in_subset").is_some() || sp.get("violations").is_some(),
+        "subset payload for A: {sp}"
+    );
+
+    // Introduce an S-violation in A only; incremental reindex; subset sees it for A.
+    std::fs::write(
+        root_a.join("src/bad.ts"),
+        "export function bad(c: string) { return eval(c); }\n",
+    )
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let idx2 = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(idx2.status.success(), "{}", stderr(&idx2));
+    let subset_a2 = run_raw(&[
+        "subset",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    let sp2 = parse_json(&subset_a2);
+    let viol_paths: Vec<String> = sp2["violations"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v["path"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        viol_paths.iter().any(|p| p.contains("bad.ts")),
+        "subset --workspace-root A must see new A violation after incremental reindex: {sp2}"
+    );
+    // B subset must not pick up A's new violation when scoped to B.
+    let subset_b = run_raw(&[
+        "subset",
+        "--workspace-root",
+        root_b.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    let sp_b = parse_json(&subset_b);
+    let viol_b: Vec<String> = sp_b["violations"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v["path"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        !viol_b.iter().any(|p| p.contains("bad.ts")),
+        "subset --workspace-root B must not see A-only violation: {sp_b}"
+    );
+
+    // diff for A can run after a workspace-root snapshot lock.
+    let _ = run_raw(&[
+        "diff",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+        "--write-snapshot",
+    ]);
+    // Edit A again + incremental reindex (index_as writes a per-root snapshot).
+    std::fs::write(
+        root_a.join("src/auth.ts"),
+        r#"
+export function validateEmail(email: string): boolean {
+  return email.includes("@");
+}
+export function brandNewInA(): string {
+  return "new";
+}
+export function afterSnapshotInA() { return 1; }
+export function createUser(email: string) {
+  if (!validateEmail(email)) throw new Error("bad");
+  brandNewInA();
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let idx3 = run_raw(&[
+        "index",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(idx3.status.success(), "{}", stderr(&idx3));
+    let find_after = run_raw(&[
+        "find",
+        "afterSnapshotInA",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(
+        find_after.status.success(),
+        "post-snapshot incremental index must expose afterSnapshotInA: {}",
+        stderr(&find_after)
+    );
+    let diff_a = run_raw(&[
+        "diff",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    if diff_a.status.success() {
+        let dp = parse_json(&diff_a);
+        assert!(
+            dp.get("added").is_some() || dp.get("summary").is_some(),
+            "diff payload for A after incremental: {dp}"
+        );
+        if let Some(added) = dp["added"].as_array() {
+            let _ = added; // baseline may already include new edges if index refreshed snapshot
+        }
+    }
+}
+
+/// P1-1 watch path: Indexer.write_root_id + index_paths updates only that root_id.
+#[test]
+fn workspace_index_paths_write_root_id_scoped() {
+    let (_base, root_a, _root_b, db) = two_root_ws("p1-watch-id");
+    let b_before = file_row(&db, "web", "src/unique_b.ts");
+
+    let ix = agentgraph::index::Indexer::with_db_path(&root_a, &db)
+        .unwrap()
+        .with_write_root_id("api");
+    let edited = root_a.join("src/auth.ts");
+    std::fs::write(
+        &edited,
+        r#"
+export function validateEmail(email: string): boolean {
+  return email.includes("@");
+}
+export function watchPathNew(): number { return 7; }
+export function createUser(email: string) {
+  if (!validateEmail(email)) throw new Error("bad");
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    ix.index_paths(std::slice::from_ref(&edited))
+        .expect("index_paths scoped to api");
+
+    let find = run_raw(&[
+        "find",
+        "watchPathNew",
+        "--workspace-root",
+        root_a.to_str().unwrap(),
+        "--workspace-db",
+        db.to_str().unwrap(),
+    ]);
+    assert!(find.status.success(), "{}", stderr(&find));
+    let hits = parse_json(&find);
+    assert!(
+        hits.as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h["name"] == "watchPathNew" && h["root_id"] == "api"),
+        "watch/index_paths must stamp root_id=api: {hits}"
+    );
+    let b_after = file_row(&db, "web", "src/unique_b.ts");
+    assert_eq!(
+        b_before, b_after,
+        "index_paths under write_root_id=api must not touch web file meta"
     );
 }

@@ -8,7 +8,8 @@ sound, not production sound, not a complete runtime graph.
 Related: [onboarding.md](onboarding.md) (5-min install → MCP `blast_radius`),
 [sound-subset.md](sound-subset.md), [workspace.md](workspace.md),
 [graph-diff.md](graph-diff.md), [eval-stock-boundary.md](eval-stock-boundary.md),
-[eval-agent-tasks.md](eval-agent-tasks.md) (public code-change task scores).
+[eval-agent-tasks.md](eval-agent-tasks.md) (public code-change task scores),
+[agent-goldens.md](agent-goldens.md) (P1-3 golden suites — stable-key release gate).
 
 ---
 
@@ -47,7 +48,7 @@ Stable helpers other tools may read — **do not rename** (勿改名):
 | payload keys `by_root` / `by_top_dir` | subset / blast_radius | Per-scope buckets (workspace roots / single-root top dirs) |
 | payload key `sound_eligible` | candidate rows | True only when that scope has 0 S violations |
 | payload key `example_command` | blast_radius (default window) | e.g. `impact <sym> --sound --workspace-root <id>` |
-| payload keys `baseline_stale` / `sidecar_stale` / `sidecar_exists` | status / stats / recipes | Honesty flags (never auto-refresh baseline; never create sidecar) |
+| payload keys `baseline_stale` / `sidecar_stale` / `sidecar_exists` | status / stats / recipes / MCP defaults | Honesty flags (never auto-refresh baseline; never create sidecar). **P1-2:** present by default on MCP `stats`, `blast_radius`, `who_calls`, `subset`, `graph_diff`, `macro_status` |
 | payload keys `root_id` / `root_path` | query rows | Workspace multi-root tagging |
 
 **Rust helpers** (do not rename):
@@ -77,6 +78,22 @@ full `agentgraph index` or lock current edges via `diff --write-snapshot`.
 
 `macro status` / `stats` / `workspace status` echo `sidecar_stale` /
 `sidecar_exists` via a cheap meta read — they **never** build the sidecar.
+
+**P1-2 MCP defaults:** the same flags appear on default (no extra flag) MCP
+payloads for `stats`, `blast_radius`, `who_calls`, `subset`, `graph_diff`,
+and `macro_status`. After a dirty `watch` / `index_paths`, `baseline_stale=true`
+is visible without reading docs. When no sidecar was built,
+`sidecar_exists=false` (never auto-created).
+
+**P1-1 workspace incremental:** after editing one multi-root package, reindex
+only that root — sibling file hashes/mtimes stay unchanged:
+
+```text
+agentgraph index --workspace-root ./packages/api --workspace-db ./ws.db
+agentgraph watch --workspace-root ./packages/api --workspace-db ./ws.db
+```
+
+See [workspace.md](workspace.md).
 
 ---
 

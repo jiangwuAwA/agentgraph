@@ -1,0 +1,6 @@
+{
+  "roots": [
+    { "id": "api", "path": "packages/api" },
+    { "id": "nn-ranker", "path": "packages/nn-ranker" }
+  ]
+}

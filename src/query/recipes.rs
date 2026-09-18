@@ -91,9 +91,11 @@ pub struct ScopedSoundGuidance {
     pub example_command: Option<String>,
     /// True when at least one candidate is sound-eligible.
     pub has_eligible: bool,
-    /// Honesty flags (P5) — mentioned in recommendation when true.
+    /// Honesty flags (P5 / P1-2) — mentioned in recommendation when true.
     pub baseline_stale: bool,
     pub sidecar_stale: bool,
+    /// P1-2: cheap sidecar existence (default payload key stability).
+    pub sidecar_exists: bool,
     /// One-liner to append to `recommendation` when window is default/disabled.
     pub guidance: String,
 }
@@ -251,6 +253,8 @@ pub fn build_scoped_sound_guidance(
         has_eligible: !eligible.is_empty(),
         baseline_stale,
         sidecar_stale,
+        // Overwritten by run_blast_radius with a live cheap sidecar_exists read.
+        sidecar_exists: false,
         guidance: parts.join("; "),
     }
 }
@@ -409,6 +413,11 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
             "sidecar_stale".into(),
             Value::Bool(scoped_sound.sidecar_stale),
         );
+        // P1-2: default payload always carries sidecar_exists (cheap meta read).
+        obj.insert(
+            "sidecar_exists".into(),
+            Value::Bool(scoped_sound.sidecar_exists),
+        );
         // Alias for muscle-memory with raw `impact` tool.
         obj.insert(
             "impact".into(),
@@ -512,6 +521,10 @@ pub fn build_who_calls_payload(
         "payload": payload,
         "recommendation": recommendation,
         "note": RECIPE_NOTE,
+        // P1-2 default honesty flags (overwritten by run_who_calls with live cheap reads).
+        "baseline_stale": false,
+        "sidecar_exists": false,
+        "sidecar_stale": false,
     })
 }
 
@@ -592,13 +605,14 @@ pub fn run_blast_radius(
     if sidecar_roots.is_empty() {
         sidecar_roots.push(indexer.root.clone());
     }
-    let (_sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+    let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
 
     // P0-4: default/disabled window → next legal commands + scoped candidates.
     let scoped_sound = if !decision.use_sound {
         let agg = scoped_sound_aggregation(store, rf, &languages, &violations);
-        let guidance =
+        let mut guidance =
             build_scoped_sound_guidance(&args.symbol, &agg, baseline_stale, sidecar_stale);
+        guidance.sidecar_exists = sidecar_exists;
         decision.recommendation = format!("{}; {}", decision.recommendation, guidance.guidance);
         guidance
     } else {
@@ -606,6 +620,7 @@ pub fn run_blast_radius(
         ScopedSoundGuidance {
             baseline_stale,
             sidecar_stale,
+            sidecar_exists,
             ..ScopedSoundGuidance::default()
         }
     };
@@ -698,14 +713,17 @@ pub fn run_who_calls(store: &Store, root_label: &str, args: &WhoCallsArgs) -> Re
     let subset_ok = violations.is_empty();
     let (promise_tier, _p) = select_sound_promise(subset_ok, &languages);
     let hits = store.callers_for_roles(&args.symbol, args.limit, ConfidenceFilter::Default, rf)?;
-    Ok(build_who_calls_payload(
+    let mut payload = build_who_calls_payload(
         &args.symbol,
         args.noisy,
         args.limit,
         &hits,
         subset_ok,
         promise_tier.as_str(),
-    ))
+    );
+    // P1-2: default who_calls payload carries live honesty flags (cheap meta).
+    crate::index::insert_stale_flags(&mut payload, store, std::path::Path::new(root_label))?;
+    Ok(payload)
 }
 
 #[cfg(test)]

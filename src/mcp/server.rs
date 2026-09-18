@@ -463,8 +463,15 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 Ok(ok_text(serde_json::to_string_pretty(&stats)?))
             }
             "stats" => {
-                let indexer = Indexer::new(&root)?;
-                let stats = indexer.stats()?;
+                // P1-2: default stats payload includes honesty flags (cheap meta reads).
+                let (indexer, _root_filter) = open_mcp_store(&root, &args)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let mut stats = store.stats(&indexer.root.to_string_lossy())?;
+                let (b, se, ss) = crate::index::cheap_honesty_flags(&store, &indexer.root)?;
+                stats.baseline_stale = b;
+                stats.sidecar_exists = se;
+                stats.sidecar_stale = ss;
                 Ok(ok_text(serde_json::to_string_pretty(&stats)?))
             }
             "workspace_status" => {
@@ -583,7 +590,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let languages = store.stats(&root.to_string_lossy())?.languages;
                     let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
                     let mapped: Vec<Value> = hits.iter().map(|r| r.to_query_json()).collect();
-                    let payload = json!({
+                    let mut payload = json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
                         "promise_tier": promise_tier.as_str(),
@@ -592,6 +599,8 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         "subset_violations": violations,
                         "callers": mapped,
                     });
+                    // P1-2: sound callers object carries default honesty flags.
+                    crate::index::insert_stale_flags(&mut payload, &store, &indexer.root)?;
                     let payload = mcp_print_rows(payload, &store)?;
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
@@ -828,7 +837,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     let (promise_tier, promise) = select_sound_promise(subset_ok, &languages);
                     // Always emit `at` on impact rows (caller symmetry); edge_role tagged.
                     let mapped: Vec<Value> = hits.iter().map(|n| n.to_query_json()).collect();
-                    let payload = serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "mode": "sound",
                         "subset_ok": subset_ok,
                         "promise_tier": promise_tier.as_str(),
@@ -837,6 +846,8 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         "subset_violations": violations,
                         "impact": mapped,
                     });
+                    // P1-2: sound impact object carries default honesty flags.
+                    crate::index::insert_stale_flags(&mut payload, &store, &indexer.root)?;
                     let payload = mcp_print_rows(payload, &store)?;
                     return Ok(ok_text(serde_json::to_string_pretty(&payload)?));
                 }
@@ -1041,7 +1052,11 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                          (baseline not auto-refreshed)"
                     );
                 }
-                let payload = mcp_print_rows(serde_json::to_value(&d)?, &store)?;
+                let mut payload = mcp_print_rows(serde_json::to_value(&d)?, &store)?;
+                // P1-2: ensure sidecar flags present even if EdgeDiff serialization lags.
+                if payload.get("sidecar_exists").is_none() {
+                    crate::index::insert_stale_flags(&mut payload, &store, &indexer.root)?;
+                }
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
             "related_files" => {

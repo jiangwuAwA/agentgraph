@@ -1061,6 +1061,228 @@ fn e2e_mcp_blast_radius_and_who_calls_tools() {
 }
 
 // ---------------------------------------------------------------------------
+// P1-2: default MCP payloads carry baseline_stale / sidecar_* (e2e)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn e2e_mcp_default_payloads_include_stale_flags_after_dirty_index_paths() {
+    use std::io::Write;
+    let root = temp_root("mcp-stale");
+    write_clean_js(&root);
+    let _ = run(&root, &["index", "--force"]);
+
+    // Dirty reindex (watch path): edit + index_paths → baseline_stale=true; no sidecar.
+    let indexer = agentgraph::index::Indexer::new(&root).unwrap();
+    assert!(
+        !agentgraph::index::diff::baseline_stale_flag(&indexer.open_store().unwrap()),
+        "full index must clear baseline_stale"
+    );
+    let edited = root.join("src/auth.ts");
+    std::fs::write(
+        &edited,
+        r#"
+export function validateEmail(email: string): boolean {
+  return email.includes("@");
+}
+export function dirtyExtra() { return 1; }
+export function createUser(email: string) {
+  if (!validateEmail(email)) throw new Error("bad");
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+    indexer
+        .index_paths(std::slice::from_ref(&edited))
+        .expect("dirty index_paths");
+    assert!(
+        agentgraph::index::diff::baseline_stale_flag(&indexer.open_store().unwrap()),
+        "index_paths must set baseline_stale"
+    );
+
+    let mut child = Command::new(bin())
+        .arg("--root")
+        .arg(&root)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mcp");
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msgs = concat!(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"stats","arguments":{}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"blast_radius","arguments":{"symbol":"createUser","depth":2}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"graph_diff","arguments":{}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"who_calls","arguments":{"symbol":"createUser","noisy":false}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"subset","arguments":{}}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"macro_status","arguments":{}}}"#,
+            "\n",
+        );
+        stdin.write_all(msgs.as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+    drop(child.stdin.take());
+    let out = child.wait_with_output().expect("mcp out");
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+
+    let mut saw_stats = false;
+    let mut saw_blast = false;
+    let mut saw_diff = false;
+    let mut saw_who = false;
+    let mut saw_subset = false;
+    let mut saw_macro = false;
+
+    for line in text.lines() {
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(id) = msg.get("id").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        let text_field = msg["result"]["content"][0]["text"].as_str().unwrap_or("");
+        if text_field.is_empty() {
+            continue;
+        }
+        let Ok(payload) = serde_json::from_str::<serde_json::Value>(text_field) else {
+            continue;
+        };
+        match id {
+            2 => {
+                saw_stats = true;
+                assert_eq!(
+                    payload["baseline_stale"], true,
+                    "MCP stats must default-include baseline_stale=true after dirty index_paths: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "MCP stats sidecar_exists=false when no sidecar built: {payload}"
+                );
+                assert!(
+                    payload.get("sidecar_stale").is_some(),
+                    "MCP stats must include sidecar_stale: {payload}"
+                );
+            }
+            3 => {
+                saw_blast = true;
+                assert_eq!(
+                    payload["baseline_stale"], true,
+                    "MCP blast_radius must default-include baseline_stale=true: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "MCP blast_radius sidecar_exists=false when none: {payload}"
+                );
+                assert!(
+                    payload.get("sidecar_stale").is_some(),
+                    "MCP blast_radius must include sidecar_stale: {payload}"
+                );
+            }
+            4 => {
+                saw_diff = true;
+                assert_eq!(
+                    payload["baseline_stale"], true,
+                    "MCP graph_diff must default-include baseline_stale=true: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "MCP graph_diff sidecar_exists=false when none: {payload}"
+                );
+            }
+            5 => {
+                saw_who = true;
+                assert_eq!(
+                    payload["baseline_stale"], true,
+                    "MCP who_calls must default-include baseline_stale=true: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "MCP who_calls sidecar_exists=false when none: {payload}"
+                );
+            }
+            6 => {
+                saw_subset = true;
+                assert_eq!(
+                    payload["baseline_stale"], true,
+                    "MCP subset must default-include baseline_stale=true: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "MCP subset sidecar_exists=false when none: {payload}"
+                );
+            }
+            7 => {
+                saw_macro = true;
+                assert!(
+                    payload.get("baseline_stale").is_some()
+                        || payload.get("sidecar_exists").is_some(),
+                    "MCP macro_status honesty flags: {payload}"
+                );
+                assert_eq!(
+                    payload["sidecar_exists"], false,
+                    "macro_status sidecar_exists=false when none: {payload}"
+                );
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_stats, "MCP stats response missing:\n{text}");
+    assert!(saw_blast, "MCP blast_radius response missing:\n{text}");
+    assert!(saw_diff, "MCP graph_diff response missing:\n{text}");
+    assert!(saw_who, "MCP who_calls response missing:\n{text}");
+    assert!(saw_subset, "MCP subset response missing:\n{text}");
+    assert!(saw_macro, "MCP macro_status response missing:\n{text}");
+}
+
+#[test]
+fn unit_blast_payload_includes_sidecar_exists_key() {
+    let d = decide_blast_window(false, Some("ws"));
+    let agg = aggregation(
+        SoundScopeKind::Root,
+        vec![candidate("api", SoundScopeKind::Root, true)],
+    );
+    let mut g = build_scoped_sound_guidance("createUser", &agg, false, false);
+    g.sidecar_exists = false;
+    let v = build_blast_radius_payload(BlastRadiusPayloadInput {
+        symbol: "createUser".into(),
+        depth: 3,
+        limit: 50,
+        nodes: vec![],
+        window: d,
+        promise_tier: "disabled".into(),
+        languages: vec![],
+        include_macro: false,
+        include_macro_reason: None,
+        stale: None,
+        scoped_sound: g,
+    });
+    assert!(
+        v.get("sidecar_exists").is_some(),
+        "blast_radius default payload must include sidecar_exists: {v}"
+    );
+    assert_eq!(v["sidecar_exists"], false);
+    assert!(v.get("baseline_stale").is_some());
+    assert!(v.get("sidecar_stale").is_some());
+}
+
+#[test]
+fn unit_who_calls_payload_defaults_include_stale_keys() {
+    let v = build_who_calls_payload("x", false, 10, &[], true, "ast_modeled");
+    assert!(v.get("baseline_stale").is_some(), "{v}");
+    assert!(v.get("sidecar_exists").is_some(), "{v}");
+    assert!(v.get("sidecar_stale").is_some(), "{v}");
+}
+
+// ---------------------------------------------------------------------------
 // Docs claims: recipe flags/commands must exist in clap
 // ---------------------------------------------------------------------------
 

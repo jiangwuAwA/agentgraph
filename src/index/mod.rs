@@ -57,6 +57,43 @@ pub fn cheap_sidecar_flags(root: &Path) -> (bool, bool) {
     }
 }
 
+/// Cheap P5 honesty flags for a store (and optional workspace roots).
+/// Returns `(baseline_stale, sidecar_exists, sidecar_stale)`.
+/// Never creates a macro sidecar; never refreshes the diff baseline.
+pub fn cheap_honesty_flags(
+    store: &store::Store,
+    classic_root: &Path,
+) -> Result<(bool, bool, bool)> {
+    let baseline_stale = diff::baseline_stale_flag(store);
+    let mut roots: Vec<PathBuf> = store
+        .workspace_roots_meta()?
+        .into_iter()
+        .filter(|r| !r.path.is_empty())
+        .map(|r| PathBuf::from(r.path))
+        .collect();
+    if roots.is_empty() {
+        roots.push(classic_root.to_path_buf());
+    }
+    let (sidecar_exists, sidecar_stale) = cheap_sidecar_flags_multi(&roots);
+    Ok((baseline_stale, sidecar_exists, sidecar_stale))
+}
+
+/// Insert default honesty flags into a JSON **object** payload (P1-2).
+/// Non-breaking additive keys: `baseline_stale`, `sidecar_exists`, `sidecar_stale`.
+pub fn insert_stale_flags(
+    payload: &mut serde_json::Value,
+    store: &store::Store,
+    classic_root: &Path,
+) -> Result<()> {
+    let (baseline_stale, sidecar_exists, sidecar_stale) = cheap_honesty_flags(store, classic_root)?;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("baseline_stale".into(), serde_json::json!(baseline_stale));
+        obj.insert("sidecar_exists".into(), serde_json::json!(sidecar_exists));
+        obj.insert("sidecar_stale".into(), serde_json::json!(sidecar_stale));
+    }
+    Ok(())
+}
+
 /// Aggregate cheap sidecar flags across one or more roots (OR of exists/stale).
 pub fn cheap_sidecar_flags_multi(roots: &[PathBuf]) -> (bool, bool) {
     let mut any_exists = false;
@@ -72,6 +109,10 @@ pub fn cheap_sidecar_flags_multi(roots: &[PathBuf]) -> (bool, bool) {
 pub struct Indexer {
     pub root: PathBuf,
     pub db_path: PathBuf,
+    /// Workspace multi-root id stamped on incremental writes from this indexer
+    /// (`watch` / classic `index` against a shared `--workspace-db`).
+    /// `None` → classic empty `root_id` (single-root stores).
+    pub write_root_id: Option<String>,
 }
 
 struct FileWork {
@@ -126,7 +167,11 @@ impl Indexer {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        Ok(Self { root, db_path })
+        Ok(Self {
+            root,
+            db_path,
+            write_root_id: None,
+        })
     }
 
     /// Indexer bound to an explicit shared SQLite path (workspace multi-root).
@@ -136,11 +181,26 @@ impl Indexer {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        Ok(Self { root, db_path })
+        Ok(Self {
+            root,
+            db_path,
+            write_root_id: None,
+        })
+    }
+
+    /// Bind this indexer's incremental writes to a workspace `root_id`
+    /// (watch / classic index on a shared store — P1-1).
+    pub fn with_write_root_id(mut self, root_id: impl Into<String>) -> Self {
+        self.write_root_id = Some(root_id.into());
+        self
     }
 
     pub fn open_store(&self) -> Result<store::Store> {
-        store::Store::open(&self.db_path)
+        let mut st = store::Store::open(&self.db_path)?;
+        if let Some(rid) = &self.write_root_id {
+            st.set_write_root(rid);
+        }
+        Ok(st)
     }
 
     /// `<root>/.agentgraph/index.macro.db` (optional P2 sidecar).
@@ -232,6 +292,7 @@ impl Indexer {
         let side = Indexer {
             root: expanded.clone(),
             db_path: db_path.clone(),
+            write_root_id: None,
         };
         let stats = side.index(force)?;
 
@@ -446,9 +507,10 @@ impl Indexer {
     /// incremental sid relink. Content hash remains the source of truth when
     /// metadata mismatches.
     ///
-    /// Classic single-root path: `root_id = ""`.
+    /// Classic single-root path: `root_id = ""` unless `write_root_id` is bound
+    /// (P1-1: watch / classic index against a shared workspace store).
     pub fn index(&self, force: bool) -> Result<IndexStats> {
-        self.index_as(force, "")
+        self.index_as(force, self.write_root_id.as_deref().unwrap_or(""))
     }
 
     /// Workspace multi-root: stamp rows with `root_id` and scope path ops to it.
@@ -1022,6 +1084,7 @@ impl Indexer {
 
         let root = self.root.clone();
         let db_path = self.db_path.clone();
+        let write_root_id = self.write_root_id.clone();
         let (tx, rx) = mpsc::channel::<IndexStats>();
         let (raw_tx, raw_rx) = mpsc::channel::<notify::Result<notify::Event>>();
 
@@ -1066,6 +1129,7 @@ impl Indexer {
                     let indexer = Indexer {
                         root: root.clone(),
                         db_path: db_path.clone(),
+                        write_root_id: write_root_id.clone(),
                     };
                     let result = if paths.is_empty() {
                         indexer.index(false)

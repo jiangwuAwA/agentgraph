@@ -84,19 +84,23 @@
 
 | 字段 | 内容 |
 |---|---|
+| **状态** | **done** |
 | **目标** | 与 docs_claims 同级：recipe/window/诚实字段回归不靠人记 |
 | **交付物** | `fixtures/eval-agent-goldens/` + `tests/agent_goldens.rs`；纳入 CI `cargo test` |
 | **验收** | 期望 JSON 锁 `window`/`edge_role`/`recommendation` 关键形态 |
 | **估** | 3–5 天 |
+| **交付 (this slice)** | **done:** `fixtures/eval-agent-goldens/`（public fixtures + `goldens.json`）+ `tests/agent_goldens.rs` + [docs/agent-goldens.md](agent-goldens.md)。recommendation 用 contains/regex，稳定键勿改名。 |
 
 ### P1-4 大 workspace 索引性能与预算文档
 
 | 字段 | 内容 |
 |---|---|
+| **状态** | **done** |
 | **目标** | 可预期：N 文件 × M root 的 index/status 量级与 soft SLO |
 | **交付物** | `docs/eval-query-p95.md` workspace 扩充；可选 `tests/query_p95` smoke（软门禁） |
 | **验收** | 文档含复现命令；与 operator 实测一致处标明 |
 | **估** | 1–2 天 |
+| **交付 (this slice)** | **done:** [eval-query-p95.md](eval-query-p95.md) workspace 扩充（机器/数字/复现/非 SLO 诚实）+ `tests/perf_workspace.rs` 软 smoke。 |
 
 ---
 

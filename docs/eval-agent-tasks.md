@@ -181,4 +181,6 @@ files. See [agent-recipes.md](agent-recipes.md).
 | `tests/agent_task_eval.rs` | fixture schema + harness invocation gate |
 
 Related: [agent-recipes.md](agent-recipes.md), [sound-subset.md](sound-subset.md),
-[noise-governance.md](noise-governance.md), [workspace.md](workspace.md).
+[noise-governance.md](noise-governance.md), [workspace.md](workspace.md),
+[agent-goldens.md](agent-goldens.md) (P1-3 recipe/window/honesty release gate),
+[eval-query-p95.md](eval-query-p95.md) (workspace perf budgets).

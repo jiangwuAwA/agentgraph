@@ -31,9 +31,22 @@ agentgraph index --workspace workspace.json --workspace-db /path/ws.db --force
 agentgraph index --workspace-root ./packages/api --workspace-root ./packages/web
 agentgraph index --workspace-root ./api --workspace-root ./web --workspace-db ./ws.db
 
+# P1-1 incremental: reindex ONE root into an existing shared store (no sibling rehash)
+agentgraph index --workspace-root ./packages/api --workspace-db ./ws.db
+# Manifest equivalent — only listed roots are walked; sibling root_id rows stay.
+agentgraph index --workspace workspace.json --workspace-root ./packages/api --workspace-db ./ws.db
+
 # Status
 agentgraph workspace status --workspace-db ./ws.db
 agentgraph workspace status --workspace workspace.json
+
+# Watch (P1-1): classic path bound to a workspace root_id
+# Preferred: single --workspace-root + shared db → events map path → root_id
+agentgraph watch --workspace-root ./packages/api --workspace-db ./ws.db
+# Also works: --root is that package + --workspace-db (records/matches root_id by path)
+agentgraph watch --root ./packages/api --workspace-db ./ws.db
+# Documented behavior: watch/index_paths stamp ONLY that root_id; sibling roots
+# are not rehashed and are not pruned. Deleted files under the watched root are pruned.
 
 # Queries — filter by root_id (union + tagged rows when omitted / multi-select)
 agentgraph find createUser --workspace-root ./packages/api --workspace-db ./ws.db
@@ -46,7 +59,7 @@ agentgraph diff --workspace-root ./packages/api --workspace-db ./ws.db
 | Flag | Meaning |
 |---|---|
 | `--workspace <manifest.json>` | Multi-root index / status / query DB resolution |
-| `--workspace-root <dir>` | Repeatable. Index: roots to ingest. Query: `root_id` filter |
+| `--workspace-root <dir>` | Repeatable. Index: roots to ingest. **Single root + existing store = incremental that root only.** Query/watch: `root_id` filter / write binding |
 | `--workspace-db <path>` | Explicit shared SQLite path (overrides defaults) |
 
 ### Manifest JSON
@@ -101,12 +114,12 @@ all roots** and still tag each row with `root_id`.
 | Default query JSON (find/callers/impact/diff/subset/sound) | Every row that can appear in a multi-root DB includes `root_id` (empty legacy rows serialize as `"default"`). Classic single-root path may omit `root_id`. |
 | `find` path display | Rows also carry `root_path` (recorded workspace root path) so agents do not confuse `src/main.ts` in two roots |
 | `workspace status` | Per-root `files`/`symbols`/`references`/`exact_refs`/`heuristic_refs`/`subset_violations` + `promise_tier` + `index_seq` + `missing:true` when the recorded path is gone; payload-level `promise_tier` + `weakest_root` (union sound = weakest root). **P4:** `sound_candidates[]` (eligible first) + `recommendation` + enriched `by_root[]` (`violations` / `top_kinds` / `promise_tier` / `sound_eligible`). **P5:** `baseline_stale`, `sidecar_exists`, `sidecar_stale` (cheap meta reads; never create sidecar / never refresh baseline) |
-| Partial re-index | `index --workspace-root api --workspace-db ws.db` re-indexes/prunes **that** `root_id` only; sibling roots remain in the store and meta |
+| Partial re-index (P1-1) | `index --workspace-root api --workspace-db ws.db` re-indexes **that** `root_id` only by hash/mtime; prunes deleted files **under that root_id**; sibling roots are **not** rehashed (their `files.hash` / `mtime_ns` stay unchanged). Meta merge keeps sibling roots. |
 | `graph` / `graph --sound` | Global `--workspace-root` filters the neighborhood; HTML nodes show a `root_id` badge (`data-root-id`) when present |
 | Nested roots | Allowed + warned on index; `workspace status` lists **both** roots. Resolution: each root stores **root-relative** paths under its own `root_id`; overlapping files are indexed twice (once per root) — not a shared identity |
 | Macro sidecar | **Per-root** `<root>/.agentgraph/index.macro.db`. `--with-macro` + multi-root workspace **without** a single `--workspace-root` filter is rejected with a clear error |
-| MCP | Tool `workspace_status`; `find_symbol`/`callers`/`impact`/`subset`/`graph_diff` accept optional `workspace_db` + `root_id` (default off) |
-| Watch | Remains classic `--root` (not multi-root rewrite) |
+| MCP | Tool `workspace_status`; `find_symbol`/`callers`/`impact`/`subset`/`graph_diff` accept optional `workspace_db` + `root_id` (default off). **P1-2:** default `stats`/`blast_radius`/`who_calls`/`subset`/`graph_diff`/`macro_status` payloads include `baseline_stale` / `sidecar_exists` / `sidecar_stale` when known |
+| Watch (P1-1) | `watch --workspace-root <dir> --workspace-db <db>` binds to that root's `root_id` (recorded id, else basename). Classic `watch --root <dir> --workspace-db <db>` maps the path to a recorded `root_id`. Watch event paths → `index_paths` scoped to that `root_id` only — sibling roots are not rehashed/pruned. Without workspace flags, classic single-root `root_id=''` is unchanged. |
 
 ---
 
@@ -128,7 +141,7 @@ all roots** and still tag each row with `root_id`.
 | Macro sidecar | **Per-root path** `<each-root>/.agentgraph/index.macro.db` (unchanged M1). Workspace main index is single-db; sidecars stay per-root. `--with-macro` + multi-root without root filter → **rejected** |
 | Diff snapshots | Workspace full index writes **per-root** sidecars `<root>/.agentgraph/refs.snapshot.<root_id>.json`; classic single-root keeps `refs.snapshot.json` |
 | Event dispatch edges | Linked **within** a root_id only (no cross-root emit↔on) |
-| Watch | Classic `--root` only (not multi-root) |
+| Watch (P1-1) | Maps event path → `root_id` → `index_paths` under that write root. `watch --workspace-root <dir> --workspace-db <db>` (or `--root <dir> --workspace-db` when the path is recorded) updates **only** that root_id. |
 
 ### `--sound` + workspace
 

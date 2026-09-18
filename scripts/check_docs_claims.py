@@ -239,6 +239,7 @@ DEFAULT_DOCS = [
     "docs/eval-query-p95.md",
     "docs/eval-stock-s-map.md",
     "docs/eval-agent-tasks.md",
+    "docs/agent-goldens.md",
     "docs/product-boundary-migration.md",
     "formal/TODO.md",
 ]

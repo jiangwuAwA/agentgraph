@@ -105,39 +105,92 @@ CI test: `tests/perf_m4_diff.rs`. Budgets asserted there: CLI `diff` cold/warm
 p95 &lt; 2s; `refresh_subset_for_paths` max &lt; 500 ms; `index_paths` dirty max
 &lt; 2s. Full-corpus scan is smoke-only (&lt; 30s).
 
-## Workspace multi-root smoke budget (M4-W polish)
+## Workspace multi-root performance budgets (P1-4)
 
-**Scope:** `index --workspace-root` ×2 + `workspace status` + a few root-filtered
-queries on a shared store. Soft SLO-style ceiling on a named fixture — **not** a
-production guarantee.
+**Scope:** operator-style multi-root `index --workspace-root` × N + `workspace
+status` + root-filtered `callers` on one shared SQLite store. These are
+**soft SLO-style ceilings on a named fixture + machine** — **not** production
+guarantees and **not** the callers/impact p95 SLO above.
 
-**Fixture:** 2 synthetic TypeScript roots × 100 files each (same shape as
-`scripts/gen_fixture.ps1 -N 100` under two roots).
+**Machine for the numbers below:** Windows 11 Pro 10.0.26200, x86_64,
+Intel Core i5-9300H @ 2.40GHz, 8 logical CPUs. Release binary (`cargo build
+--release`, LTO). Debug CI runners are slower; the test asserts **loose**
+ceilions only.
 
-| Path | Loose CI budget | Notes |
+### Fixtures
+
+| label | shape |
+|---|---|
+| 2×100 | `scripts/gen_fixture.ps1 -N 100` under two roots (`api`, `web`) — same `pkg*/f*.ts` + `helperN`/`mainN` shape |
+| 2×200 | same generator, `N=200` under `api2` / `web2` |
+| CI smoke | 2×80 TypeScript files generated in-test (`tests/perf_workspace.rs`) |
+
+### Budgets + this machine
+
+| Path | Loose budget | This machine (release CLI unless noted) |
 |---|---|---|
-| Workspace full index (2×100 files, release) | **&lt; 30s** (CI soft); smoke only | One shared SQLite + `root_id` |
-| `workspace status` (warm) | **&lt; 2s** CLI wall-clock (process spawn included) | Per-root counts + promise_tier + index_seq |
-| Root-filtered `find` / `callers` (warm, in-process) | **&lt; 50ms** p95 (same as classic query SLO) | SQL `root_id = ?` filter |
+| Workspace full index 2×100 files | **&lt; 30s** (CI soft) | warm CLI p50 **306 ms** / p95 **349 ms** (cold first-run ~5 s includes AV/image load — do not quote cold as steady-state) |
+| Workspace full index 2×200 files | record + soft &lt; 30s | warm CLI p50 **376 ms** / p95 **399 ms** |
+| `workspace status` 2×100 (warm CLI wall-clock, **process spawn included**) | **&lt; 5s** soft | p50 **318 ms** / p95 **523 ms** / max 523 ms — mostly spawn floor |
+| `workspace status` 2×200 (same) | record only | p50 **320 ms** / p95 **400 ms** |
+| Root-filtered `callers` 2×100 (CLI wall-clock, spawn included) | **&lt; 2s** soft | p50 **367 ms** / p95 **649 ms** / max 876 ms |
+| Union `callers` (no `--workspace-root`, both roots) 2×100 | record only | p50 **586 ms** / max ~3.1 s (variance; union + spawn) |
+| Root-filtered `callers` warm **in-process** (CI smoke 2×80, debug) | **&lt; 50ms** p95 | p50 **0.41 ms** / p95 **0.62 ms** |
+| `blast-radius` on workspace DB 2×100 (CLI) | record only | p50 **1183 ms** / p95 **1312 ms** (recipe + subset meta + spawn) |
+| `subset --workspace-db` 2×100 (CLI) | record only | p50 **1630 ms** / p95 **2626 ms** (corpus subset scan + spawn) |
 
-**Reproduce (operator smoke):**
+**CI smoke (debug `cargo test --test perf_workspace`):**
+
+| Path | Soft CI budget | Measured (debug, 2×80) |
+|---|---|---:|
+| Workspace index 2×80 | &lt; 30s | **558 ms** |
+| `workspace status` (CLI) | &lt; 5s | **148 ms** |
+| Root-filtered callers warm p95 (in-process) | &lt; 50ms | **0.62 ms** |
+
+### Reading the numbers honestly
+
+- **CLI wall-clock ≠ query latency.** On this Windows box process spawn +
+  image load is already ~250–300 ms. `status` / filtered `callers` CLI times
+  sit near that floor. Use `bench-query` / in-process store APIs for algorithm
+  cost; use CLI numbers only as operator end-to-end budgets.
+- **Cold first index is not the budget.** First binary use after AV/definition
+  updates can be multi-second. Steady-state warm `--force` reindex of these
+  tiny synthetic files is hundreds of milliseconds — still not a monorepo claim.
+- **Multi-root index ≈ sum of per-root classic indexes + one store open.**
+  Not a free lunch; not a cross-root type merge (see [workspace.md](workspace.md)).
+- **`subset` / `blast-radius` pay more** than raw `callers` because they read
+  subset/S-violation meta and build honesty payloads. Soft budgets stay loose.
+- Synthetic files are small and uniform. Real monorepos have larger ASTs, more
+  languages, antivirus variance, and colder SQLite page caches.
+- Global `--sound` on a multi-root workspace is still **weakest selected root**;
+  these perf numbers do **not** upgrade any soundness claim.
+
+### Reproduce
 
 ```bash
-# two-root workspace smoke (temp dirs; no private stock required)
+# CI soft gate (loose ceilings + prints p50/p95; writes target/perf_workspace_bench.md)
+cargo test --test perf_workspace -- --nocapture
+cargo test --release --test perf_workspace -- --nocapture   # optional release profile
+
+# Operator smoke (release CLI; temp dirs; no private stock)
 powershell -File scripts/gen_fixture.ps1 -N 100 -Out tmp/ws-smoke/api
 powershell -File scripts/gen_fixture.ps1 -N 100 -Out tmp/ws-smoke/web
 agentgraph index --workspace-root tmp/ws-smoke/api --workspace-root tmp/ws-smoke/web \
   --workspace-db tmp/ws-smoke/ws.db --force
 agentgraph workspace status --workspace-db tmp/ws-smoke/ws.db
-agentgraph find helper --workspace-root tmp/ws-smoke/api --workspace-db tmp/ws-smoke/ws.db
+agentgraph callers helper1 --workspace-root tmp/ws-smoke/api --workspace-db tmp/ws-smoke/ws.db
+agentgraph blast-radius helper1 --workspace-db tmp/ws-smoke/ws.db
+agentgraph subset --workspace-db tmp/ws-smoke/ws.db
 ```
 
-Honesty: numbers are fixture + machine local. Multi-root index cost is roughly
-the sum of per-root classic indexes plus one store open — not a free lunch, and
-not a claim about arbitrary monorepos.
+CI soft gate: `tests/perf_workspace.rs` (index + status + filtered callers
+ceilings). Functional multi-root fields stay in `tests/workspace_index.rs`.
+Operator paste template also lands in `target/perf_workspace_bench.md` after the
+smoke test.
 
-CI soft gate: extend `tests/workspace_index.rs` (status fields + partial reindex);
-full 2×100 timing stays operator smoke.
+**Non-SLO honesty:** none of the workspace rows above are release SLOs. They
+are fixture + machine + profile local soft budgets so regressions fail loudly
+in CI, not product latency guarantees.
 
 ## Related
 

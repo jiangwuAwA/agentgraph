@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::index::{llm, macro_map, union_callers, union_impact, Indexer, UnionOptions};
 use crate::model::ConfidenceFilter;
@@ -372,23 +372,58 @@ fn attach_stale_flags(
     store: &crate::index::store::Store,
     classic_root: &std::path::Path,
 ) -> Result<()> {
-    let baseline_stale = crate::index::diff::baseline_stale_flag(store);
-    let mut roots: Vec<PathBuf> = store
-        .workspace_roots_meta()?
-        .into_iter()
-        .filter(|r| !r.path.is_empty())
-        .map(|r| PathBuf::from(r.path))
-        .collect();
-    if roots.is_empty() {
-        roots.push(classic_root.to_path_buf());
+    crate::index::insert_stale_flags(payload, store, classic_root)
+}
+
+/// Resolve write `root_id` for incremental/watch against a shared workspace DB (P1-1).
+///
+/// - Watch + exactly one `--workspace-root` → that root's recorded id (or basename).
+/// - Classic `index`/`watch` + `--workspace-db` only → recorded id matching `--root`.
+/// - Multi-root index path (manifest / multiple roots) → `None` (uses `index_workspace`).
+/// - Classic single-root (no workspace flags) → `None`.
+fn resolve_write_root_id(
+    workspace_mode: bool,
+    workspace_flag: Option<&PathBuf>,
+    workspace_roots: &[PathBuf],
+    classic_root: &Path,
+    db_path: &Path,
+    allow_basename_fallback: bool,
+) -> Option<String> {
+    if !workspace_mode {
+        return None;
     }
-    let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&roots);
-    if let Some(obj) = payload.as_object_mut() {
-        obj.insert("baseline_stale".into(), serde_json::json!(baseline_stale));
-        obj.insert("sidecar_exists".into(), serde_json::json!(sidecar_exists));
-        obj.insert("sidecar_stale".into(), serde_json::json!(sidecar_stale));
+    if workspace_flag.is_some() || workspace_roots.len() > 1 {
+        return None;
     }
-    Ok(())
+    let candidate = workspace_roots
+        .first()
+        .cloned()
+        .unwrap_or_else(|| classic_root.to_path_buf());
+    if db_path.exists() {
+        if let Ok(st) = crate::index::store::Store::open(db_path) {
+            if let Ok(ids) = crate::index::workspace::resolve_filter_root_ids(
+                &st,
+                std::slice::from_ref(&candidate),
+            ) {
+                if let Some(id) = ids.into_iter().next() {
+                    let recorded = st
+                        .workspace_roots_meta()
+                        .map(|rs| rs.iter().any(|r| r.id == id))
+                        .unwrap_or(false);
+                    if recorded {
+                        return Some(id);
+                    }
+                    if allow_basename_fallback {
+                        return Some(id);
+                    }
+                }
+            }
+        }
+    }
+    if allow_basename_fallback {
+        return Some(crate::index::workspace::default_root_id(&candidate));
+    }
+    None
 }
 
 /// stderr one-liner when stale honesty flags are set (P5).
@@ -547,10 +582,33 @@ pub fn run(cli: Cli) -> Result<()> {
         workspace_db_flag.as_ref(),
         &workspace_roots,
     )?;
+    // P1-1: watch binds to a single --workspace-root when given; classic --root +
+    // --workspace-db maps to the recorded root_id for that path.
+    let watch_bind_root =
+        matches!(cli.command, Commands::Watch { .. }) && workspace_roots.len() == 1;
+    let indexer_root = if watch_bind_root {
+        workspace_roots[0].clone()
+    } else {
+        root.clone()
+    };
+    let allow_basename = watch_bind_root;
+    let write_root_id = resolve_write_root_id(
+        workspace_mode,
+        workspace_flag.as_ref(),
+        &workspace_roots,
+        &indexer_root,
+        &db_path,
+        allow_basename,
+    );
     let indexer = {
-        let mut ix = Indexer::new(&root)?;
+        let mut ix = Indexer::new(&indexer_root)?;
         if workspace_mode {
             ix.db_path = db_path.clone();
+        }
+        if let Some(rid) = write_root_id {
+            // Multi-root `index --workspace…` still goes through index_workspace
+            // (per-root Indexer); this binding drives watch / classic incremental.
+            ix.write_root_id = Some(rid);
         }
         ix
     };

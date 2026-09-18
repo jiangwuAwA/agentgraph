@@ -100,6 +100,12 @@ pub struct EdgeDiff {
     /// full-index baseline write. Diff baseline was **not** auto-refreshed.
     #[serde(default)]
     pub baseline_stale: bool,
+    /// P1-2: cheap macro-sidecar existence flag (never creates the sidecar).
+    #[serde(default)]
+    pub sidecar_exists: bool,
+    /// P1-2: cheap macro-sidecar fingerprint-stale flag.
+    #[serde(default)]
+    pub sidecar_stale: bool,
 }
 
 /// Meta key for the baseline-stale honesty flag (P5).
@@ -206,6 +212,8 @@ pub fn diff_edges(
         baseline_source: None,
         root_id: None,
         baseline_stale: false,
+        sidecar_exists: false,
+        sidecar_stale: false,
     }
 }
 
@@ -515,6 +523,20 @@ pub fn run_diff_for_root(
     }
     // P5: always report whether dirty reindex drifted after the last full snapshot.
     d.baseline_stale = baseline_stale_flag(store);
+    // P1-2: cheap sidecar honesty flags on the default graph_diff payload.
+    let mut sidecar_roots: Vec<PathBuf> = store
+        .workspace_roots_meta()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| !r.path.is_empty())
+        .map(|r| PathBuf::from(r.path))
+        .collect();
+    if sidecar_roots.is_empty() {
+        sidecar_roots.push(root.to_path_buf());
+    }
+    let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+    d.sidecar_exists = sidecar_exists;
+    d.sidecar_stale = sidecar_stale;
     let current_seq = store
         .get_meta("index_seq")?
         .and_then(|s| s.parse::<u64>().ok());

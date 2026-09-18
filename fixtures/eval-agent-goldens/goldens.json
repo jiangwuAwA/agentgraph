@@ -1,0 +1,206 @@
+{
+  "schema": "agentgraph.eval_agent_goldens.v1",
+  "description": "P1-3 Golden Agent Suites — public fixtures + expected key-shape locks for recipe/window/honesty regression. Recommendation text is locked via contains/regex substrings, not full-string equality.",
+  "non_claims": [
+    "window=sound is the ast_modeled engineering S gate, not ecosystem sound",
+    "note is always non-oversell: not a complete runtime graph",
+    "edge_role values are query-time tags, not runtime proof",
+    "recommendation contains are flexible — stable keys are locked, prose may grow",
+    "Not a private stock corpus; public synthetic fixtures only"
+  ],
+  "stable_keys_blast_radius": [
+    "window",
+    "promise_tier",
+    "subset_ok",
+    "recommendation",
+    "note",
+    "sound_candidates"
+  ],
+  "stable_keys_who_calls": [
+    "tool",
+    "symbol",
+    "noisy",
+    "window",
+    "subset_ok",
+    "promise_tier",
+    "high_freq_name",
+    "callers",
+    "implementors",
+    "implementor_count",
+    "recommendation",
+    "note"
+  ],
+  "note_must_contain": ["not a complete runtime graph"],
+  "note_must_not_contain": [
+    "zero-miss",
+    "zero missed",
+    "ecosystem sound",
+    "production sound",
+    "macro-complete",
+    "完整运行时图"
+  ],
+  "allowed_edge_roles": ["call", "implementor", "registration", "dynamic"],
+  "cases": [
+    {
+      "id": "blast-sound-clean-ts",
+      "fixture": "clean-ts",
+      "index": { "mode": "classic" },
+      "query": { "tool": "blast_radius", "symbol": "createUser", "args": ["--depth", "3"] },
+      "expect": {
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier_in": ["ast_modeled"],
+        "recommendation_contains": ["subset_ok", "sound"],
+        "recommendation_not_contains": ["--sound --workspace-root"],
+        "sound_candidates_is_array": true,
+        "include_macro": false,
+        "nodes_is_array": true
+      }
+    },
+    {
+      "id": "blast-default-dirty-eval-js",
+      "fixture": "dirty-eval-js",
+      "index": { "mode": "classic" },
+      "query": { "tool": "blast_radius", "symbol": "helper", "args": ["--depth", "3"] },
+      "expect": {
+        "window": "default",
+        "subset_ok": false,
+        "promise_tier_in": ["disabled"],
+        "window_not_in": ["sound", "recall"],
+        "recommendation_present": true,
+        "recommendation_regex_any": ["(?i)disabled|violat|default"],
+        "sound_candidates_is_array": true,
+        "if_recommendation_mentions_recall_then_must_prohibit": true
+      }
+    },
+    {
+      "id": "blast-dirty-multiroot-scoped-recommendation",
+      "fixture": "dirty-multi-root",
+      "index": {
+        "mode": "workspace",
+        "workspace_manifest": "workspace.json"
+      },
+      "query": {
+        "tool": "blast_radius",
+        "symbol": "createUser",
+        "args": ["--depth", "3", "--workspace", "workspace.json"]
+      },
+      "expect": {
+        "window": "default",
+        "subset_ok": false,
+        "window_not_in": ["sound", "recall"],
+        "recommendation_present": true,
+        "recommendation_contains": ["api", "--sound --workspace-root", "impact", "createUser"],
+        "recommendation_not_contains": ["window=sound"],
+        "sound_candidates_first_root_id": "api",
+        "sound_candidates_has_eligible": "api",
+        "example_command_contains": ["impact", "createUser", "--sound", "--workspace-root", "api"],
+        "if_recommendation_mentions_recall_then_must_prohibit": true
+      }
+    },
+    {
+      "id": "blast-scoped-clean-root-sound",
+      "fixture": "dirty-multi-root",
+      "index": {
+        "mode": "workspace",
+        "workspace_manifest": "workspace.json",
+        "reuse_index_of": "blast-dirty-multiroot-scoped-recommendation"
+      },
+      "query": {
+        "tool": "blast_radius",
+        "symbol": "createUser",
+        "args": [
+          "--depth",
+          "3",
+          "--workspace",
+          "workspace.json",
+          "--workspace-root",
+          "api"
+        ]
+      },
+      "expect": {
+        "window": "sound",
+        "subset_ok": true,
+        "recommendation_not_contains": ["--sound --workspace-root"]
+      }
+    },
+    {
+      "id": "who-calls-implementors-split-rust-trait",
+      "fixture": "rust-trait",
+      "index": { "mode": "classic" },
+      "query": { "tool": "who_calls", "symbol": "area", "args": [] },
+      "expect": {
+        "tool": "who_calls",
+        "noisy": false,
+        "high_freq_name": false,
+        "window": "default",
+        "implementor_count_min": 1,
+        "callers_edge_role_not": ["implementor"],
+        "implementors_edge_role_any": ["implementor"],
+        "recommendation_contains": ["high_freq_name=", "implementor"],
+        "note_must_contain": ["not a complete runtime graph"]
+      }
+    },
+    {
+      "id": "who-calls-high-freq-fmt-flood",
+      "fixture": "rust-fmt-flood",
+      "index": { "mode": "classic" },
+      "query": { "tool": "who_calls", "symbol": "fmt", "args": ["--limit", "50"] },
+      "expect": {
+        "tool": "who_calls",
+        "high_freq_name": true,
+        "noisy": false,
+        "implementor_count_min": 20,
+        "callers_edge_role_not": ["implementor"],
+        "recommendation_contains": ["high_freq_name=true"],
+        "implementors_truncated_if_count_gt": { "threshold": 20, "field": "implementors_truncated", "value": true }
+      }
+    },
+    {
+      "id": "who-calls-noisy-merges-rust-trait",
+      "fixture": "rust-trait",
+      "index": { "mode": "classic" },
+      "query": { "tool": "who_calls", "symbol": "area", "args": ["--noisy"] },
+      "expect": {
+        "noisy": true,
+        "callers_edge_role_any": ["implementor"],
+        "recommendation_contains": ["noisy=true"]
+      }
+    },
+    {
+      "id": "callers-edge-role-registration-router",
+      "fixture": "ts-router-reg",
+      "index": { "mode": "classic" },
+      "query": { "tool": "callers", "symbol": "getUsers", "args": [] },
+      "expect": {
+        "any_row_edge_role_any": ["registration"],
+        "all_row_edge_roles_in": ["call", "implementor", "registration", "dynamic"]
+      }
+    },
+    {
+      "id": "callers-edge-role-registration-nest",
+      "fixture": "ts-nest-reg",
+      "index": { "mode": "classic" },
+      "query": { "tool": "callers", "symbol": "AppService", "args": [] },
+      "expect": {
+        "any_row_edge_role_any": ["registration"],
+        "all_row_edge_roles_in": ["call", "implementor", "registration", "dynamic"]
+      }
+    },
+    {
+      "id": "who-calls-implementors-go-iface",
+      "fixture": "go-iface",
+      "index": { "mode": "classic" },
+      "query": { "tool": "who_calls", "symbol": "Get", "args": [] },
+      "expect": {
+        "tool": "who_calls",
+        "high_freq_name": true,
+        "recommendation_contains": ["high_freq_name="],
+        "note_must_contain": ["not a complete runtime graph"],
+        "implementor_count_min": 0,
+        "callers_edge_role_not": ["implementor"],
+        "if_implementors_present_edge_role_any": ["implementor"]
+      }
+    }
+  ]
+}

@@ -40,3 +40,9 @@ replay trajectories under [`evals/agent-ab/`](../../evals/agent-ab/)
 [`evals/agent-ab-live/`](../../evals/agent-ab-live/) — host-session LLM
 (`mimo-desktop-host-session`), **not** a public benchmark lab. Honesty limits:
 [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md).
+
+**P0-5c (multi-runner hard tasks):** harder fixtures under
+[`fixtures/eval-agent-tasks-hard/`](../eval-agent-tasks-hard/) — cross-crate
+blast, real-noise, sound-scoped sibling, multi-root wrong-root. Trajectories:
+[`evals/agent-ab-c/`](../../evals/agent-ab-c/). Protocol:
+[docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md) § P0-5c.

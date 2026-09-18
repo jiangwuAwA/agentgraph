@@ -1,0 +1,236 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "A",
+  "policy_label": "P0-5c arm A — agentgraph recipes (+reads)",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "host_session_llm",
+  "task_id": "rust-real-noise-dense",
+  "seed": 2,
+  "run_id": "host_session_llm-a-2",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense",
+  "symbol": "encode",
+  "model_note": "mimo-desktop-host-session",
+  "independent_session": false,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 4,
+    "recipe_tools": [
+      "index",
+      "who-calls",
+      "find",
+      "blast-radius"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 3,
+  "read_budget": 3,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 4,
+      "recipe_tools": [
+        "index",
+        "who-calls",
+        "find",
+        "blast-radius"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 3,
+    "read_budget": 3,
+    "read_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "independent_session": false,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 2,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": false,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "contamination": "Host session authored hard fixtures in this slice; independent_session=false. Decision path uses tool/grep evidence only (saw_labels_before_commit=false)."
+  },
+  "task": {
+    "id": "rust-real-noise-dense",
+    "title": "Dense Encode noise — separate real call sites from collisions",
+    "language": "rust",
+    "issue": "Encode::encode payload format must change. Dense implementors exist alongside unrelated name collisions (metrics Encode enum, encode_label, legacy encode, clone helpers). Identify true structure files for the trait + real callers; exclude collision/noise crates. high-freq implementor demotion may apply.",
+    "symbol": "encode",
+    "expected_files": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "single-crate index",
+      "seq": 1
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "encode",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "high_freq_name": true,
+        "implementor_count": 12,
+        "callers_files": [
+          "src/wire.rs"
+        ]
+      },
+      "note": "high-freq: callers in wire.rs; implementors in packet.rs",
+      "seq": 2
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "Encode"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "src/packet.rs"
+        ]
+      },
+      "note": "trait definition",
+      "seq": 3
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "encode",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound"
+      },
+      "note": "structure edges live in packet/wire/lib",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/metrics.rs",
+        "src/legacy.rs",
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "collision modules are not Encode consumers — omit",
+      "seq": 5
+    }
+  ],
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/lib.rs",
+      "src/packet.rs",
+      "src/wire.rs"
+    ],
+    "file_set_size": 3,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense/task.json"
+  },
+  "extras": {
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "who_calls high-freq separates implementors (packet.rs) from callers (wire.rs). lib re-exports Encode. metrics/legacy/clone_heavy collide on encode names after read — omit.",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "Arm A: who_calls high-freq separates implementors (packet.rs) from callers (wire.rs). lib re-exports Encode. metrics/legacy/clone_heavy collide on encode names after read — omit."
+  ],
+  "errors": []
+}

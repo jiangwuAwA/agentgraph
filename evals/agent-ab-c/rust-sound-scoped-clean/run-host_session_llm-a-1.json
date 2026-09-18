@@ -1,0 +1,250 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "A",
+  "policy_label": "P0-5c arm A — agentgraph recipes (+reads)",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "host_session_llm",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 1,
+  "run_id": "host_session_llm-a-1",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "mimo-desktop-host-session",
+  "independent_session": false,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 5,
+    "recipe_tools": [
+      "index",
+      "blast-radius",
+      "find",
+      "who-calls",
+      "subset"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 2,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 5,
+      "recipe_tools": [
+        "index",
+        "blast-radius",
+        "find",
+        "who-calls",
+        "subset"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 2,
+    "read_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "independent_session": false,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 1,
+    "task_order": [
+      "rust-cross-crate-blast",
+      "ts-multi-root-client",
+      "rust-real-noise-dense",
+      "rust-sound-scoped-clean"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": false,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "contamination": "Host session authored hard fixtures in this slice; independent_session=false. Decision path uses tool/grep evidence only (saw_labels_before_commit=false)."
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "workspace index",
+      "seq": 1
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "batch_write",
+        "--depth",
+        "3",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": false
+      },
+      "note": "union not sound — do not claim sound",
+      "seq": 2
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "packages/clean"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/clean/src/write.rs"
+        ]
+      },
+      "note": "scoped find on clean root",
+      "seq": 3
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "batch_write",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/clean/src/lib.rs"
+        ]
+      },
+      "note": "clean caller only; dirty shadow is not batch_write",
+      "seq": 4
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "in_subset": false
+      },
+      "note": "legacy unsafe disables union S; scoped candidates on clean",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/lib.rs",
+        "packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "dirty is unsafe sibling + name noise — not symbol review files",
+      "seq": 6
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json"
+  },
+  "extras": {
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Scoped find/who-calls on clean: write.rs definition + lib.rs caller. window=default / subset_ok=false — recommend scoped sound on clean; do not claim union sound. dirty/* name collisions omitted from review set.",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "Arm A: Scoped find/who-calls on clean: write.rs definition + lib.rs caller. window=default / subset_ok=false — recommend scoped sound on clean; do not claim union sound. dirty/* name collisions omitted from review set."
+  ],
+  "errors": []
+}

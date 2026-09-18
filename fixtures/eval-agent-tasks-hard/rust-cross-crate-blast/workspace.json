@@ -1,0 +1,20 @@
+{
+  "roots": [
+    {
+      "id": "core",
+      "path": "packages/core"
+    },
+    {
+      "id": "api",
+      "path": "packages/api"
+    },
+    {
+      "id": "tools",
+      "path": "packages/tools"
+    },
+    {
+      "id": "web",
+      "path": "packages/web"
+    }
+  ]
+}

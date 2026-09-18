@@ -1,4 +1,4 @@
-# Agent baseline evals — scripted tool-policy A/B/C (P0-5) + live host-session A/B (P0-5b)
+# Agent baseline evals — scripted tool-policy A/B/C (P0-5) + live host-session A/B (P0-5b) + multi-runner hard A/B (P0-5c)
 
 **Status:**
 
@@ -11,10 +11,17 @@
   (`model_note=mimo-desktop-host-session`) — **not** a public benchmark model,
   **not** a standardized lab harness. We do **not** fabricate LLM numbers;
   only scored, recorded trajectories appear below.
+- **P0-5c (multi-runner hard):** independent-session protocol + **harder**
+  public fixtures + **≥2 runner kinds** + extended metrics (MCP call counts,
+  workspace-root choice, file/read budgets) — trajectories under
+  [`evals/agent-ab-c/`](../evals/agent-ab-c/). **Label (mandatory):**
+  `host_session_llm` is still **not** a public benchmark model / multi-model
+  lab; `scripted_external_runner` is **not** a live LLM. **No oversell**
+  that live A “beats” B as a product proof.
 
 Related: [eval-agent-tasks.md](eval-agent-tasks.md) (P0-1 structure-fact
 scores vs name-grep), [agent-recipes.md](agent-recipes.md),
-[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 / P0-5b card).
+[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 / P0-5b / P0-5c card).
 
 ---
 
@@ -390,3 +397,152 @@ trajectory replay so a future live run can drop into the same scorer.
 Related: [agent-recipes.md](agent-recipes.md), [eval-agent-tasks.md](eval-agent-tasks.md),
 [noise-governance.md](noise-governance.md), [workspace.md](workspace.md),
 [sound-subset.md](sound-subset.md).
+
+---
+
+## P0-5c — multi-runner live对照 on hard public tasks
+
+**Question:** on **harder** public fixtures, do runner kinds / arms separate on
+structure-fact **noise** and **extended process metrics** (MCP calls,
+workspace-root choice, budgets) — without fabricating a multi-model lab?
+
+### Independent session requirements (protocol)
+
+| Requirement | How this slice implements it | Residual limit |
+|---|---|---|
+| Fresh context | Each arm/seed is a **separate trajectory JSON**; no shared intermediate file-set state between arms | `host_session_llm` still shares the MiMo Desktop session that authored fixtures |
+| **No access to `task.json` expected/golden before file-set commit** | `write` emits **empty labels + unstamped score**; `stamp` fills structure facts **after** commitment. Trajectories record `saw_labels_before_commit=false` on the decision path | Host session **authored** hard fixtures in this slice ⇒ residual contamination (disclosed) |
+| Arm isolation | Arm **A never greps-only** (must invoke agentgraph recipes); Arm **B never agentgraph** (walk/grep/read only). Enforced in tests | Same host process for `host_session_llm` arms; isolation is **tool-policy** isolation, not separate machines |
+| Task-level randomization order recorded | `evals/agent-ab-c/task_randomization.json` records per-seed `task_order` + `arm_order` (A→B vs B→A by seed parity) | Not a full counterbalanced lab design |
+
+### Runner kinds (≥2)
+
+| `runner_id` | kind | `model_note` | `independent_session` | what it is |
+|---|---|---|---|---|
+| `host_session_llm` | `live_llm_agent` | `mimo-desktop-host-session` | **false** | Live host-session decisions from tool/grep evidence on hard fixtures |
+| `scripted_external_runner` | `scripted_external_runner` | `scripted_deterministic_policy` | **true** (decision path) | P0-5 policy A/B executed as an external deterministic runner on hard fixtures |
+
+Optional third (isolated subagents without labels) is **not shipped** on this
+host — labeled incomplete rather than invented.
+
+**Not multi-model:** only one live host-session model note is recorded. We do
+**not** fabricate a second lab model id.
+
+### Larger N protocol
+
+- **Documented target:** N≥5 seeds per runner×task×arm for a lab-grade slice.
+- **Honest on this host:** seeds **0,1,2** recorded (N=3) for both runners ×
+  4 hard tasks × arms A/B = **48/48** trajectories (complete for N=3).
+  Seeds are protocol parity / order randomization; host-session decisions are
+  largely seed-invariant given the same tool evidence. **N≥5 remains open.**
+
+### Harder public tasks
+
+Fixtures: [`fixtures/eval-agent-tasks-hard/`](../fixtures/eval-agent-tasks-hard/)
+
+| task_id | stress | multi-root | notes |
+|---|---|---|---|
+| `rust-cross-crate-blast` | cross-crate symbol blast + name collision | yes | true dependents core+api; tools/web noise |
+| `rust-real-noise-dense` | dense implementors + encode name collisions | no | metrics/legacy/clone_heavy noise |
+| `rust-sound-scoped-clean` | sound-disabled dirty sibling + clean scoped root | yes | union not sound; scoped `clean` |
+| `ts-multi-root-client` | multi-root TS wrong-root + help/docs noise | yes | registry+service true; cli/docs noise |
+
+Each task ships `task.json` with `expected.files_that_matter`, `noise_files`,
+`forbidden_files`, multi-root `correct_workspace_roots`, and honesty notes.
+
+### Extended metrics (per run JSON)
+
+| metric | definition |
+|---|---|
+| structure-fact recall / extra-noise | existing P0-5 offline scorer |
+| `mcp_or_cli_calls` | `{count, recipe_tools[], grep_count}` — recipe tools for A; grep counts for B (A typically `grep_count=0`) |
+| `chose_correct_workspace_root` | `true`/`false` on multi-root tasks when recorded; **`null` (n/a)** on single-root or when arm has no workspace-root choice |
+| `file_budget` | \|file_set\| |
+| `read_budget` | files opened (from read tool args) or `null` if not recorded |
+| `approx_tokens` | runner-reported or **`null`** — **never invented** |
+| `runner_id`, `model_note` | who produced the run |
+| `independent_session` | bool (see runner table) |
+| `saw_labels_before_commit` | **`false`** — decision path did not read expected labels |
+| `task_randomization` | per-seed task/arm order |
+
+### Score table — recorded hard-task runs only
+
+Mean over recorded trajectories (N=3 seeds; **no invented cells**).
+Offline: `python scripts/eval_agent_ab_c.py score --traj-dir evals/agent-ab-c`
+
+| runner | arm | runs | recall | extra-noise | file_budget | mean MCP/CLI calls | cwr true/false/na | independent |
+|---|---|---:|---:|---:|---:|---:|---|---|
+| `host_session_llm` | A | 12 | **1.00** | **0.00** | 3.25 | 4.5 | 9 / 0 / 3 | **false** |
+| `host_session_llm` | B | 12 | **1.00** | **1.50** | 4.75 | 0.0 (grep only) | 0 / 0 / 12 | **false** |
+| `scripted_external_runner` | A | 12 | **0.9375** | **0.25** | 5.00 | 6.0 | 9 / 0 / 3 | **true** (decision path) |
+| `scripted_external_runner` | B | 12 | **1.00** | **3.25** | 6.50 | 0.0 | 0 / 9 / 3 | **true** (decision path) |
+
+`cwr` = `chose_correct_workspace_root`; `na` = null (single-root task or no
+workspace-root choice). `approx_tokens` **null** in all recorded runs.
+
+#### What the hard-task numbers say (honest)
+
+- **Scripted external runner separates on noise:** A mean extra-noise **0.25**
+  vs B **3.25** on hard fixtures (token/same-dir policies pull collision files
+  that structure recipes exclude). This is a **scripted tool-policy** result —
+  **not** a live LLM product proof.
+- **Host-session slice also separates on these hard fixtures** (A noise 0.00 vs
+  B 1.50). **We do not oversell** this as multi-model / independent-lab proof:
+  `independent_session=false`, same session authored fixtures, N=3, public
+  synthetic mini-repos only.
+- **Scripted A recall 0.9375:** on `ts-multi-root-client`, recipe assembly
+  missed `packages/registry/src/index.ts` (re-export) and also recorded
+  package-relative path aliases (`src/...`) alongside workspace paths — honest
+  path-normalization gap on multi-root fixtures, not a claimed product win.
+- **Workspace-root metric:** scripted/host A used scoped `--workspace-root` on
+  multi-root tasks (cwr true 9/9 multi-root A runs). Scripted B pulled wrong-root
+  noise (cwr false 9/9 multi-root B runs). Host B cwr is **n/a** (no workspace
+  tool args; path-grep only).
+- **Budget metrics:** A keeps smaller `file_budget` than B on host-session means
+  (3.25 vs 4.75) and scripted means (5.0 vs 6.5). `read_budget` recorded from
+  read calls where present; `approx_tokens` remains null.
+- **No claim** that live A beats B on production monorepos, ecological soundness,
+  or any private corpus. **No private corpus paths** in fixtures or trajectories.
+
+### P0-5c honest limits (required)
+
+- **Not a multi-model lab:** one live `model_note` only. Scripted runner is
+  not a second LLM.
+- **Host-session contamination disclosed:** fixture authorship + live decisions
+  share a session; `independent_session=false` for `host_session_llm`.
+- **N=3 recorded** (target protocol N≥5) — incomplete vs lab target, labeled.
+- **Hard fixtures are still public synthetic** mini-repos — scores do not
+  transfer to production monorepo precision.
+- **Arm isolation is tool-policy isolation** (A recipes vs B grep/read), not
+  separate machines/API keys for live arms.
+- **No oversell:** these rows document an honest multi-runner protocol +
+  replayable hard-task trajectories. They are **not** “Agent+MCP product
+  superiority” proof.
+
+### P0-5c reproduce
+
+```bash
+# write (host_session decisions + scripted external runner on hard fixtures)
+python scripts/eval_agent_ab_c.py write --seeds 0,1,2 --bin target/debug/agentgraph.exe
+# stamp offline after file-set commitment
+python scripts/eval_agent_ab_c.py stamp --traj-dir evals/agent-ab-c
+# offline replay (structure-fact + extended metrics)
+python scripts/eval_agent_ab_c.py score --traj-dir evals/agent-ab-c
+cargo test --test agent_ab_c_eval
+```
+
+Harness: [`scripts/eval_agent_ab_c.py`](../scripts/eval_agent_ab_c.py)
+(`write` / `stamp` / `score` / `--runner`).
+Trajectories: [`evals/agent-ab-c/`](../evals/agent-ab-c/) (**recorded runs only**).
+Machine-readable replay: `target/agent_ab_c_replay.json` (not committed).
+
+### Layout additions (P0-5c)
+
+| path | role |
+|---|---|
+| `docs/eval-agent-baseline.md` § P0-5c | this protocol + recorded hard-task table |
+| `scripts/eval_agent_ab_c.py` | harness: write / stamp / score / `--runner` |
+| `fixtures/eval-agent-tasks-hard/**` | ≥4 hard public tasks + `task.json` |
+| `evals/agent-ab-c/**` | public hard-task multi-runner trajectories + randomization log |
+| `evals/agent-ab-c/README.md` | P0-5c replay honesty + layout |
+| `tests/agent_ab_c_eval.rs` | hard fixtures + metrics keys + ≥2 runners + honesty gates |

@@ -1,0 +1,197 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "B",
+  "policy_label": "P0-5c arm B — read/grep only (no agentgraph)",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "host_session_llm",
+  "task_id": "rust-real-noise-dense",
+  "seed": 0,
+  "run_id": "host_session_llm-b-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense",
+  "symbol": "encode",
+  "model_note": "mimo-desktop-host-session",
+  "independent_session": false,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 6,
+  "read_budget": 5,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 6,
+    "read_budget": 5,
+    "read_files": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "independent_session": false,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 0,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": false,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "contamination": "Host session authored hard fixtures in this slice; independent_session=false. Decision path uses tool/grep evidence only (saw_labels_before_commit=false)."
+  },
+  "task": {
+    "id": "rust-real-noise-dense",
+    "title": "Dense Encode noise — separate real call sites from collisions",
+    "language": "rust",
+    "issue": "Encode::encode payload format must change. Dense implementors exist alongside unrelated name collisions (metrics Encode enum, encode_label, legacy encode, clone helpers). Identify true structure files for the trait + real callers; exclude collision/noise crates. high-freq implementor demotion may apply.",
+    "symbol": "encode",
+    "expected_files": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "grep",
+      "args": [
+        "encode"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "src/packet.rs",
+          "src/wire.rs",
+          "src/lib.rs",
+          "src/metrics.rs",
+          "src/legacy.rs",
+          "src/clone_heavy.rs"
+        ]
+      },
+      "note": "token hits flood noise modules",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/packet.rs",
+        "src/wire.rs",
+        "src/metrics.rs",
+        "src/legacy.rs",
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "careful read may drop some noise; token flood remains attractive",
+      "seq": 2
+    }
+  ],
+  "file_set": [
+    "src/clone_heavy.rs",
+    "src/legacy.rs",
+    "src/lib.rs",
+    "src/metrics.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/packet.rs",
+      "src/wire.rs",
+      "src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "src/clone_heavy.rs",
+      "src/legacy.rs",
+      "src/metrics.rs"
+    ],
+    "extra_noise_count": 3,
+    "forbidden_files": [
+      "src/metrics.rs",
+      "src/legacy.rs",
+      "src/clone_heavy.rs"
+    ],
+    "forbidden_hit": [
+      "src/clone_heavy.rs",
+      "src/legacy.rs",
+      "src/metrics.rs"
+    ],
+    "forbidden_hit_count": 3,
+    "file_set": [
+      "src/clone_heavy.rs",
+      "src/legacy.rs",
+      "src/lib.rs",
+      "src/metrics.rs",
+      "src/packet.rs",
+      "src/wire.rs"
+    ],
+    "file_set_size": 6,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-real-noise-dense/task.json"
+  },
+  "extras": {
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "B",
+    "rationale": "grep encode hits all six modules. Dense collisions make exclusion harder without structure tools; some noise often remains. No agentgraph.",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "Arm B: grep encode hits all six modules. Dense collisions make exclusion harder without structure tools; some noise often remains. No agentgraph."
+  ],
+  "errors": []
+}

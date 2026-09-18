@@ -80,6 +80,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **P0-5b live host-session A/B (shipped):** `scripts/eval_agent_ab_live.py` + `evals/agent-ab-live/**` + `tests/agent_ab_live.rs`. `model_note=mimo-desktop-host-session` (honest — not a public benchmark model / not a standardized lab harness). Arm A = live agentgraph recipes; Arm B = live grep/read only. Scores stamped offline after file-set commitment. On public fixtures this session did **not** separate live A vs live B noise — **no oversell**. Contamination + N limits in [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md).
 
+**P0-5c multi-runner hard A/B (shipped):** `scripts/eval_agent_ab_c.py` + `fixtures/eval-agent-tasks-hard/**` + `evals/agent-ab-c/**` + `tests/agent_ab_c_eval.rs`. ≥2 runner kinds (`host_session_llm` with `independent_session=false` disclosed + `scripted_external_runner`). Extended metrics: `mcp_or_cli_calls`, `chose_correct_workspace_root`, `file_budget`, `read_budget`, `approx_tokens=null`. Hard-task recorded means separate noise (scripted A 0.25 vs B 3.25; host A 0.00 vs B 1.50) — **not** multi-model lab proof, **no oversell**. Protocol: [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md) § P0-5c.
+
 ## Commits
 
 - Prefer small, test-backed commits.

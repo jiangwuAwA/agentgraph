@@ -1,0 +1,8 @@
+{
+  "roots": [
+    { "id": "registry", "path": "packages/registry" },
+    { "id": "service", "path": "packages/service" },
+    { "id": "cli", "path": "packages/cli" },
+    { "id": "docs", "path": "packages/docs" }
+  ]
+}

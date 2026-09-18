@@ -1,0 +1,47 @@
+{
+  "schema": "agentgraph.eval_agent_ab.c.randomization.v1",
+  "seeds": [
+    {
+      "seed": 0,
+      "task_order": [
+        "ts-multi-root-client",
+        "rust-sound-scoped-clean",
+        "rust-real-noise-dense",
+        "rust-cross-crate-blast"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "method": "task-level randomization; order recorded before arm execution"
+    },
+    {
+      "seed": 1,
+      "task_order": [
+        "rust-cross-crate-blast",
+        "ts-multi-root-client",
+        "rust-real-noise-dense",
+        "rust-sound-scoped-clean"
+      ],
+      "arm_order": [
+        "B",
+        "A"
+      ],
+      "method": "task-level randomization; order recorded before arm execution"
+    },
+    {
+      "seed": 2,
+      "task_order": [
+        "ts-multi-root-client",
+        "rust-sound-scoped-clean",
+        "rust-real-noise-dense",
+        "rust-cross-crate-blast"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "method": "task-level randomization; order recorded before arm execution"
+    }
+  ]
+}

@@ -3,6 +3,11 @@
 Replay fixtures for the **P0-5b live** section of
 [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md).
 
+**P0-5c multi-runner hard-task trajectories** (independent-session protocol,
+≥2 runner kinds, extended metrics) live under
+[`evals/agent-ab-c/`](../agent-ab-c/) — **not** in this directory. P0-5b rows
+remain single host-session on the easier P0-1 public tasks.
+
 **Honesty (mandatory):**
 
 - Trajectories were produced by a **live host-session LLM agent**

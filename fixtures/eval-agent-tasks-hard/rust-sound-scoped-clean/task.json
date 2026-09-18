@@ -1,0 +1,79 @@
+{
+  "id": "rust-sound-scoped-clean",
+  "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+  "theme": "sound-disabled-clean-sibling-scoped",
+  "language": "rust",
+  "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+  "symbol": "batch_write",
+  "workspace": {
+    "manifest": "workspace.json",
+    "roots": [
+      { "id": "clean", "path": "packages/clean" },
+      { "id": "dirty", "path": "packages/dirty" }
+    ]
+  },
+  "expected": {
+    "files_that_matter": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "edges": [
+      {
+        "description": "clean defines batch_write",
+        "site_file": "packages/clean/src/write.rs",
+        "site_contains": "fn batch_write"
+      },
+      {
+        "description": "clean lib calls batch_write",
+        "site_file": "packages/clean/src/lib.rs",
+        "site_contains": "batch_write"
+      }
+    ],
+    "window": "default",
+    "recommendation_present": true,
+    "recommendation_contains_any": [
+      "scoped",
+      "clean",
+      "sound",
+      "do not claim",
+      "workspace-root",
+      "dirty"
+    ],
+    "who_calls": null,
+    "scoped_guidance": {
+      "expect_sound_candidates": true,
+      "expect_window_not_sound": true,
+      "expect_eligible_root": "clean",
+      "recommendation_contains_any": [
+        "clean",
+        "workspace-root",
+        "scoped",
+        "do not claim"
+      ]
+    },
+    "multi_root": true,
+    "correct_workspace_roots": ["clean"],
+    "notes_extra": "Union sound off due to dirty unsafe sibling. True symbol files are clean-only; dirty/* are name-collision noise."
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph blast-radius batch_write --workspace workspace.json",
+    "agentgraph impact batch_write --sound --workspace-root clean --workspace workspace.json",
+    "agentgraph subset --workspace workspace.json"
+  ],
+  "notes": "Public synthetic: clean core + dirty unsafe sibling. Scoped sound only."
+}

@@ -75,6 +75,8 @@
 | **估** | 1–2 周（含首次 Agent 跑批；回放协议可先于 live LLM） |
 | **建议切片** | **S1** 协议 + 录制/回放 JSON 格式 + 无网打分；**S2** 操作员 live A/B 跑批写入 docs；**S3**（可选）CI 手动 workflow_dispatch 产出 artifact |
 | **交付 (this slice)** | **done (scripted S1 + policy S2-sim + P0-5b live host-session):** [eval-agent-baseline.md](eval-agent-baseline.md) + `scripts/eval_agent_ab.py` + `evals/agent-ab/**`（≥9 tasks × ≥3 A/B/C runs）+ `tests/agent_ab_eval.rs`；**P0-5b:** `scripts/eval_agent_ab_live.py` + `evals/agent-ab-live/**`（9 tasks × 3 seeds × arms A/B = **54** trajectories）+ `tests/agent_ab_live.rs`。**标签（强制）：** scripted = **scripted tool-policy agents**；live = **host-session LLM**（`model_note=mimo-desktop-host-session`，**非** public benchmark model / **非** standardized lab harness）。operator 标签 **A=MCP/CLI recipes，B=read/grep，C=name-grep**。Scripted numbers：A noise **0.00**；B **1.56**；C **0.78**。Live numbers（recalled only）：A live recall 1.00 / noise **0.00**；B live recall 1.00 / noise **0.00**（本 session 未分离 — **禁止**据此宣称 live MCP 产品优势）；contamination + N small 已写入 docs。Offline replay：`python scripts/eval_agent_ab.py score --traj-dir evals/agent-ab` 与 `--traj-dir evals/agent-ab-live`。**S3 CI workflow 本切片跳过。** |
+| **P0-5c 状态** | **done (protocol + hard fixtures + ≥2 runners + extended metrics + recorded N=3):** 见下条「交付 (P0-5c)」 |
+| **交付 (P0-5c)** | **done:** [eval-agent-baseline.md](eval-agent-baseline.md) § **P0-5c** + `scripts/eval_agent_ab_c.py`（write/stamp/score/--runner）+ `fixtures/eval-agent-tasks-hard/**`（≥4 hard tasks）+ `evals/agent-ab-c/**`（4 tasks × 2 runner kinds × 2 arms × 3 seeds = **48** trajectories + `task_randomization.json`）+ `tests/agent_ab_c_eval.rs` + `evals/agent-ab-c/README.md`。**Runner kinds:** `host_session_llm`（`independent_session=false`，披露 contamination）+ `scripted_external_runner`（decision-path `independent_session=true`）。**Extended metrics:** `mcp_or_cli_calls` / `chose_correct_workspace_root` / `file_budget` / `read_budget` / `approx_tokens=null` / `runner_id` / `model_note` / `saw_labels_before_commit=false`。**Recorded hard-task means (no oversell):** host A noise **0.00** vs host B **1.50**；scripted A noise **0.25** vs scripted B **3.25**（scripted A recall **0.9375** — multi-root path alias gap 已诚实记录）。**N target ≥5；本 host 记录 N=3。** **禁止**将 host-session 分离写成 multi-model lab / 产品优越性证明。**无**独立 isolated-subagent 第三 runner（incomplete，不伪造）。 |
 
 ---
 
@@ -145,14 +147,14 @@
 | ID | 复核 |
 |---|---|
 | P0-1…P0-4 | **shipped** — 代码/文档/测试齐；`agent_task_eval`/`agent_goldens`/`agent_recipes`/`docs_claims`/`e2e_cli`/`noise_roles` 全绿 |
-| P0-5 | **shipped (scripted S1+S2-sim + P0-5b live host-session)** — `eval_agent_ab` + `evals/agent-ab` + `eval_agent_ab_live` + `evals/agent-ab-live` + [eval-agent-baseline.md](eval-agent-baseline.md)；live = 单 host session，**非** lab benchmark；live A/B 噪声未分离（无超售） |
+| P0-5 | **shipped (scripted S1+S2-sim + P0-5b live host-session + P0-5c multi-runner hard)** — `eval_agent_ab` + `evals/agent-ab` + `eval_agent_ab_live` + `evals/agent-ab-live` + `eval_agent_ab_c` + `evals/agent-ab-c` + hard fixtures + [eval-agent-baseline.md](eval-agent-baseline.md)；live = 单 host session，**非** lab benchmark；P0-5c host `independent_session=false` 已披露；**无超售** |
 | P1-1…P1-4 | **shipped** — workspace watch、MCP stale 字段、goldens、perf_workspace 文档+smoke |
 | P2-1, P2-2, P2-4 | **shipped** — macro_default（全局 OFF）、CI demo（非 required）、README 定位 |
 | P2-3 | **open（eval-gated）** — 符合「无 eval 数字不做」 |
 
 **残差（低优先）：**
 
-1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明。→ **P0-5 scripted** + **P0-5b live host-session** 已交付（见 [eval-agent-baseline.md](eval-agent-baseline.md)）。Residual：**multi-model / standardized harness** live 对照仍 open（当前仅单 host session，contamination 已披露）。
+1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明。→ **P0-5 scripted** + **P0-5b live host-session** + **P0-5c multi-runner hard** 已交付（见 [eval-agent-baseline.md](eval-agent-baseline.md)）。Residual：**true multi-model / isolated lab harness** live 对照仍 open（P0-5c 仅 host_session + scripted_external_runner；host contamination 已披露；N=3 < 目标 N≥5）。
 2. ~~`fixtures/**/.agentgraph/index.db` 二进制索引~~ — **done**：根 `.gitignore` 增加 `**/.agentgraph/`；本地 fixture 索引目录已删除（勿再提交）。
 3. Session 任务面板 ID（T7–T18）与文档 P0-x 编号不一致 — **以本文档为准**。
 4. Workspace **union callers** CLI 含 spawn 时 p95 可到秒级（文档已标非 SLO）— Agent 侧**优先 root filter 或 MCP**；已写入 eval-agent-tasks / recipes。
@@ -167,6 +169,7 @@
     （[eval-agent-baseline.md](eval-agent-baseline.md)）
   → P0-5b live host-session A/B — shipped（同文档；非 lab harness）
     （multi-model lab live 仍 open）
+  → P0-5c multi-runner hard A/B — shipped（同文档；≥2 runners + extended metrics + hard fixtures；非 multi-model lab）
   → P2-3 L1 规则（eval-gated）
 ```
 

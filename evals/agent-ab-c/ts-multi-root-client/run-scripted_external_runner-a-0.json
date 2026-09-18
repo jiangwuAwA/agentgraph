@@ -1,0 +1,279 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "A",
+  "policy_label": "P0-5c arm A — agentgraph recipes (+reads)",
+  "kind": "scripted_external_runner",
+  "arm": "A",
+  "runner_id": "scripted_external_runner",
+  "task_id": "ts-multi-root-client",
+  "seed": 0,
+  "run_id": "scripted_external_runner-a-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-multi-root-client",
+  "symbol": "RegistryClient",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 6,
+    "recipe_tools": [
+      "index",
+      "blast-radius",
+      "find",
+      "related",
+      "who-calls",
+      "subset"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 5,
+  "read_budget": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 6,
+      "recipe_tools": [
+        "index",
+        "blast-radius",
+        "find",
+        "related",
+        "who-calls",
+        "subset"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 5,
+    "read_budget": null,
+    "read_files": [],
+    "approx_tokens": null,
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 0,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true
+  },
+  "task": {
+    "id": "ts-multi-root-client",
+    "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+    "language": "typescript",
+    "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+    "symbol": "RegistryClient",
+    "expected_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "index",
+        "--workspace",
+        "<fixture-root>",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "blast-radius",
+        "RegistryClient",
+        "--depth",
+        "3",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "find",
+        "RegistryClient",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "packages/registry/src/client.ts"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "related",
+        "RegistryClient",
+        "--limit",
+        "20",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 2
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "who-calls",
+        "RegistryClient",
+        "--limit",
+        "50",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": false,
+        "implementor_count": 0,
+        "callers_files": [
+          "src/client.ts",
+          "src/order.service.ts"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts",
+    "src/client.ts",
+    "src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 0.75,
+    "expected_hit": [
+      "packages/registry/src/client.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "expected_miss": [
+      "packages/registry/src/index.ts"
+    ],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/registry/src/client.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/service/src/order.service.ts",
+      "src/client.ts",
+      "src/order.service.ts"
+    ],
+    "file_set_size": 5,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-multi-root-client/task.json"
+  },
+  "extras": {
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "A",
+    "rationale": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "Arm A: blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths"
+  ],
+  "errors": []
+}

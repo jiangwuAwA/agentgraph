@@ -1,0 +1,80 @@
+{
+  "id": "rust-cross-crate-blast",
+  "title": "Cross-crate normalize_id blast — stay on true dependents",
+  "theme": "cross-crate-blast-multi-root",
+  "language": "rust",
+  "issue": "core::normalize_id contract must change (trim + case rules). Using the multi-root workspace, find the true blast radius across packages. Prefer scoped queries on the definition root and true consumers; do not pull unrelated packages that merely share the symbol name or mention it in comments.",
+  "symbol": "normalize_id",
+  "workspace": {
+    "manifest": "workspace.json",
+    "roots": [
+      { "id": "core", "path": "packages/core" },
+      { "id": "api", "path": "packages/api" },
+      { "id": "tools", "path": "packages/tools" },
+      { "id": "web", "path": "packages/web" }
+    ]
+  },
+  "expected": {
+    "files_that_matter": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "edges": [
+      {
+        "description": "core defines normalize_id",
+        "site_file": "packages/core/src/id.rs",
+        "site_contains": "fn normalize_id"
+      },
+      {
+        "description": "core re-exports and uses normalize_id",
+        "site_file": "packages/core/src/lib.rs",
+        "site_contains": "normalize_id"
+      },
+      {
+        "description": "api routes call core::normalize_id",
+        "site_file": "packages/api/src/routes.rs",
+        "site_contains": "core::normalize_id"
+      }
+    ],
+    "window": "any",
+    "recommendation_present": true,
+    "who_calls": null,
+    "scoped_guidance": {
+      "expect_sound_candidates": false,
+      "expect_window_not_sound": false,
+      "companion_subset_sound_candidates": true,
+      "recommendation_contains_any": ["core", "workspace-root", "scoped"]
+    },
+    "multi_root": true,
+    "correct_workspace_roots": ["core", "api"],
+    "notes_extra": "Name collision in tools::normalize_id is not a core consumer. web/* are comment-only. Cross-crate true dependents are core (def) + api (call)."
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "find",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph blast-radius normalize_id --workspace workspace.json",
+    "agentgraph find normalize_id --workspace workspace.json --workspace-root packages/core",
+    "agentgraph who-calls normalize_id --workspace workspace.json",
+    "agentgraph subset --workspace workspace.json"
+  ],
+  "notes": "Public synthetic multi-root cross-crate fixture. Not a production monorepo."
+}

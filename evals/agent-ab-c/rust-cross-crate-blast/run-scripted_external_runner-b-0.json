@@ -1,0 +1,346 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "B",
+  "policy_label": "P0-5c arm B — read/grep only (no agentgraph)",
+  "kind": "scripted_external_runner",
+  "arm": "B",
+  "runner_id": "scripted_external_runner",
+  "task_id": "rust-cross-crate-blast",
+  "seed": 0,
+  "run_id": "scripted_external_runner-b-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast",
+  "symbol": "normalize_id",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 6
+  },
+  "chose_correct_workspace_root": false,
+  "file_budget": 8,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 6
+    },
+    "chose_correct_workspace_root": false,
+    "file_budget": 8,
+    "read_budget": 6,
+    "read_files": [
+      "packages/core/src/id.rs",
+      "packages/tools/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/core/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 0,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true
+  },
+  "task": {
+    "id": "rust-cross-crate-blast",
+    "title": "Cross-crate normalize_id blast — stay on true dependents",
+    "language": "rust",
+    "issue": "core::normalize_id contract must change (trim + case rules). Using the multi-root workspace, find the true blast radius across packages. Prefer scoped queries on the definition root and true consumers; do not pull unrelated packages that merely share the symbol name or mention it in comments.",
+    "symbol": "normalize_id",
+    "expected_files": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 8
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 6,
+        "hits": [
+          "packages/api/src/routes.rs",
+          "packages/core/src/id.rs",
+          "packages/core/src/lib.rs",
+          "packages/tools/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "packages/core/src/id.rs",
+        "packages/tools/src/lib.rs",
+        "packages/api/src/routes.rs",
+        "packages/core/src/lib.rs",
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/core/src/id.rs",
+          "packages/tools/src/lib.rs"
+        ],
+        "read_count": 6
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/core/src",
+        "packages/core/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/core/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/core/src/lib.rs"
+        ],
+        "cap": 6,
+        "seed": 0
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/tools/src",
+        "packages/tools/src/audit.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/tools/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/tools/src/audit.rs"
+        ],
+        "cap": 6,
+        "seed": 0
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "String"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "String",
+        "hits": [
+          "packages/api/src/lib.rs",
+          "packages/api/src/routes.rs",
+          "packages/core/src/id.rs",
+          "packages/core/src/lib.rs",
+          "packages/tools/src/audit.rs",
+          "packages/tools/src/lib.rs",
+          "packages/web/src/lib.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 7,
+      "tool": "grep_token",
+      "args": [
+        "pub"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "pub",
+        "hits": [
+          "packages/api/src/lib.rs",
+          "packages/api/src/routes.rs",
+          "packages/core/src/id.rs",
+          "packages/core/src/lib.rs",
+          "packages/tools/src/audit.rs",
+          "packages/tools/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 8,
+      "tool": "grep_token",
+      "args": [
+        "raw"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "raw",
+        "hits": [
+          "packages/api/src/lib.rs",
+          "packages/api/src/routes.rs",
+          "packages/core/src/id.rs",
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 9,
+      "tool": "grep_token",
+      "args": [
+        "str"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "str",
+        "hits": [
+          "packages/api/src/lib.rs",
+          "packages/api/src/routes.rs",
+          "packages/core/src/id.rs",
+          "packages/core/src/lib.rs",
+          "packages/tools/src/audit.rs",
+          "packages/tools/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/tools/src/audit.rs",
+    "packages/tools/src/lib.rs",
+    "packages/web/src/lib.rs",
+    "packages/web/src/pages.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/tools/src/audit.rs",
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "extra_noise_count": 4,
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit_count": 3,
+    "file_set": [
+      "packages/api/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "file_set_size": 8,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast/task.json"
+  },
+  "extras": {
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "B",
+    "rationale": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "Arm B: symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  ],
+  "errors": []
+}

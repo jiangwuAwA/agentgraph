@@ -1,0 +1,254 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "B",
+  "policy_label": "P0-5c arm B — read/grep only (no agentgraph)",
+  "kind": "scripted_external_runner",
+  "arm": "B",
+  "runner_id": "scripted_external_runner",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 2,
+  "run_id": "scripted_external_runner-b-2",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 4
+  },
+  "chose_correct_workspace_root": false,
+  "file_budget": 4,
+  "read_budget": 4,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 4
+    },
+    "chose_correct_workspace_root": false,
+    "file_budget": 4,
+    "read_budget": 4,
+    "read_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs",
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 2,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 4
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "batch_write"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 4,
+        "hits": [
+          "packages/clean/src/lib.rs",
+          "packages/clean/src/write.rs",
+          "packages/dirty/src/lib.rs",
+          "packages/dirty/src/shadow.rs"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "packages/clean/src/write.rs",
+        "packages/clean/src/lib.rs",
+        "packages/dirty/src/lib.rs",
+        "packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/clean/src/write.rs"
+        ],
+        "read_count": 4
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/clean/src",
+        "packages/clean/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/clean/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/clean/src/lib.rs"
+        ],
+        "cap": 6,
+        "seed": 2
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "grep_token",
+      "args": [
+        "pub"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "pub",
+        "hits": [
+          "packages/clean/src/lib.rs",
+          "packages/clean/src/write.rs",
+          "packages/dirty/src/lib.rs",
+          "packages/dirty/src/shadow.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "usize"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "usize",
+        "hits": [
+          "packages/clean/src/lib.rs",
+          "packages/clean/src/write.rs",
+          "packages/dirty/src/lib.rs",
+          "packages/dirty/src/shadow.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs",
+    "packages/dirty/src/lib.rs",
+    "packages/dirty/src/shadow.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "extra_noise_count": 2,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit_count": 2,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs",
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json"
+  },
+  "extras": {
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "B",
+    "rationale": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "Arm B: symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  ],
+  "errors": []
+}

@@ -138,7 +138,9 @@ Binary used for the numbers below: debug build with `blast-radius` / `who-calls`
   tasks — still **not** live LLM agents
   ([eval-agent-baseline.md](eval-agent-baseline.md)). **P0-5b** adds live
   **host-session** A/B trajectories under `evals/agent-ab-live/` (not a public
-  benchmark lab; contamination/N limits in the baseline doc).
+  benchmark lab; contamination/N limits in the baseline doc). **P0-5c** adds
+  multi-runner hard-task A/B under `fixtures/eval-agent-tasks-hard/` +
+  `evals/agent-ab-c/` (≥2 runner kinds; extended metrics; **not** multi-model lab).
 - A weaker/noisier name set is exactly the failure mode the tasks label
   (`fmt` substring, docs prose, sibling package comments).
 
@@ -197,4 +199,5 @@ Related: [agent-recipes.md](agent-recipes.md), [sound-subset.md](sound-subset.md
 [agent-goldens.md](agent-goldens.md) (P1-3 recipe/window/honesty release gate),
 [eval-query-p95.md](eval-query-p95.md) (workspace perf budgets),
 [eval-agent-baseline.md](eval-agent-baseline.md) (**P0-5** scripted tool-policy
-A/B/C + offline trajectory replay — still **not** live LLM agents).
+A/B/C + offline trajectory replay — still **not** live LLM agents; **P0-5c**
+multi-runner hard slice in the same doc).

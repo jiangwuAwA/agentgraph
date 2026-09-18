@@ -1,0 +1,289 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "A",
+  "policy_label": "P0-5c arm A — agentgraph recipes (+reads)",
+  "kind": "scripted_external_runner",
+  "arm": "A",
+  "runner_id": "scripted_external_runner",
+  "task_id": "rust-cross-crate-blast",
+  "seed": 1,
+  "run_id": "scripted_external_runner-a-1",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast",
+  "symbol": "normalize_id",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 6,
+    "recipe_tools": [
+      "index",
+      "blast-radius",
+      "find",
+      "related",
+      "who-calls",
+      "subset"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 8,
+  "read_budget": null,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 6,
+      "recipe_tools": [
+        "index",
+        "blast-radius",
+        "find",
+        "related",
+        "who-calls",
+        "subset"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 8,
+    "read_budget": null,
+    "read_files": [],
+    "approx_tokens": null,
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 1,
+    "task_order": [
+      "rust-cross-crate-blast",
+      "ts-multi-root-client",
+      "rust-real-noise-dense",
+      "rust-sound-scoped-clean"
+    ],
+    "arm_order": [
+      "B",
+      "A"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true
+  },
+  "task": {
+    "id": "rust-cross-crate-blast",
+    "title": "Cross-crate normalize_id blast — stay on true dependents",
+    "language": "rust",
+    "issue": "core::normalize_id contract must change (trim + case rules). Using the multi-root workspace, find the true blast radius across packages. Prefer scoped queries on the definition root and true consumers; do not pull unrelated packages that merely share the symbol name or mention it in comments.",
+    "symbol": "normalize_id",
+    "expected_files": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "index",
+        "--workspace",
+        "<fixture-root>",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "blast-radius",
+        "normalize_id",
+        "--depth",
+        "3",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "find",
+        "normalize_id",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "packages/core/src/id.rs",
+          "packages/tools/src/lib.rs"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "related",
+        "normalize_id",
+        "--limit",
+        "20",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 3
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "who-calls",
+        "normalize_id",
+        "--limit",
+        "50",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": false,
+        "implementor_count": 0,
+        "callers_files": [
+          "src/lib.rs",
+          "src/routes.rs"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/tools/src/lib.rs",
+    "src/id.rs",
+    "src/lib.rs",
+    "src/routes.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/tools/src/lib.rs"
+    ],
+    "extra_noise_count": 1,
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [
+      "packages/tools/src/lib.rs"
+    ],
+    "forbidden_hit_count": 1,
+    "file_set": [
+      "packages/api/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/tools/src/lib.rs",
+      "src/id.rs",
+      "src/lib.rs",
+      "src/routes.rs"
+    ],
+    "file_set_size": 8,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast/task.json"
+  },
+  "extras": {
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "A",
+    "rationale": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "Arm A: blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths"
+  ],
+  "errors": []
+}

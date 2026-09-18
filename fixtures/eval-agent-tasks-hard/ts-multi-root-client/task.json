@@ -1,0 +1,74 @@
+{
+  "id": "ts-multi-root-client",
+  "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+  "theme": "ts-multi-root-wrong-root",
+  "language": "typescript",
+  "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+  "symbol": "RegistryClient",
+  "workspace": {
+    "manifest": "workspace.json",
+    "roots": [
+      { "id": "registry", "path": "packages/registry" },
+      { "id": "service", "path": "packages/service" },
+      { "id": "cli", "path": "packages/cli" },
+      { "id": "docs", "path": "packages/docs" }
+    ]
+  },
+  "expected": {
+    "files_that_matter": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "edges": [
+      {
+        "description": "registry defines RegistryClient",
+        "site_file": "packages/registry/src/client.ts",
+        "site_contains": "class RegistryClient"
+      },
+      {
+        "description": "service constructs/uses RegistryClient",
+        "site_file": "packages/service/src/order.service.ts",
+        "site_contains": "RegistryClient"
+      }
+    ],
+    "window": "any",
+    "recommendation_present": true,
+    "who_calls": null,
+    "scoped_guidance": {
+      "expect_sound_candidates": false,
+      "expect_window_not_sound": false,
+      "companion_subset_sound_candidates": true,
+      "recommendation_contains_any": ["registry", "service", "workspace-root"]
+    },
+    "multi_root": true,
+    "correct_workspace_roots": ["registry", "service"],
+    "notes_extra": "Wrong-root trap: cli/docs contain the symbol token in strings/prose only."
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "find",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph blast-radius RegistryClient --workspace workspace.json",
+    "agentgraph find RegistryClient --workspace workspace.json --workspace-root packages/registry",
+    "agentgraph who-calls RegistryClient --workspace workspace.json"
+  ],
+  "notes": "Public synthetic multi-root TypeScript workspace. Not a production monorepo."
+}

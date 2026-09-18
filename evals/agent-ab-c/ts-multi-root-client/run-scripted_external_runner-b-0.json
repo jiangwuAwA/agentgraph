@@ -1,0 +1,286 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "B",
+  "policy_label": "P0-5c arm B — read/grep only (no agentgraph)",
+  "kind": "scripted_external_runner",
+  "arm": "B",
+  "runner_id": "scripted_external_runner",
+  "task_id": "ts-multi-root-client",
+  "seed": 0,
+  "run_id": "scripted_external_runner-b-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-multi-root-client",
+  "symbol": "RegistryClient",
+  "model_note": "scripted_deterministic_policy",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 4
+  },
+  "chose_correct_workspace_root": false,
+  "file_budget": 8,
+  "read_budget": 7,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 4
+    },
+    "chose_correct_workspace_root": false,
+    "file_budget": 8,
+    "read_budget": 7,
+    "read_files": [
+      "packages/registry/src/client.ts",
+      "packages/cli/src/help.ts",
+      "packages/cli/src/main.ts",
+      "packages/docs/src/changelog.ts",
+      "packages/docs/src/overview.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 0,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": true,
+    "private_corpus": false,
+    "not_public_benchmark_model": false,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true
+  },
+  "task": {
+    "id": "ts-multi-root-client",
+    "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+    "language": "typescript",
+    "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+    "symbol": "RegistryClient",
+    "expected_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 8
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 7,
+        "hits": [
+          "packages/cli/src/help.ts",
+          "packages/cli/src/main.ts",
+          "packages/docs/src/changelog.ts",
+          "packages/docs/src/overview.ts",
+          "packages/registry/src/client.ts",
+          "packages/registry/src/index.ts",
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "packages/registry/src/client.ts",
+        "packages/cli/src/help.ts",
+        "packages/cli/src/main.ts",
+        "packages/docs/src/changelog.ts",
+        "packages/docs/src/overview.ts",
+        "packages/registry/src/index.ts",
+        "packages/service/src/order.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/registry/src/client.ts"
+        ],
+        "read_count": 7
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/registry/src",
+        "packages/registry/src/index.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/registry/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/registry/src/index.ts"
+        ],
+        "cap": 6,
+        "seed": 0
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "grep_token",
+      "args": [
+        "class"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "class",
+        "hits": [
+          "packages/cli/src/main.ts",
+          "packages/registry/src/client.ts",
+          "packages/service/src/order.controller.ts",
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "export"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "export",
+        "hits": [
+          "packages/cli/src/help.ts",
+          "packages/cli/src/main.ts",
+          "packages/docs/src/changelog.ts",
+          "packages/docs/src/overview.ts",
+          "packages/registry/src/client.ts",
+          "packages/registry/src/index.ts",
+          "packages/service/src/order.controller.ts",
+          "packages/service/src/order.service.ts"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "packages/cli/src/help.ts",
+    "packages/cli/src/main.ts",
+    "packages/docs/src/changelog.ts",
+    "packages/docs/src/overview.ts",
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/cli/src/help.ts",
+      "packages/cli/src/main.ts",
+      "packages/docs/src/changelog.ts",
+      "packages/docs/src/overview.ts"
+    ],
+    "extra_noise_count": 4,
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_hit": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/changelog.ts",
+      "packages/docs/src/overview.ts"
+    ],
+    "forbidden_hit_count": 3,
+    "file_set": [
+      "packages/cli/src/help.ts",
+      "packages/cli/src/main.ts",
+      "packages/docs/src/changelog.ts",
+      "packages/docs/src/overview.ts",
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/service/src/order.service.ts"
+    ],
+    "file_set_size": 8,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-multi-root-client/task.json"
+  },
+  "extras": {
+    "runner_id": "scripted_external_runner",
+    "model_note": "scripted_deterministic_policy",
+    "arm": "B",
+    "rationale": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c scripted_external_runner — deterministic P0-5 policy A/B invoked as an external runner on hard fixtures. Not a live LLM. Decision path does not read task.json expected labels.",
+    "Arm B: symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  ],
+  "errors": []
+}

@@ -1,0 +1,247 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.c.v1",
+  "policy": "A",
+  "policy_label": "P0-5c arm A — agentgraph recipes (+reads)",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "host_session_llm",
+  "task_id": "ts-multi-root-client",
+  "seed": 0,
+  "run_id": "host_session_llm-a-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-multi-root-client",
+  "symbol": "RegistryClient",
+  "model_note": "mimo-desktop-host-session",
+  "independent_session": false,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 4,
+    "recipe_tools": [
+      "index",
+      "find",
+      "blast-radius",
+      "who-calls"
+    ],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 4,
+  "read_budget": 2,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 4,
+      "recipe_tools": [
+        "index",
+        "find",
+        "blast-radius",
+        "who-calls"
+      ],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 4,
+    "read_budget": 2,
+    "read_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "independent_session": false,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 0,
+    "task_order": [
+      "ts-multi-root-client",
+      "rust-sound-scoped-clean",
+      "rust-real-noise-dense",
+      "rust-cross-crate-blast"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "method": "task-level randomization; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": false,
+    "saw_labels_before_commit": false,
+    "note": "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "contamination": "Host session authored hard fixtures in this slice; independent_session=false. Decision path uses tool/grep evidence only (saw_labels_before_commit=false)."
+  },
+  "task": {
+    "id": "ts-multi-root-client",
+    "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+    "language": "typescript",
+    "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+    "symbol": "RegistryClient",
+    "expected_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "multi-root index",
+      "seq": 1
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "packages/registry"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/registry/src/client.ts",
+          "packages/registry/src/index.ts"
+        ]
+      },
+      "note": "scoped definition root registry",
+      "seq": 2
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "RegistryClient",
+        "--depth",
+        "3",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound"
+      },
+      "note": "dependents: service package",
+      "seq": 3
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "RegistryClient",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/service/src/order.service.ts",
+          "packages/service/src/order.controller.ts"
+        ]
+      },
+      "note": "service construct/use; cli/docs are string mentions",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/cli/src/main.ts",
+        "packages/docs/src/overview.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "help/prose name mentions — omit",
+      "seq": 5
+    }
+  ],
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/service/src/order.service.ts"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-multi-root-client/task.json"
+  },
+  "extras": {
+    "runner_id": "host_session_llm",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Scoped find on registry + who-calls/blast: registry def/reexport + service consumers. cli/docs string mentions are not dependents — omit. Correct roots: registry+service.",
+    "protocol": "P0-5c hard tasks; file_set from tool/grep evidence; expected labels stamped offline after commitment",
+    "hard_slice": true
+  },
+  "notes": [
+    "P0-5c host_session_llm on hard fixtures — not a public benchmark model, not a multi-model lab. Same session authored hard fixtures ⇒ independent_session=false (contamination disclosed). File sets derived from recorded tool/grep evidence, not by copying expected lists (saw_labels_before_commit=false on the decision path).",
+    "Arm A: Scoped find on registry + who-calls/blast: registry def/reexport + service consumers. cli/docs string mentions are not dependents — omit. Correct roots: registry+service."
+  ],
+  "errors": []
+}

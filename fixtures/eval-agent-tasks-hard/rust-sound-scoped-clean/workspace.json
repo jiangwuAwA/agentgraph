@@ -1,0 +1,6 @@
+{
+  "roots": [
+    { "id": "clean", "path": "packages/clean" },
+    { "id": "dirty", "path": "packages/dirty" }
+  ]
+}

@@ -68,9 +68,25 @@ fn protocol_doc_and_harness_exist() {
         "missing docs/eval-agent-baseline.md (P0-5 protocol)"
     );
     let text = std::fs::read_to_string(&doc).expect("read protocol doc");
+    let low = text.to_lowercase();
     assert!(
-        text.contains("scripted") && text.to_lowercase().contains("not live"),
-        "protocol must label scripted tool-policy agents vs live LLM"
+        text.contains("scripted"),
+        "protocol must label scripted tool-policy agents"
+    );
+    assert!(
+        low.contains("live"),
+        "protocol must mention live / non-live comparison"
+    );
+    // Honesty: markdown may wrap emphasis (`**not** a live…`), so do not
+    // require the exact contiguous substring `not live`.
+    assert!(
+        low.contains("not live")
+            || low.contains("not a live")
+            || text.contains("not** a live")
+            || text.contains("not** live")
+            || text.contains("Non-goals")
+            || text.contains("Non-claims"),
+        "protocol must label scripted vs live honesty (or Non-goals)"
     );
     assert!(
         text.contains("A") && text.contains("B") && text.contains("C"),

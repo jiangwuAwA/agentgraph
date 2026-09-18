@@ -1,6 +1,6 @@
 [package]
 name = "agentgraph"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 description = "Agent-native code understanding: symbol graph, call graph, impact analysis 鈥?CLI + MCP"
 license = "MIT"

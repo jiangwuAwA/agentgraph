@@ -575,6 +575,14 @@ arms separate on hard public tasks?
 | external_live_runner_2 | xiaomi/mimo-flash | B | 40 | 0.902 | **0.00** | 12/0/28 | 0 |
 | scripted_isolated_runner | deterministic | A/B | 80 | 0.896 | **1.875** | n/a | 1.0 / 0 |
 
+**Product follow-up (post P0-5d review):** TS `export { X } from "…"`
+re-exports now mint findable `module` symbols + import refs
+(`src/index/extract.rs`, `tests/ts_reexport_recall.rs`). Live
+`find`/`blast-radius` on `ts-multi-root-client` include
+`packages/registry/src/index.ts`. **Recorded** P0-5c/5d trajectory
+scores were stamped **before** this extract fix and are **not**
+retroactively rewritten — re-run harness if you need post-fix numbers.
+
 **Honest reading:** live isolated **A vs B** on these fixtures separates on
 **expected-file recall** and **workspace-root correctness** (cwr), **not** on
 extra-noise (both live arms ~0 noise — fixtures are small/self-labely for

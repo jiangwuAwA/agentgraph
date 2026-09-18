@@ -394,6 +394,36 @@ fn walk_ts(
                 );
             });
         }
+        // `export { A, B as C } from "./mod"` / `export { A }` — re-export surface.
+        // Mint findable symbols + import-like refs so blast/who-calls file sets
+        // can include the barrel file (multi-root path-alias / re-export recall).
+        "export_statement" => {
+            let line = ctx.lines.line_of(node.start_byte());
+            let specifier = ts_import_specifier(node, source);
+            let resolved = specifier
+                .as_ref()
+                .and_then(|s| resolve::resolve_typescript_import(ctx.path, s, ctx.known_files));
+            for (public_name, src_mod) in collect_ts_export_names(node, source) {
+                symbols.push(make_symbol(
+                    public_name.clone(),
+                    public_name.clone(),
+                    SymbolKind::Module,
+                    node,
+                    local_parent.clone(),
+                    ctx,
+                    source,
+                ));
+                let module = src_mod.or_else(|| specifier.clone());
+                push_import(
+                    references,
+                    public_name,
+                    line,
+                    local_parent.clone(),
+                    module,
+                    resolved.clone(),
+                );
+            }
+        }
         _ => {}
     }
 
@@ -410,6 +440,98 @@ fn walk_ts(
 
     if let Some(s) = saved_var_types {
         *ctx.var_types.borrow_mut() = s;
+    }
+}
+
+/// Public export names from `export { A, B as C } from "mod"` / `export { A }`.
+/// Returns `(public_name, source_module_if_any)`.
+fn collect_ts_export_names(node: Node, source: &str) -> Vec<(String, Option<String>)> {
+    let mut module: Option<String> = None;
+    let mut names = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "string" => {
+                module = ts_string_content(child, source);
+            }
+            "source" => {
+                let mut c2 = child.walk();
+                for part in child.children(&mut c2) {
+                    if part.kind() == "string" {
+                        module = ts_string_content(part, source);
+                    }
+                }
+            }
+            "export_clause" => {
+                let mut c2 = child.walk();
+                for spec in child.children(&mut c2) {
+                    match spec.kind() {
+                        "export_specifier" => {
+                            let mut original = None;
+                            let mut public = None;
+                            let mut c3 = spec.walk();
+                            for part in spec.children(&mut c3) {
+                                match part.kind() {
+                                    "identifier" => {
+                                        let t = node_text(part, source);
+                                        if !t.is_empty() {
+                                            if original.is_none() {
+                                                original = Some(t.to_string());
+                                            } else {
+                                                public = Some(t.to_string());
+                                            }
+                                        }
+                                    }
+                                    "alias" => {
+                                        let mut c4 = part.walk();
+                                        for idn in part.children(&mut c4) {
+                                            if idn.kind() == "identifier" {
+                                                let t = node_text(idn, source);
+                                                if !t.is_empty() {
+                                                    public = Some(t.to_string());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if let Some(pub_name) = public.or(original) {
+                                names.push((pub_name, module.clone()));
+                            }
+                        }
+                        "identifier" => {
+                            let t = node_text(spec, source);
+                            if !t.is_empty() {
+                                names.push((t.to_string(), module.clone()));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn ts_string_content(node: Node, source: &str) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "string_fragment" {
+            let t = node_text(child, source);
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    let raw = node_text(node, source);
+    let t = raw.trim_matches(|c| c == '"' || c == '\'' || c == '`');
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
     }
 }
 

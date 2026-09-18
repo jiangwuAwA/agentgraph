@@ -183,6 +183,13 @@ Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
   never as the recipe default. Never invent zero-miss.
 - **Macro sidecar:** optional, per-root, not sound. `callers --with-macro`
   unions candidates only after `macro status` shows `sidecar_exists=true`.
+
+### Perf guidance (Agents)
+
+On multi-root stores, prefer **scoped** queries (`--workspace-root` / MCP
+`root_id`, or in-process MCP). Unscoped **union** CLI queries include process
+spawn and can reach second-level wall-clock on large workspaces
+(`docs/eval-query-p95.md` — operator budgets, not production SLOs).
   **P2-1:** a repo may set `.agentgraph/config.toml` `macro_default = "if_fresh"`
   so `blast_radius` / `graph` auto-paths include a **fresh** sidecar
   (`include_macro_reason=repo_config_if_fresh`). **Global default remains OFF**;

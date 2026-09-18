@@ -132,6 +132,10 @@ Binary used for the numbers below: debug build with `blast-radius` / `who-calls`
 
 - Implemented baseline = **name-grep** (deterministic token search).
 - We do **not** claim an LLM / “no-tool agent” baseline in this slice.
+- Scores are **structure-fact file-set** comparisons (blast dependents vs token
+  union), **not** “Agent with MCP vs Agent without MCP” product proof.
+  A real Agent-vs-Agent control remains a **future P0** item
+  (`docs/product-improvement-backlog.md`).
 - A weaker/noisier name set is exactly the failure mode the tasks label
   (`fmt` substring, docs prose, sibling package comments).
 
@@ -151,6 +155,11 @@ agentgraph subset
 agentgraph blast-radius <symbol> --workspace workspace.json
 agentgraph impact <symbol> --sound --workspace-root <clean-root> --workspace workspace.json
 ```
+
+**Agent performance note:** on large multi-root stores, prefer
+`--workspace-root` / MCP `root_id` (or in-process MCP) over unscoped
+**union** CLI queries — unscoped union wall-clock includes process spawn and
+can reach seconds (`docs/eval-query-p95.md`, not a production SLO).
 
 Always read `window`, `subset_ok`, `recommendation`, and `note` before editing
 files. See [agent-recipes.md](agent-recipes.md).

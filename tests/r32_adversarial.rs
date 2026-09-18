@@ -30,30 +30,54 @@ fn temp_root(name: &str) -> PathBuf {
 }
 
 fn mklink(target: &Path, link: &Path) -> bool {
-    let out = Command::new("cmd")
-        .args([
-            "/C",
-            "mklink",
-            &link.to_string_lossy(),
-            &target.to_string_lossy(),
-        ])
-        .output()
-        .expect("mklink");
-    out.status.success()
+    if cfg!(windows) {
+        Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                &link.to_string_lossy(),
+                &target.to_string_lossy(),
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (target, link);
+            false
+        }
+    }
 }
 
 fn mklink_junction(target: &Path, link: &Path) -> bool {
-    let out = Command::new("cmd")
-        .args([
-            "/C",
-            "mklink",
-            "/J",
-            &link.to_string_lossy(),
-            &target.to_string_lossy(),
-        ])
-        .output()
-        .expect("mklink /J");
-    out.status.success()
+    if cfg!(windows) {
+        Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                &link.to_string_lossy(),
+                &target.to_string_lossy(),
+            ])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (target, link);
+            false
+        }
+    }
 }
 
 fn sample_data() -> GraphVizData {

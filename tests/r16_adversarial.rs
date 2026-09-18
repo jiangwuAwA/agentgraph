@@ -387,20 +387,52 @@ export function f(): Fn {
     );
 }
 
-/// Type-only `typeof Function` in a type alias currently fail-closes S
-/// (bare `Function` token). Over-flag is acceptable per S policy; pin it.
+/// Type-only `typeof Function` in a type alias must NOT leave S
+/// (M2 over-flag fix: type positions are not runtime Function uses).
 #[test]
-fn ts_typeof_function_only_type_annotation_fail_closed() {
+fn ts_typeof_function_only_type_annotation_stays_in_s() {
     let src = r#"
 type F = typeof Function;
 export function id(x: number): number { return x; }
 "#;
     let r = scan_subset(src, Language::TypeScript, "a.ts");
-    // Documented fail-closed: type-position Function leaves S (over-flag OK).
     assert!(
-        !r.in_subset,
-        "typeof Function in type alias currently fail-closes S: {:?}",
+        r.in_subset,
+        "typeof Function in type alias must stay in S (type-only): {:?}",
         r.violations
+    );
+}
+
+/// Interface/type-annotation `Function` stays in S; value use still leaves S.
+#[test]
+fn ts_interface_function_type_stays_in_s_value_use_leaves() {
+    let type_only = r#"
+export interface CtorLike {
+  new (...args: unknown[]): unknown;
+  prototype: object;
+}
+export type AnyFn = Function;
+export function make(h: Function): Function {
+  return h;
+}
+"#;
+    let r = scan_subset(type_only, Language::TypeScript, "types.ts");
+    assert!(
+        r.in_subset,
+        "interface + type-annotation Function must stay in S: {:?}",
+        r.violations
+    );
+
+    let value_use = r#"
+export function make(code: string) {
+  return Function(code);
+}
+"#;
+    let r2 = scan_subset(value_use, Language::TypeScript, "value.ts");
+    assert!(
+        !r2.in_subset,
+        "Function(value) call must leave S: {:?}",
+        r2.violations
     );
 }
 

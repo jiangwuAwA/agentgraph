@@ -276,6 +276,247 @@ fn py_attrgetter_reference_leaves_s() {
     );
 }
 
+// --- M2.4 table: must-detect Python escapes ---------------------------------
+
+#[test]
+fn py_compile_call_leaves_s() {
+    for src in [
+        "def f(src):\n    return compile(src, '<s>', 'exec')\n",
+        "c = compile\n",
+        "def f(src):\n    return compile(src, name, mode)\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "compile must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_dunder_import_call_leaves_s() {
+    for src in [
+        "def f(name):\n    return __import__(name)\n",
+        "__import__('os')\n",
+        "import importlib\nimportlib.__import__('os')\n",
+        "from importlib import __import__\n__import__('os')\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "__import__ must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_ctypes_import_leaves_s() {
+    for src in [
+        "import ctypes\n",
+        "from ctypes import CDLL\n",
+        "import ctypes as ct\n",
+        "from ctypes import *\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "ctypes import must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_ctypes_usage_leaves_s() {
+    for src in [
+        "import ctypes\nlib = ctypes.CDLL('libc.so.6')\n",
+        "import ctypes as ct\nx = ct.cdll.LoadLibrary('x')\n",
+        "def f():\n    return ctypes.memmove\n",
+    ] {
+        let r = scan_subset(src, Language::Python, "a.py");
+        assert!(
+            !r.in_subset,
+            "ctypes usage must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn py_comment_mentioning_ctypes_stays_in_s() {
+    let src = "def f():\n    # do not import ctypes here\n    return 1\n";
+    let r = scan_subset(src, Language::Python, "a.py");
+    assert!(
+        r.in_subset,
+        "comment mentioning ctypes must stay in S: {:?}",
+        r.violations
+    );
+}
+
+// --- M2.4 table: must-detect Go escapes -------------------------------------
+
+#[test]
+fn go_c_import_cgo_leaves_s() {
+    let src = "package main\n\n/*\n#include <stdlib.h>\n*/\nimport \"C\"\n\nfunc main() {}\n";
+    let r = scan_subset(src, Language::Go, "main.go");
+    assert!(
+        !r.in_subset,
+        "import \"C\" must leave S: {:?}",
+        r.violations
+    );
+}
+
+#[test]
+fn go_export_directive_leaves_s() {
+    for src in [
+        "package main\n//export Foo\nfunc Foo() {}\n",
+        "package main\n//export\tBar\nfunc Bar() {}\n",
+    ] {
+        let r = scan_subset(src, Language::Go, "main.go");
+        assert!(
+            !r.in_subset,
+            "//export must leave S: {src} -> {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn go_string_mentioning_export_stays_in_s() {
+    // Non-directive string content must not leave S (AST advantage).
+    let src = "package main\n\nfunc main() {\n\t_ = \"//export Foo\"\n}\n";
+    let r = scan_subset(src, Language::Go, "main.go");
+    assert!(
+        r.in_subset,
+        "string containing //export must stay in S: {:?}",
+        r.violations
+    );
+}
+
+// --- M2 over-flag: type-only typeof Function / interface Function ------------
+
+#[test]
+fn ts_type_only_typeof_function_stays_in_s() {
+    // M2.2.4: type-only `typeof Function` must NOT be an S violation.
+    let fixtures: &[(&str, &str)] = &[
+        (
+            "type_alias",
+            "type F = typeof Function;\nexport function id(x: number): number { return x; }\n",
+        ),
+        (
+            "export_type",
+            "export type Fn = typeof Function;\nexport function id(x: number): number { return x; }\n",
+        ),
+        (
+            "type_annotation",
+            "export function f(cb: typeof Function): void { cb; }\n",
+        ),
+        (
+            "interface_member",
+            "interface Registry {\n  factory: typeof Function;\n}\nexport const r: Registry = { factory: () => 1 };\n",
+        ),
+        (
+            "type_annotation_function",
+            "export function apply(cb: Function): void { cb(); }\n",
+        ),
+        (
+            "interface_function_name",
+            "export interface FunctionLike {\n  call(x: number): number;\n}\nexport function use(f: FunctionLike): number {\n  return f.call(1);\n}\n",
+        ),
+        (
+            "nest_like_clean",
+            "import { Injectable } from '@nestjs/common';\n@Injectable()\nexport class AppService {\n  getHello(): string {\n    return 'Hello World!';\n  }\n}\n",
+        ),
+    ];
+    for (label, src) in fixtures {
+        let path = format!("{label}.ts");
+        let r = scan_subset(src, Language::TypeScript, &path);
+        assert!(
+            r.in_subset,
+            "type-only Function position `{label}` must stay in S: {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn ts_value_use_function_still_leaves_s() {
+    // Value uses of Function remain S violations (escape hatch).
+    let fixtures: &[(&str, &str)] = &[
+        (
+            "return_value",
+            "export function f(): Function {\n  return Function;\n}\n",
+        ),
+        (
+            "call",
+            "export function f(code: string) {\n  return Function(code);\n}\n",
+        ),
+        (
+            "new_expr",
+            "export function f(code: string) {\n  return new Function(code);\n}\n",
+        ),
+        ("alias", "const F = Function;\nexport default F;\n"),
+        (
+            "callback_arg",
+            "export function f() {\n  return [Function];\n}\n",
+        ),
+    ];
+    for (label, src) in fixtures {
+        let path = format!("{label}.ts");
+        let r = scan_subset(src, Language::TypeScript, &path);
+        assert!(
+            !r.in_subset,
+            "value-use Function `{label}` must leave S: {:?}",
+            r.violations
+        );
+    }
+}
+
+#[test]
+fn ts_clean_fixture_without_dynamic_stays_in_s() {
+    // M2.6: clean Nest-like TS with only type positions → subset_ok.
+    let src = r#"
+import { Module, Controller, Get, Injectable } from '@nestjs/common';
+
+type Handler = (...args: unknown[]) => unknown;
+
+interface ProviderToken {
+  provide: string;
+  useClass: Function;
+}
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+
+@Module({
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+"#;
+    let r = scan_subset(src, Language::TypeScript, "app.module.ts");
+    assert!(
+        r.in_subset,
+        "clean Nest-like TS (type-only Function in interface) must stay in S: {:?}",
+        r.violations
+    );
+}
+
 // --- Go AST advantages --------------------------------------------------------
 
 #[test]

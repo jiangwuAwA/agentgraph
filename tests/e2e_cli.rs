@@ -544,6 +544,107 @@ fn e2e_mcp_callers_sound_flag() {
     assert!(saw_mutex, "expected id=4 mutex error:\n{text}");
 }
 
+/// M2: `subset` JSON fields stay stable (CLI contract for Agents / docs).
+#[test]
+fn e2e_subset_json_fields_stable() {
+    let root = temp_root("subset-fields");
+    write_fixture(&root);
+    // Clean TS + Python corpus → ast_modeled.
+    std::fs::write(
+        root.join("src/auth.py"),
+        r#"
+def authenticate(email, password):
+    return {"email": email, "password": password}
+
+def login_handler(email, password):
+    return authenticate(email, password)
+"#,
+    )
+    .unwrap();
+
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success(), "index stderr={}", stderr(&idx));
+
+    let sub = run(&root, &["subset"]);
+    assert!(sub.status.success(), "subset stderr={}", stderr(&sub));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&sub)).expect("subset json");
+    for key in [
+        "in_subset",
+        "violation_count",
+        "violations",
+        "promise_tier",
+        "promise",
+        "promise_languages",
+        "note",
+    ] {
+        assert!(
+            v.get(key).is_some(),
+            "subset JSON missing `{key}`: {}",
+            stdout(&sub)
+        );
+    }
+    assert_eq!(v["in_subset"], true, "{}", stdout(&sub));
+    assert_eq!(v["promise_tier"], "ast_modeled", "{}", stdout(&sub));
+    assert!(v["violations"].is_array());
+    assert!(v["promise_languages"].is_array());
+    let langs: Vec<&str> = v["promise_languages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
+    assert!(langs.contains(&"typescript"), "langs={langs:?}");
+    assert!(langs.contains(&"python"), "langs={langs:?}");
+    assert!(!langs.contains(&"lexical_v1"));
+
+    // Impact --sound payload uses the same promise fields.
+    let imp = run(&root, &["impact", "validateEmail", "--sound"]);
+    assert!(imp.status.success(), "{}", stderr(&imp));
+    let iv: serde_json::Value = serde_json::from_str(&stdout(&imp)).expect("impact json");
+    assert_eq!(iv["mode"], "sound");
+    assert_eq!(iv["subset_ok"], true);
+    assert_eq!(iv["promise_tier"], "ast_modeled");
+    assert!(iv.get("promise_languages").is_some());
+    assert!(iv.get("promise").is_some());
+}
+
+/// M2 over-flag: clean Nest-like TS with type-only Function stays in S end-to-end.
+#[test]
+fn e2e_type_only_function_fixture_stays_in_s() {
+    let root = temp_root("type-only-fn");
+    std::fs::write(
+        root.join("src/app.ts"),
+        r#"
+type Ctor = typeof Function;
+export interface ProviderLike {
+  provide: string;
+  useClass: Function;
+}
+export class AppService {
+  getHello(): string {
+    return "Hello World!";
+  }
+}
+export function make(h: Function): string {
+  return new AppService().getHello();
+}
+"#,
+    )
+    .unwrap();
+    let idx = run(&root, &["index", "--force"]);
+    assert!(idx.status.success(), "{}", stderr(&idx));
+    let sub = run(&root, &["subset"]);
+    assert!(
+        sub.status.success(),
+        "type-only Function fixture must stay in S: {}",
+        stderr(&sub)
+    );
+    let v: serde_json::Value = serde_json::from_str(&stdout(&sub)).unwrap();
+    assert_eq!(v["in_subset"], true, "{}", stdout(&sub));
+    assert_eq!(v["promise_tier"], "ast_modeled");
+    assert_eq!(v["violation_count"], 0);
+}
+
 /// Same-line multi-ref fixture: scip lint must exit 0 (distinct ranges for duplicate refs).
 #[test]
 fn e2e_scip_lint_same_line_multi_ref() {

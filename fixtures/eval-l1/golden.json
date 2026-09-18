@@ -26,6 +26,30 @@
       { "symbol": "area", "site_file": "src/main.rs", "site_contains": "impl Shape for Circle", "kind": "impl", "min_confidence": "heuristic" },
       { "symbol": "area", "site_file": "src/main.rs", "site_contains": "impl Shape for Rect", "kind": "impl", "min_confidence": "heuristic" },
       { "symbol": "s.area", "site_file": "src/main.rs", "site_contains": "s.area()", "kind": "call", "min_confidence": "exact" }
+    ],
+    "rust-dyn": [
+      { "symbol": "area", "site_file": "src/main.rs", "site_contains": "dyn Shape", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "name", "site_file": "src/main.rs", "site_contains": "dyn Shape", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "Circle", "site_file": "src/main.rs", "site_contains": "impl Shape for Circle", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "s.area", "site_file": "src/main.rs", "site_contains": "s.area()", "kind": "call", "min_confidence": "exact" }
+    ],
+    "go-iface": [
+      { "symbol": "Get", "site_file": "store.go", "site_contains": "var _ Store = (*MemStore)(nil)", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "Put", "site_file": "store.go", "site_contains": "func (m *MemStore) Put", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "MemStore", "site_file": "store.go", "site_contains": "var _ Store = (*MemStore)(nil)", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "Get", "site_file": "store.go", "site_contains": "RedisCache", "kind": "impl", "min_confidence": "heuristic" }
+    ],
+    "py-plugins": [
+      { "symbol": "get_user_service", "site_file": "app/plugins.py", "site_contains": "Depends(get_user_service)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "get_current_user", "site_file": "app/plugins.py", "site_contains": "Security(get_current_user)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "AuthPlugin", "site_file": "app/plugins.py", "site_contains": "__init_subclass__", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "myapp.plugins", "site_file": "app/plugins.py", "site_contains": "entry_points(group=\"myapp.plugins\")", "kind": "di", "min_confidence": "heuristic" }
+    ],
+    "ts-router": [
+      { "symbol": "getUsers", "site_file": "src/routes.ts", "site_contains": "router.get", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "createUser", "site_file": "src/routes.ts", "site_contains": "router.post", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "authMiddleware", "site_file": "src/routes.ts", "site_contains": "app.use", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "metricsHandler", "site_file": "src/routes.ts", "site_contains": "app.register", "kind": "di", "min_confidence": "heuristic" }
     ]
   }
 }

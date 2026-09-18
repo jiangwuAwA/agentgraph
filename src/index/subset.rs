@@ -138,17 +138,31 @@ const SOUND_HEURISTIC_RULES: &[&str] = &[
     "ts.nest.ctor_inject",
     "ts.event.subscribe",
     "ts.event.dispatch",
+    // Express/Fastify handler identifiers written at router/app registration sites.
+    "ts.framework.register",
     "py.di.depends",
     "py.di.inject",
     "py.framework.init_subclass",
+    // entry_points group strings are finite at the call site, but the plugins
+    // they load are NOT enumerated there — deliberately NOT sound-eligible.
+    // "py.di.entry_points",
     "go.di.handler_map",
     "go.di.interface_impl",
     "go.di.interface_assert",
     "go.di.route_register",
+    // M3-B: assertion proofs + method-set name match over **indexed** methods
+    // only (finite domain within the corpus file — same class as interface_impl).
+    "go.di.interface_impl_v2",
     "rs.di.impl_trait",
     // inventory::submit! registry: finite-domain registration + factory type
     // identifiers written at the call site (registration ≠ runtime call).
     "rs.di.inventory_submit",
+    // M3-E linkme: identifiers written at #[distributed_slice]/static site.
+    "rs.di.linkme_distributed_slice",
+    // M3-A rs.di.dyn_trait_method is deliberately NOT allowlisted: dyn dispatch
+    // is open (cross-crate impls, blanket impls, trait objects from generics).
+    // Only same-file indexed impls are emitted; still not a finite registration
+    // domain like inventory/Nest. Keep Unsound.
 ];
 
 /// DynamicCandidate rules that only fire on **string-literal** keys (finite domain).
@@ -228,7 +242,7 @@ pub fn scan_subset(source: &str, lang: Language, path: &str) -> SubsetReport {
             scan_js(source, lang, path, &mut violations)
         }
         Language::Rust => scan_rust(source, path, &mut violations),
-        // Python / Go S v1: conservative lexical/AST escapes leave S.
+        // Python / Go: tree-sitter AST scanners (ast_modeled promise tier).
         Language::Python => scan_py(source, path, &mut violations),
         Language::Go => scan_go(source, path, &mut violations),
     }
@@ -594,12 +608,18 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
         // Bare eval / Function used as a *value* (callback arg, array element,
         // returned binding). Property access is `property_identifier` and is
         // intentionally not matched — `obj.eval` stays in S.
+        // M2 over-flag fix: type-only positions (`typeof Function`, type
+        // annotations) are NOT runtime value uses — stay in S.
         "identifier" => {
             let t = snippet_at(source, node);
-            if t == "eval" {
-                push_v(violations, path, line, "eval", &t);
-            } else if t == "Function" {
-                push_v(violations, path, line, "Function", &t);
+            if t == "eval" || t == "Function" {
+                if js_identifier_is_type_only(node) {
+                    // Type position — not a runtime escape hatch.
+                } else if t == "eval" {
+                    push_v(violations, path, line, "eval", &t);
+                } else {
+                    push_v(violations, path, line, "Function", &t);
+                }
             }
         }
         // Destructuring rename: `const { eval: e } = globalThis` — the local
@@ -670,6 +690,105 @@ fn walk_js(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetViol
 
     for child in node.children(&mut cursor) {
         walk_js(child, source, path, violations);
+    }
+}
+
+/// True when this JS/TS identifier sits only in a **type** position
+/// (`typeof Function`, type-annotation entity, type alias/interface sides)
+/// — not a runtime value use. M2 over-flag cleanup: type-only `Function` /
+/// `eval` must stay in S; value uses still leave S.
+fn js_identifier_is_type_only(node: Node) -> bool {
+    let mut cur = node;
+    loop {
+        let Some(parent) = cur.parent() else {
+            return false;
+        };
+        match parent.kind() {
+            // `typeof Function` / `typeof eval` — pure type query entity.
+            "type_query" => return true,
+            // Type-grammar nodes: identifiers parented by these are type entities.
+            "type_identifier"
+            | "nested_type_identifier"
+            | "generic_type"
+            | "type_alias_declaration"
+            | "interface_declaration"
+            | "type_parameter"
+            | "constraint"
+            | "type_predicate"
+            | "optional_type"
+            | "rest_type"
+            | "union_type"
+            | "intersection_type"
+            | "function_type"
+            | "constructor_type"
+            | "array_type"
+            | "tuple_type"
+            | "lookup_type"
+            | "index_type_query"
+            | "conditional_type"
+            | "template_literal_type"
+            | "type_annotation"
+            | "type_parameters"
+            | "type_arguments"
+            | "object_type"
+            | "property_signature"
+            | "method_signature"
+            | "abstract_method_signature"
+            | "function_signature"
+            | "class_heritage"
+            | "extends_type_clause"
+            | "implements_clause"
+            | "ambient_declaration" => return true,
+            // Value-context stoppers: Function/eval is used as a runtime value.
+            "program"
+            | "statement_block"
+            | "expression_statement"
+            | "return_statement"
+            | "call_expression"
+            | "new_expression"
+            | "arguments"
+            | "variable_declarator"
+            | "assignment_expression"
+            | "augmented_assignment_expression"
+            | "array"
+            | "pair"
+            | "member_expression"
+            | "subscript_expression"
+            | "binary_expression"
+            | "unary_expression"
+            | "ternary_expression"
+            | "arrow_function"
+            | "function_expression"
+            | "function_declaration"
+            | "generator_function"
+            | "class_declaration"
+            | "class"
+            | "method_definition"
+            | "public_field_definition"
+            | "if_statement"
+            | "for_statement"
+            | "for_in_statement"
+            | "while_statement"
+            | "do_statement"
+            | "switch_statement"
+            | "try_statement"
+            | "throw_statement"
+            | "export_statement"
+            | "import_statement"
+            | "lexical_declaration"
+            | "variable_declaration"
+            | "pair_pattern"
+            | "spread_element"
+            | "await_expression"
+            | "yield_expression"
+            | "parenthesized_expression"
+            | "sequence_expression"
+            | "decorator"
+            | "jsx_element"
+            | "jsx_self_closing_element"
+            | "template_string" => return false,
+            _ => cur = parent,
+        }
     }
 }
 
@@ -807,6 +926,7 @@ fn scan_py(source: &str, path: &str, violations: &mut Vec<SubsetViolation>) {
     // Cheap alias pass: `from builtins import eval as e` / `import builtins as b`.
     let mut import_aliases: Vec<(String, String)> = Vec::new();
     collect_py_dangerous_imports(tree.root_node(), source, &mut import_aliases);
+    collect_py_dangerous_module_aliases(tree.root_node(), source, &mut import_aliases);
     walk_py_s(tree.root_node(), source, path, &import_aliases, violations);
 }
 
@@ -954,6 +1074,97 @@ fn py_call_first_arg(call: Node) -> Option<Node> {
     named.first().copied()
 }
 
+/// Dangerous Python modules that leave S when imported or used (M2.4: ctypes).
+const PY_DANGEROUS_MODULES: &[&str] = &["ctypes"];
+
+/// True when an import/from-import statement targets a dangerous module (ctypes).
+fn py_import_targets_dangerous_module(node: Node, source: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "dotted_name" | "module_name" => {
+                let t = snippet_at(source, child);
+                if PY_DANGEROUS_MODULES
+                    .iter()
+                    .any(|m| t == *m || t.starts_with(&format!("{m}.")))
+                {
+                    return true;
+                }
+            }
+            "aliased_import" => {
+                let mut c2 = child.walk();
+                for g in child.named_children(&mut c2) {
+                    if matches!(g.kind(), "dotted_name" | "identifier") {
+                        let t = snippet_at(source, g);
+                        if PY_DANGEROUS_MODULES.contains(&t.as_str()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Collect ctypes (and other dangerous module) import aliases: local → original.
+fn collect_py_dangerous_module_aliases(node: Node, source: &str, out: &mut Vec<(String, String)>) {
+    let mut cursor = node.walk();
+    if node.kind() == "import_statement" {
+        let mut c = node.walk();
+        for child in node.children(&mut c) {
+            if child.kind() == "aliased_import" {
+                let mut names = Vec::new();
+                let mut c2 = child.walk();
+                for g in child.named_children(&mut c2) {
+                    if matches!(g.kind(), "dotted_name" | "identifier") {
+                        names.push(snippet_at(source, g));
+                    }
+                }
+                if names.len() >= 2 && PY_DANGEROUS_MODULES.contains(&names[0].as_str()) {
+                    out.push((names[1].clone(), names[0].clone()));
+                }
+            }
+        }
+    }
+    if node.kind() == "import_from_statement" {
+        let mut c = node.walk();
+        let mut module = String::new();
+        for child in node.children(&mut c) {
+            if matches!(child.kind(), "dotted_name" | "module_name") {
+                module = snippet_at(source, child);
+                break;
+            }
+        }
+        if PY_DANGEROUS_MODULES.contains(&module.as_str()) {
+            let mut c = node.walk();
+            for child in node.named_children(&mut c) {
+                if child.kind() == "aliased_import" {
+                    let mut names = Vec::new();
+                    let mut c2 = child.walk();
+                    for g in child.named_children(&mut c2) {
+                        if matches!(g.kind(), "dotted_name" | "identifier") {
+                            names.push(snippet_at(source, g));
+                        }
+                    }
+                    if names.len() >= 2 {
+                        out.push((names[1].clone(), names[0].clone()));
+                    }
+                } else if child.kind() == "dotted_name" {
+                    let name = snippet_at(source, child);
+                    if name != module {
+                        out.push((name.clone(), name));
+                    }
+                }
+            }
+        }
+    }
+    for child in node.children(&mut cursor) {
+        collect_py_dangerous_module_aliases(child, source, out);
+    }
+}
+
 fn walk_py_s(
     node: Node,
     source: &str,
@@ -967,6 +1178,12 @@ fn walk_py_s(
     let snippet = snippet_at(source, node).replace('\n', " ");
 
     match kind {
+        "import_statement" | "import_from_statement" => {
+            // M2.4: ctypes import leaves S (unsafe FFI escape hatch).
+            if py_import_targets_dangerous_module(node, source) {
+                push_v(violations, path, line, "py_ctypes", &snippet);
+            }
+        }
         "call" => {
             if let Some(func) = node.child_by_field_name("function") {
                 let flat = py_callee_flat_name(func, source);
@@ -990,6 +1207,18 @@ fn walk_py_s(
                 }
                 if flat_resolved == "compile" {
                     push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+                // ctypes.* / aliased ctypes.* calls.
+                if flat_resolved == "ctypes"
+                    || dotted
+                        .as_deref()
+                        .map(|d| d.starts_with("ctypes."))
+                        .unwrap_or(false)
+                    || import_aliases
+                        .iter()
+                        .any(|(local, orig)| orig == "ctypes" && local == flat_s)
+                {
+                    push_v(violations, path, line, "py_ctypes", &snippet);
                 }
                 // getattr: second arg must be a string literal (finite domain).
                 // A string naming eval/exec/__import__ invents a call target.
@@ -1053,6 +1282,17 @@ fn walk_py_s(
                 let an = snippet_at(source, attr);
                 if an == "eval" || an == "exec" {
                     push_v(violations, path, line, "py_eval_alias", &snippet);
+                }
+            }
+            // ctypes.X / alias.X where alias → ctypes (M2.4).
+            if let Some(obj) = node.child_by_field_name("object") {
+                let ot = snippet_at(source, obj);
+                if ot == "ctypes"
+                    || import_aliases
+                        .iter()
+                        .any(|(local, orig)| *local == ot && orig == "ctypes")
+                {
+                    push_v(violations, path, line, "py_ctypes", &snippet);
                 }
             }
         }
@@ -1126,6 +1366,13 @@ fn walk_py_s(
                 }
                 if resolved == "__dict__" {
                     push_v(violations, path, line, "py_dynamic_attr", &snippet);
+                }
+                if resolved == "ctypes"
+                    || import_aliases
+                        .iter()
+                        .any(|(local, orig)| *local == name && orig == "ctypes")
+                {
+                    push_v(violations, path, line, "py_ctypes", &snippet);
                 }
             }
         }

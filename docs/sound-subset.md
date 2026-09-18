@@ -120,11 +120,15 @@ claim. The S scanner still flags those files (`unsafe` violation →
 `promise_tier: disabled`). Do **not** enable `--sound` on crates that contain
 `unsafe`. Regression: `tests/rust_unsafe_calls.rs`.
 
-**Rust L1 allowlist:** `rs.di.impl_trait` (implementor methods) and
+**Rust L1 allowlist:** `rs.di.impl_trait` (implementor methods),
 `rs.di.inventory_submit` (`inventory::submit!` registration type + factory
-`Type::new` identifiers written at the call site) are finite-domain
-over-approx Heuristic edges. Registration ≠ runtime call; runtime
-`inventory::iter` fan-out is **not** modeled.
+`Type::new` identifiers written at the call site), and
+`rs.di.linkme_distributed_slice` (`#[distributed_slice]/static` identifiers at
+the attribute site) are finite-domain over-approx Heuristic edges.
+Registration ≠ runtime call; runtime `inventory::iter` fan-out is **not**
+modeled. **`rs.di.dyn_trait_method` (M3-A) is NOT allowlisted** — dyn
+dispatch is open (cross-crate / blanket impls); only same-file indexed
+implementors are emitted, still not a finite registration domain.
 
 Inventory path matching (R27): qualified forms are accepted only for
 crate-relative inventory paths (`inventory::submit`, `::inventory::submit`,
@@ -144,7 +148,8 @@ AST walks** that fail-closed on parse errors (`has_error` → violation).
 `getattr` without a string-literal second arg, `__builtins__` access,
 `__getattribute__` / `attrgetter` / `methodcaller` / `FunctionType` /
 `__dict__` / `compile`, `vars`/`globals`/`locals` + subscript,
-`importlib.import_module` with non-literal first arg.
+`importlib.import_module` with non-literal first arg,
+`ctypes` import or usage (FFI escape hatch).
 Comments and strings do **not** trigger (AST advantage over lexical).
 
 **Go (S_go)** leaves S on:
@@ -164,14 +169,15 @@ engineering S gate — **not** ecosystem sound.
 | Node export tracer | ✅ `tests/l2_sound.rs` |
 | Multi-file ESM | ✅ `tests/l2_esm_diff.rs` |
 | Go cover profile | ✅ `tests/l2_go_diff.rs` |
-| Property tests (S_js generator) | ✅ `tests/l2_property.rs` |
+| Python `sys.setprofile` tracer | ✅ `tests/l2_py_diff.rs` + `scripts/py_trace.py` |
+| Property tests (S_js / S_py / S_go) | ✅ `tests/l2_property.rs` |
 | emit↔on dispatch edges | ✅ `tests/l2_dispatch.rs` + `Store::link_event_dispatch` |
 | S violation scanners | ✅ `tests/l2_subset.rs`, `l2_lang_subset.rs` |
 
 ## If you fear missed edges (怕漏)
 
 1. Prefer `impact/callers --sound` when `subset_ok: true` (S-qualified over-approx).  
-2. Check `promise_tier`: `ast_modeled` is the strongest S claim (still an engineering gate). The `lexical_v1` / `mixed_lexical_v1` arms are reserved; no currently shipped language selects them.  
+2. Check `promise_tier`: `ast_modeled` is the strongest S claim (still an engineering gate) and is what **all shipped languages** (js/ts/tsx/jsx, python, go, rust) select. The `lexical_v1` / `mixed_lexical_v1` arms are reserved; no currently shipped language selects them.  
 3. Or `--recall` / `--include-dynamic` for a wider heuristic window.  
 4. Do **not** expect zero misses **and** zero extras on arbitrary code — see PLAN §0.2.
 
@@ -184,12 +190,13 @@ engineering S gate — **not** ecosystem sound.
   registration (same class as `bind`/`register`). Registration ≠ runtime HTTP
   ServeHTTP; Nest internals that resolve the provider graph are outside the
   indexed program.
-- **Type-only `typeof Function`** (e.g. `type F = typeof Function`) currently
-  **fail-closes** S — bare `Function` token is treated as an escape hatch even
-  in a pure type position. Over-flag is intentional (fail-closed); pinned by
-  `ts_typeof_function_only_type_annotation_fail_closed` in
-  `tests/r16_adversarial.rs`. Returning / calling `Function` as a value also
-  leaves S (correct).
+- **Type-only `typeof Function` / interface `Function` type positions do NOT
+  leave S** (M2 over-flag fix). Runtime value uses (`return Function`,
+  `Function(code)`, `new Function`, aliasing `Function`) still leave S.
+  Pinned by `ts_type_only_typeof_function_stays_in_s` /
+  `ts_value_use_function_still_leaves_s` in `tests/l2_lang_subset.rs` and
+  `ts_typeof_function_only_type_annotation_stays_in_s` in
+  `tests/r16_adversarial.rs`.
 
 ## Nest `ts.nest.*` (sound-allowlisted Heuristic registration)
 
@@ -214,9 +221,14 @@ These five ids are exactly the `ts.nest.*` entries in
 
 Non-`ts.nest.*` sound-allowlisted heuristics live in the same constant:
 `ts.di.register|bind|to|decorator`, `ts.event.subscribe|dispatch`,
+`ts.framework.register` (M3-D Express/Fastify handlers at registration sites),
 `py.di.depends|inject`, `py.framework.init_subclass`, `go.di.handler_map|
-interface_impl|interface_assert|route_register`, `rs.di.impl_trait`,
-`rs.di.inventory_submit`.
+interface_impl|interface_assert|interface_impl_v2|route_register`,
+`rs.di.impl_trait`, `rs.di.inventory_submit`, `rs.di.linkme_distributed_slice`.
+
+**Not sound-eligible (Unsound by design):**
+- `rs.di.dyn_trait_method` (M3-A) — open dyn dispatch; not a finite registration domain.
+- `py.di.entry_points` (M3-C) — group string is finite at the site, but the plugins it loads are not enumerated there.
 
 Array-element unwrapping (still registration): bare ident / member / string
 token / `new T()` / `X.forRoot()` / `forwardRef(() => M)` (never the

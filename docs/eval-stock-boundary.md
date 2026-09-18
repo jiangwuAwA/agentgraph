@@ -35,7 +35,7 @@ Full crate table lives in [eval-stock-s-map.md](eval-stock-s-map.md). Highlights
 | Indexed files | 995 (994 OK, 1 UTF-8 fail `alpha-forge/adapter.rs`) |
 | Symbols / refs | 20 896 / **168 088** |
 | Exact / Heuristic / DynamicCandidate | 166 900 / **1 180** / 8 |
-| `subset_violations` | **115** (`promise_tier: disabled` on full tree; includes known `Function` type-only over-flag) |
+| `subset_violations` | **115** (`promise_tier: disabled` on full tree; type-only `Function` over-flag **fixed in M2 residual** — remaining violations are real unsafe/reflect/dynamic) |
 
 Violation kinds (authority = AST `subset_violations`):
 

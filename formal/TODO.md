@@ -70,4 +70,5 @@
 | 2026-09-17 | Lean 范围 A 落地：`formal/lean/` + `runtime_subset_static`；`lake build` 绿 |
 | 2026-09-18 | 夜间 Lean CI：`.github/workflows/lean.yml`（schedule + paths 过滤；不挡主 Rust CI） |
 | 2026-09-18 | R20 honesty：S_py/S_go AST + 属性测试标为已完成；Nest `ts.nest.*` 与 `typeof Function` over-flag 文档化 |
+| M2 residual | type-only `typeof Function` **不再** over-flag（type 位置保持 in S）；`ctypes` 进 S_py 违例集；`tests/l2_py_diff.rs` + `scripts/py_trace.py`；PLAN/AGENTS/eval-l2 文实一致（ast_modeled） |
 | 2026-09-18 | R25 honesty：`record_parse_error` 完备性矩阵表驱动测试；oversized/min/UTF-8/read → `parse_error` 写入 docs；eval-l1 幻影 rule id 修正 |

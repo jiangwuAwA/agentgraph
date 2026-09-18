@@ -140,6 +140,7 @@ Skipped: A1 found no gap.
 ## Known accepted over-approx (do not “fix” as bugs)
 
 - `typeof Function` in type position fail-closes S.
+  **M2 residual follow-up:** type-only positions now **stay in S**; value-use still fail-closes. See `tests/l2_lang_subset.rs`.
 - Event names as DynamicCandidate callee names.
 - `rs.di.impl_trait` implementor edges stored as `kind=call` (useful for
   impact; noisy as callers on high-collision names).

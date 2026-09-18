@@ -22,10 +22,22 @@ pub fn apply(
             walk_ts(root, source, ctx, references, None);
         }
         Language::Python => walk_py(root, source, ctx, references, None),
-        Language::Go => walk_go(root, source, ctx, references),
+        Language::Go => {
+            let go_idx = collect_go_iface_index(root, source);
+            walk_go(root, source, ctx, references, &go_idx);
+        }
         Language::Rust => {
             let inv_submit_aliases = collect_inventory_submit_aliases(root, source);
-            walk_rust(root, source, ctx, references, &inv_submit_aliases);
+            let dyn_idx = collect_rust_dyn_index(root, source);
+            walk_rust(
+                root,
+                source,
+                ctx,
+                references,
+                &inv_submit_aliases,
+                &dyn_idx,
+                None,
+            );
         }
     }
 }
@@ -282,6 +294,20 @@ fn ts_call_rules(
         }
     }
 
+    // M3-D: Express/Fastify-style framework registration.
+    // router.get/post(..., handler) / app.use(middleware) / app.register(path, handler)
+    // Finite handler identifiers written at the registration site.
+    ts_framework_register_rule(
+        node,
+        source,
+        ctx,
+        references,
+        &method,
+        fn_text,
+        enclosing.clone(),
+        line,
+    );
+
     // Nest dynamic module: ConfigModule.forRootAsync({ imports, inject, useFactory })
     // / TypeOrmModule.forRootAsync(...). Config-object DI deps are real registrations.
     if matches!(method.as_str(), "forRootAsync" | "forRoot") {
@@ -433,6 +459,12 @@ fn ts_call_rules(
         method_eff.as_str(),
         "on" | "once" | "subscribe" | "addListener" | "addEventListener"
     );
+    // HTTP routes: existing uppercase (Go-like) + M3-D lowercase Express verbs.
+    let is_route = is_route
+        || matches!(
+            method.as_str(),
+            "get" | "post" | "put" | "delete" | "patch" | "options" | "head" | "all" | "route"
+        );
     if is_subscribe || is_route {
         let evt = nth_arg_string_lit(node, source, 0);
         let mut handlers: Vec<String> = Vec::new();
@@ -467,6 +499,21 @@ fn ts_call_rules(
             }
         }
         for handler in handlers {
+            let rid = if is_route {
+                // Lowercase Express-style verbs → M3-D id; uppercase keeps legacy id.
+                if method
+                    .chars()
+                    .next()
+                    .map(|c| c.is_lowercase())
+                    .unwrap_or(false)
+                {
+                    "ts.framework.register"
+                } else {
+                    "go.di.route_register"
+                }
+            } else {
+                "ts.event.subscribe"
+            };
             push_l1_mod(
                 references,
                 L1Edge {
@@ -475,16 +522,107 @@ fn ts_call_rules(
                     line,
                     enclosing: enclosing.clone(),
                     confidence: Confidence::Heuristic,
-                    rule_id: if is_route {
-                        "go.di.route_register"
-                    } else {
-                        "ts.event.subscribe"
-                    },
+                    rule_id: rid,
                     snippet: format!("{}(...)", fn_text),
                 },
                 evt.clone(),
             );
         }
+    }
+}
+
+/// M3-D: `router.get(path, h)` / `app.use(middleware)` / `app.register(path, h)`.
+/// Finite handler identifiers at the registration call site. Heuristic only.
+#[allow(clippy::too_many_arguments)]
+fn ts_framework_register_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    method: &str,
+    fn_text: &str,
+    enclosing: Option<String>,
+    line: usize,
+) {
+    let _ = ctx;
+    let is_http_verb = matches!(
+        method,
+        "get"
+            | "post"
+            | "put"
+            | "delete"
+            | "patch"
+            | "options"
+            | "head"
+            | "all"
+            | "route"
+            | "GET"
+            | "POST"
+            | "PUT"
+            | "DELETE"
+            | "PATCH"
+    );
+    let is_use = method == "use";
+    let is_fw_register = method == "register" || method == "mount" || method == "handle";
+    if !is_http_verb && !is_use && !is_fw_register {
+        return;
+    }
+    // Handler position: use → arg0; verbs/register → arg1 if arg0 looks like a path.
+    let mut candidates: Vec<(usize, String)> = Vec::new();
+    let arg0 = nth_arg_node(node, source, 0);
+    let arg1 = nth_arg_node(node, source, 1);
+    let arg0_is_path = arg0
+        .map(|a| {
+            matches!(a.kind(), "string" | "string_fragment" | "template_string")
+                || string_literal_content(a, source).is_some()
+                || node_text(a, source).starts_with('/')
+                || node_text(a, source).starts_with('\'')
+                || node_text(a, source).starts_with('"')
+        })
+        .unwrap_or(false);
+
+    if is_use {
+        if let Some(a) = arg0 {
+            if let Some(n) = ident_name(a, source) {
+                if !n.is_empty() && n != method {
+                    candidates.push((0, n));
+                }
+            }
+        }
+    }
+    if is_http_verb || is_fw_register {
+        let idx = if arg0_is_path || arg1.is_some() { 1 } else { 0 };
+        if let Some(a) = nth_arg_node(node, source, idx) {
+            if let Some(n) = ident_name(a, source) {
+                if !n.is_empty() && n != method {
+                    candidates.push((idx, n));
+                }
+            }
+        }
+        // Fastify/koa sometimes register(handler) with no path.
+        if candidates.is_empty() && is_fw_register {
+            if let Some(a) = arg0 {
+                if let Some(n) = ident_name(a, source) {
+                    if !n.is_empty() && n != method {
+                        candidates.push((0, n));
+                    }
+                }
+            }
+        }
+    }
+    for (_, handler) in candidates {
+        push_l1(
+            references,
+            L1Edge {
+                name: handler,
+                qualifier: None,
+                line,
+                enclosing: enclosing.clone(),
+                confidence: Confidence::Heuristic,
+                rule_id: "ts.framework.register",
+                snippet: format!("{fn_text}(...) framework registration"),
+            },
+        );
     }
 }
 
@@ -1343,8 +1481,8 @@ fn py_call_rules(
         }
     }
 
-    // Depends(get_user_service) as a call argument anywhere
-    if last == "Depends" {
+    // Depends(get_user_service) / Security(get_current_user) as call arguments.
+    if last == "Depends" || last == "Security" {
         if let Some(arg) = py_nth_arg(node, source, 0) {
             let t = node_text(arg, source);
             // Depends(SomeClass) or Depends(get_fn)
@@ -1362,12 +1500,77 @@ fn py_call_rules(
                         enclosing: enclosing.clone(),
                         confidence: Confidence::Heuristic,
                         rule_id: "py.di.depends",
-                        snippet: format!("Depends({t})"),
+                        snippet: format!("{last}({t})"),
                     },
                 );
             }
         }
     }
+
+    // importlib.metadata.entry_points(group="...") / pkg_resources.iter_entry_points("...")
+    // Finite group string at the call site; plugins themselves are NOT enumerated
+    // here — Heuristic candidate registration domain, not sound-eligible.
+    if last == "entry_points" || last == "iter_entry_points" || last == "load_entry_point" {
+        if let Some(group) = py_entry_point_group(node, source) {
+            push_l1(
+                references,
+                L1Edge {
+                    name: group.clone(),
+                    qualifier: None,
+                    line,
+                    enclosing: enclosing.clone(),
+                    confidence: Confidence::Heuristic,
+                    rule_id: "py.di.entry_points",
+                    snippet: format!("{last}(... group/domain={group})"),
+                },
+            );
+        }
+    }
+}
+
+/// Group / entry-point domain string from `entry_points(group="g")` or
+/// `iter_entry_points("g")` / `load_entry_point("g", ...)`.
+fn py_entry_point_group(call: Node, source: &str) -> Option<String> {
+    // keyword argument group=...
+    let args = call.child_by_field_name("arguments")?;
+    let mut cursor = args.walk();
+    let kids: Vec<Node> = args.children(&mut cursor).collect();
+    for (i, k) in kids.iter().enumerate() {
+        if k.kind() == "keyword_argument" || node_text(*k, source).starts_with("group") {
+            let t = node_text(*k, source);
+            if let Some(eq) = t.find('=') {
+                let rhs = t[eq + 1..].trim().trim_matches(['\'', '"']);
+                if !rhs.is_empty()
+                    && rhs
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+                {
+                    return Some(rhs.to_string());
+                }
+            }
+        }
+        // `group = "x"` may be separate tokens
+        if node_text(*k, source) == "group" {
+            if let Some(next) = kids.get(i + 2) {
+                if let Some(s) = string_literal_content(*next, source) {
+                    return Some(s);
+                }
+            }
+            if let Some(next) = kids.get(i + 1) {
+                let nt = node_text(*next, source);
+                let rhs = nt.trim_start_matches('=').trim().trim_matches(['\'', '"']);
+                if !rhs.is_empty()
+                    && rhs
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+                {
+                    return Some(rhs.to_string());
+                }
+            }
+        }
+    }
+    // Positional first string arg (iter_entry_points("g")).
+    py_nth_arg_string(call, source, 0)
 }
 
 fn py_default_depends(
@@ -1453,7 +1656,232 @@ fn py_nth_arg_string(call: Node, source: &str, idx: usize) -> Option<String> {
 
 // ── Go ──────────────────────────────────────────────────────────────
 
-fn walk_go(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut Vec<ExtractedRef>) {
+/// Same-file Go interface / method-set index for M3-B systematization.
+/// Only **already-indexed** (this AST) types/methods — never invent implementors.
+#[derive(Debug, Default, Clone)]
+struct GoIfaceIndex {
+    /// interface name → method names
+    ifaces: std::collections::HashMap<String, Vec<String>>,
+    /// concrete type → method names (from method_declaration)
+    method_sets: std::collections::HashMap<String, Vec<String>>,
+    /// explicit assertions `var _ I = (*T)(nil)` → (I, T)
+    asserts: Vec<(String, String)>,
+}
+
+fn collect_go_iface_index(root: Node, source: &str) -> GoIfaceIndex {
+    let mut idx = GoIfaceIndex::default();
+    walk_go_collect(root, source, &mut idx);
+    idx
+}
+
+fn walk_go_collect(node: Node, source: &str, idx: &mut GoIfaceIndex) {
+    let mut cursor = node.walk();
+    match node.kind() {
+        "type_declaration" | "type_spec" => {
+            go_collect_interface(node, source, idx);
+        }
+        "method_declaration" => {
+            if let Some((recv, method)) = go_method_recv_name(node, source) {
+                idx.method_sets.entry(recv).or_default().push(method);
+            }
+        }
+        "var_declaration" | "var_spec" | "short_var_declaration" => {
+            if let Some((iface, ty)) = go_parse_interface_assertion(node_text(node, source)) {
+                idx.asserts.push((iface, ty));
+            }
+        }
+        _ => {}
+    }
+    for child in node.children(&mut cursor) {
+        walk_go_collect(child, source, idx);
+    }
+}
+
+fn go_collect_interface(node: Node, source: &str, idx: &mut GoIfaceIndex) {
+    // type Spec: name + interface_type
+    let mut name = None;
+    let mut iface_body = None;
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        if ch.kind() == "type_identifier" && name.is_none() {
+            name = Some(node_text(ch, source).to_string());
+        }
+        if ch.kind() == "interface_type" {
+            iface_body = Some(ch);
+        }
+        if ch.kind() == "type_spec" {
+            if let Some(n) = ch.child_by_field_name("name") {
+                name = Some(node_text(n, source).to_string());
+            }
+            if let Some(t) = ch.child_by_field_name("type") {
+                if t.kind() == "interface_type" {
+                    iface_body = Some(t);
+                }
+            }
+        }
+    }
+    let (Some(name), Some(body)) = (name, iface_body) else {
+        return;
+    };
+    let mut methods = Vec::new();
+    let mut bc = body.walk();
+    for m in body.children(&mut bc) {
+        // method_elem / field_declaration with field_identifier name
+        let mut mc = m.walk();
+        for f in m.children(&mut mc) {
+            if f.kind() == "field_identifier" || f.kind() == "method_elem" {
+                let t = node_text(f, source);
+                if !t.is_empty()
+                    && t.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    && !methods.contains(&t.to_string())
+                {
+                    methods.push(t.to_string());
+                }
+            }
+            if f.kind() == "field_declaration" || f.kind() == "method_elem" {
+                if let Some(n) = f.child_by_field_name("name") {
+                    let t = node_text(n, source);
+                    if !t.is_empty() && !methods.contains(&t.to_string()) {
+                        methods.push(t.to_string());
+                    }
+                }
+                let mut fc = f.walk();
+                for ff in f.children(&mut fc) {
+                    if ff.kind() == "field_identifier" {
+                        let t = node_text(ff, source);
+                        if !t.is_empty() && !methods.contains(&t.to_string()) {
+                            methods.push(t.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: regex-free scan of interface body text for `Name(` patterns.
+    if methods.is_empty() {
+        let body_t = node_text(body, source);
+        for line in body_t.lines() {
+            let t = line.trim();
+            if let Some(paren) = t.find('(') {
+                let cand = t[..paren].trim();
+                if !cand.is_empty()
+                    && cand.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    && cand
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                    && !methods.contains(&cand.to_string())
+                {
+                    methods.push(cand.to_string());
+                }
+            }
+        }
+    }
+    if !methods.is_empty() {
+        idx.ifaces.insert(name, methods);
+    }
+}
+
+/// `func (s *Server) ServeHTTP(...)` → (Server, ServeHTTP)
+fn go_method_recv_name(node: Node, source: &str) -> Option<(String, String)> {
+    let mut name = None;
+    let mut recv_ty = None;
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        if ch.kind() == "field_identifier" && name.is_none() {
+            name = Some(node_text(ch, source).to_string());
+        }
+        if ch.kind() == "parameter_list" && recv_ty.is_none() {
+            let t = node_text(ch, source);
+            let cleaned = t.trim_start_matches('(').trim_end_matches(')');
+            if let Some(last) = cleaned.split([' ', '*', '(', ')']).rfind(|s| {
+                !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_') && *s != "func"
+            }) {
+                recv_ty = Some(last.to_string());
+            }
+        }
+    }
+    match (recv_ty, name) {
+        (Some(r), Some(n)) if !r.is_empty() && !n.is_empty() => Some((r, n)),
+        _ => None,
+    }
+}
+
+/// `var _ Store = (*MemStore)(nil)` / `var _ Store = MemStore{}` → (Store, MemStore)
+fn go_parse_interface_assertion(text: &str) -> Option<(String, String)> {
+    let t = text.trim();
+    if !t.contains("var _") && !t.starts_with("_") {
+        // var_spec alone may omit `var`
+        if !t.contains("= (*") && !t.contains("=(*") && !t.contains(" = ") {
+            return None;
+        }
+        if !t.contains('_') {
+            return None;
+        }
+    }
+    // Interface name: token after `var _` or first identifier before `=`
+    let iface = if let Some(rest) = t.split("var _").nth(1) {
+        rest.split('=')
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    } else {
+        t.split('=')
+            .next()
+            .unwrap_or("")
+            .replace("var", "")
+            .replace('_', "")
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string()
+    };
+    // Concrete type after (* or =
+    let ty = if let Some(idx) = t.find("(*") {
+        t[idx + 2..]
+            .split(')')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    } else {
+        let idx = t.find(" = ")?;
+        t[idx + 3..]
+            .trim()
+            .trim_end_matches("{}")
+            .trim()
+            .split(['(', '{'])
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let ok = |s: &String| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+    };
+    if ok(&iface) && ok(&ty) && iface != ty {
+        Some((iface, ty))
+    } else if ok(&ty) {
+        Some((String::new(), ty))
+    } else {
+        None
+    }
+}
+
+fn walk_go(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    go_idx: &GoIfaceIndex,
+) {
     let mut cursor = node.walk();
 
     // Only consider keyed elements inside a map composite literal whose type
@@ -1465,69 +1893,101 @@ fn walk_go(node: Node, source: &str, ctx: &ExtractContext<'_>, references: &mut 
         go_route_register_rule(node, source, ctx, references);
     }
     if node.kind() == "method_declaration" {
-        go_method_impl_rule(node, source, ctx, references);
+        go_method_impl_rule(node, source, ctx, references, go_idx);
     }
     if matches!(
         node.kind(),
         "var_declaration" | "short_var_declaration" | "var_spec"
     ) {
-        go_interface_assertion_rule(node, source, ctx, references);
+        go_interface_assertion_rule(node, source, ctx, references, go_idx);
     }
 
     for child in node.children(&mut cursor) {
-        walk_go(child, source, ctx, references);
+        walk_go(child, source, ctx, references, go_idx);
     }
 }
 
 /// `func (s *Server) ServeHTTP(...)` — concrete method often implements an
 /// interface with the same name (PLAN: 接口方法 + 显式实现集).
+/// M3-B also emits `go.di.interface_impl_v2` when the method-set matches a
+/// known interface (assertion or complete name-set) in this file.
 fn go_method_impl_rule(
     node: Node,
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    go_idx: &GoIfaceIndex,
 ) {
-    let Some(name_node) = node
-        .children(&mut node.walk())
-        .find(|c| c.kind() == "field_identifier")
-    else {
+    let Some((recv_ty, method)) = go_method_recv_name(node, source) else {
         return;
     };
-    let method = node_text(name_node, source).to_string();
     if method.is_empty() {
         return;
     }
-    // Receiver type from parameter_list: (s *Server) / (s Server)
-    let mut recv_ty = None;
-    if let Some(pl) = node
-        .children(&mut node.walk())
-        .find(|c| c.kind() == "parameter_list")
-    {
-        let t = node_text(pl, source);
-        // last identifier-ish token in receiver list
-        let cleaned = t.trim_start_matches('(').trim_end_matches(')');
-        if let Some(last) = cleaned.split([' ', '*', '(', ')']).rfind(|s| {
-            !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_') && *s != "func"
-        }) {
-            recv_ty = Some(last.to_string());
-        }
-    }
-    let snippet = match &recv_ty {
-        Some(ty) => format!("func ({ty}) {method}"),
-        None => format!("func {method}"),
-    };
+    let snippet = format!("func ({recv_ty}) {method}");
+    let line = line_of(ctx, node);
     push_l1(
         references,
         L1Edge {
-            name: method,
-            qualifier: recv_ty,
-            line: line_of(ctx, node),
+            name: method.clone(),
+            qualifier: Some(recv_ty.clone()),
+            line,
             enclosing: None,
             confidence: Confidence::Heuristic,
             rule_id: "go.di.interface_impl",
-            snippet,
+            snippet: snippet.clone(),
         },
     );
+    go_emit_iface_impl_v2(go_idx, &recv_ty, &method, line, references, &snippet);
+}
+
+/// Emit M3-B v2 edges for (type, method) when type implements a known interface
+/// via assertion or complete method-set name match (indexed methods only).
+fn go_emit_iface_impl_v2(
+    go_idx: &GoIfaceIndex,
+    recv_ty: &str,
+    method: &str,
+    line: usize,
+    references: &mut Vec<ExtractedRef>,
+    base_snippet: &str,
+) {
+    let type_methods = go_idx.method_sets.get(recv_ty);
+    for (iface, imethods) in &go_idx.ifaces {
+        if imethods.is_empty() || !imethods.iter().any(|m| m == method) {
+            continue;
+        }
+        let asserted = go_idx
+            .asserts
+            .iter()
+            .any(|(i, t)| i == iface && t == recv_ty);
+        let set_match = type_methods
+            .map(|tms| !imethods.is_empty() && imethods.iter().all(|m| tms.iter().any(|x| x == m)));
+        let method_set_ok = set_match.unwrap_or(false);
+        if !asserted && !method_set_ok {
+            continue;
+        }
+        let evidence = if asserted {
+            format!("var _ {iface} = (*{recv_ty})(nil) → {method}")
+        } else {
+            format!("method-set {recv_ty} implements {iface} → {method}")
+        };
+        push_l1(
+            references,
+            L1Edge {
+                name: method.to_string(),
+                qualifier: Some(recv_ty.to_string()),
+                line,
+                enclosing: Some(iface.clone()),
+                confidence: Confidence::Heuristic,
+                rule_id: "go.di.interface_impl_v2",
+                snippet: if evidence.contains(base_snippet) {
+                    evidence
+                } else {
+                    format!("{evidence} | {base_snippet}")
+                },
+            },
+        );
+    }
 }
 
 /// `var _ Store = (*MemStore)(nil)` — compile-time interface implementation proof.
@@ -1536,48 +1996,58 @@ fn go_interface_assertion_rule(
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
+    go_idx: &GoIfaceIndex,
 ) {
     let t = node_text(node, source);
-    if !t.contains("= (*") && !t.contains("=(*") {
-        // also allow var _ I = T{}
-        if !(t.contains("var _") && t.contains(" = ")) {
-            return;
-        }
-    }
-    // Extract type after (* or =: (*MemStore) or MemStore{}
-    let ty = if let Some(idx) = t.find("(*") {
-        let rest = &t[idx + 2..];
-        rest.split(')').next().unwrap_or("").trim().to_string()
-    } else if let Some(idx) = t.find(" = ") {
-        t[idx + 3..]
-            .trim()
-            .trim_end_matches("{}")
-            .trim()
-            .to_string()
-    } else {
+    let Some((iface, ty)) = go_parse_interface_assertion(t) else {
         return;
     };
-    if ty.is_empty()
-        || !ty
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-    {
-        return;
-    }
     let line = line_of(ctx, node);
     // Edge to the type (registration/impl proof site).
     push_l1(
         references,
         L1Edge {
             name: ty.clone(),
-            qualifier: None,
+            qualifier: if iface.is_empty() {
+                None
+            } else {
+                Some(iface.clone())
+            },
             line,
             enclosing: None,
             confidence: Confidence::Heuristic,
             rule_id: "go.di.interface_assert",
-            snippet: format!("var _ Iface = (*{ty})(nil)"),
+            snippet: if iface.is_empty() {
+                format!("var _ Iface = (*{ty})(nil)")
+            } else {
+                format!("var _ {iface} = (*{ty})(nil)")
+            },
         },
     );
+    // M3-B: link each interface method the type provides (indexed methods only).
+    if let Some(imethods) = go_idx.ifaces.get(&iface) {
+        let type_methods = go_idx.method_sets.get(&ty);
+        for m in imethods {
+            let provided = type_methods
+                .map(|tms| tms.iter().any(|x| x == m))
+                .unwrap_or(false);
+            if !provided {
+                continue;
+            }
+            push_l1(
+                references,
+                L1Edge {
+                    name: m.clone(),
+                    qualifier: Some(ty.clone()),
+                    line,
+                    enclosing: Some(iface.clone()),
+                    confidence: Confidence::Heuristic,
+                    rule_id: "go.di.interface_impl_v2",
+                    snippet: format!("var _ {iface} = (*{ty})(nil) → {m}"),
+                },
+            );
+        }
+    }
 }
 
 /// gin/chi style: e.GET("/users", GetUsers) / mux.HandleFunc(path, h)
@@ -1744,14 +2214,171 @@ fn go_handler_name(node: Node, source: &str) -> Option<String> {
 
 // ── Rust ────────────────────────────────────────────────────────────
 
+/// Same-file `dyn Trait` / `impl Trait for Type` index for M3-A.
+/// Only **already-indexed** implementors in this AST — never invent types.
+#[derive(Debug, Default, Clone)]
+struct RustDynIndex {
+    /// trait → (impl type → methods)
+    impls: std::collections::HashMap<String, Vec<(String, Vec<String>)>>,
+    /// traits that appear as `dyn Trait` in this file
+    dyn_traits: std::collections::HashSet<String>,
+}
+
+fn collect_rust_dyn_index(root: Node, source: &str) -> RustDynIndex {
+    let mut idx = RustDynIndex::default();
+    walk_rust_dyn_collect(root, source, &mut idx);
+    idx
+}
+
+fn walk_rust_dyn_collect(node: Node, source: &str, idx: &mut RustDynIndex) {
+    let mut cursor = node.walk();
+    match node.kind() {
+        "impl_item" => {
+            if let Some((tr, ty, methods)) = rust_impl_trait_methods(node, source) {
+                idx.impls.entry(tr).or_default().push((ty, methods));
+            }
+        }
+        "abstract_type" | "dyn_type" | "bounded_type" => {
+            let t = node_text(node, source);
+            for tr in extract_dyn_trait_names(t) {
+                idx.dyn_traits.insert(tr);
+            }
+            // Also scan children for type_identifier under dyn
+            let mut c = node.walk();
+            for ch in node.children(&mut c) {
+                if ch.kind() == "type_identifier" {
+                    let n = node_text(ch, source);
+                    let parent_t = node_text(node, source);
+                    if parent_t.contains("dyn") || node.kind() == "abstract_type" {
+                        idx.dyn_traits.insert(n.to_string());
+                    }
+                }
+            }
+        }
+        _ => {
+            // Any type text containing `dyn Trait`
+            if matches!(
+                node.kind(),
+                "parameter"
+                    | "let_declaration"
+                    | "reference_type"
+                    | "generic_type"
+                    | "scoped_type_identifier"
+                    | "type_identifier"
+            ) {
+                let t = node_text(node, source);
+                if t.contains("dyn ") {
+                    for tr in extract_dyn_trait_names(t) {
+                        idx.dyn_traits.insert(tr);
+                    }
+                }
+            }
+        }
+    }
+    for child in node.children(&mut cursor) {
+        walk_rust_dyn_collect(child, source, idx);
+    }
+}
+
+fn extract_dyn_trait_names(type_text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = type_text;
+    while let Some(pos) = rest.find("dyn ") {
+        let after = &rest[pos + 4..];
+        let ident: String = after
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == ':')
+            .collect();
+        let last = ident.rsplit("::").next().unwrap_or("").to_string();
+        if !last.is_empty() {
+            out.push(last);
+        }
+        rest = after;
+    }
+    out
+}
+
+/// `impl Trait for Type { fn m... }` → (Trait, Type, [methods])
+fn rust_impl_trait_methods(node: Node, source: &str) -> Option<(String, String, Vec<String>)> {
+    let mut trait_name = None;
+    let mut type_name = None;
+    if let Some(t) = node.child_by_field_name("trait") {
+        trait_name = Some(node_text(t, source).to_string());
+    }
+    if let Some(t) = node.child_by_field_name("type") {
+        type_name = Some(node_text(t, source).to_string());
+    }
+    if trait_name.is_none() || type_name.is_none() {
+        let mut cursor = node.walk();
+        for c in node.children(&mut cursor) {
+            match c.kind() {
+                "type_identifier" | "generic_type" => {
+                    if trait_name.is_none() {
+                        trait_name = Some(node_text(c, source).to_string());
+                    } else if type_name.is_none() {
+                        type_name = Some(node_text(c, source).to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let (Some(tr), Some(ty)) = (trait_name, type_name) else {
+        return None;
+    };
+    let tr = tr.split('<').next().unwrap_or(&tr).trim().to_string();
+    let ty = ty.split('<').next().unwrap_or(&ty).trim().to_string();
+    if tr.is_empty() || ty.is_empty() || tr == ty {
+        return None;
+    }
+    let impl_text = node_text(node, source);
+    let has_for =
+        node.children(&mut node.walk()).any(|c| c.kind() == "for") || impl_text.contains(" for ");
+    if !has_for {
+        return None;
+    }
+    let mut methods = Vec::new();
+    let mut mc = node.walk();
+    for c in node.children(&mut mc) {
+        if c.kind() == "declaration_list" {
+            let mut dc = c.walk();
+            for m in c.children(&mut dc) {
+                if m.kind() == "function_item" {
+                    if let Some(name) = m
+                        .child_by_field_name("name")
+                        .map(|n| node_text(n, source).to_string())
+                    {
+                        methods.push(name);
+                    }
+                }
+            }
+        }
+    }
+    Some((tr, ty, methods))
+}
+
 fn walk_rust(
     node: Node,
     source: &str,
     ctx: &ExtractContext<'_>,
     references: &mut Vec<ExtractedRef>,
     inv_submit_aliases: &std::collections::HashSet<String>,
+    dyn_idx: &RustDynIndex,
+    enclosing: Option<String>,
 ) {
     let mut cursor = node.walk();
+    let kind = node.kind();
+    let mut local_enclosing = enclosing;
+
+    if matches!(kind, "function_item" | "function_signature_item") {
+        if let Some(n) = node
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source).to_string())
+            .filter(|s| !s.is_empty())
+        {
+            local_enclosing = Some(n);
+        }
+    }
 
     if node.kind() == "impl_item" {
         rust_impl_trait_rule(node, source, ctx, references);
@@ -1759,10 +2386,291 @@ fn walk_rust(
     if node.kind() == "macro_invocation" {
         rust_inventory_submit_rule(node, source, ctx, references, inv_submit_aliases);
     }
+    if node.kind() == "attribute_item" || node.kind() == "attribute" {
+        rust_linkme_distributed_slice_rule(node, source, ctx, references);
+    }
+    if node.kind() == "call_expression" {
+        rust_dyn_trait_method_rule(
+            node,
+            source,
+            ctx,
+            references,
+            dyn_idx,
+            local_enclosing.clone(),
+        );
+    }
 
     for child in node.children(&mut cursor) {
-        walk_rust(child, source, ctx, references, inv_submit_aliases);
+        walk_rust(
+            child,
+            source,
+            ctx,
+            references,
+            inv_submit_aliases,
+            dyn_idx,
+            local_enclosing.clone(),
+        );
     }
+}
+
+/// M3-A: method call on a `dyn Trait` receiver → candidate implementors
+/// already present as `impl Trait for Type` in this file. Heuristic only;
+/// **not** sound-eligible (open dispatch / not a finite registration site).
+fn rust_dyn_trait_method_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+    dyn_idx: &RustDynIndex,
+    enclosing: Option<String>,
+) {
+    if dyn_idx.dyn_traits.is_empty() || dyn_idx.impls.is_empty() {
+        return;
+    }
+    let Some(fn_node) = node.child_by_field_name("function") else {
+        return;
+    };
+    // Only method-call shape: recv.method()
+    let Some(field) = fn_node.child_by_field_name("field") else {
+        return;
+    };
+    let method = node_text(field, source).to_string();
+    if method.is_empty() {
+        return;
+    }
+    let line = line_of(ctx, node);
+    let call_snip: String = node_text(node, source)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .chars()
+        .take(80)
+        .collect();
+
+    for trait_name in &dyn_idx.dyn_traits {
+        let Some(impls) = dyn_idx.impls.get(trait_name) else {
+            continue;
+        };
+        for (ty, methods) in impls {
+            if !methods.iter().any(|m| m == &method) {
+                continue;
+            }
+            // Never invent implementors — only types from this file's impls.
+            push_l1(
+                references,
+                L1Edge {
+                    name: method.clone(),
+                    qualifier: Some(ty.clone()),
+                    line,
+                    enclosing: enclosing.clone(),
+                    confidence: Confidence::Heuristic,
+                    rule_id: "rs.di.dyn_trait_method",
+                    snippet: format!("dyn {trait_name}::{method} → {ty}::{method} | {call_snip}"),
+                },
+            );
+        }
+    }
+}
+
+/// M3-E: `#[distributed_slice(...)]` / `#[linkme::distributed_slice(...)]`
+/// source registration. Finite identifiers written at the attribute/static
+/// site (same class as inventory::submit!). Not a sidecar rule.
+fn rust_linkme_distributed_slice_rule(
+    node: Node,
+    source: &str,
+    ctx: &ExtractContext<'_>,
+    references: &mut Vec<ExtractedRef>,
+) {
+    let t = node_text(node, source);
+    if !t.contains("distributed_slice") {
+        return;
+    }
+    // Must be linkme / distributed_slice attribute path, not a random string.
+    let is_linkme = t.contains("linkme::distributed_slice")
+        || t.contains("#[distributed_slice")
+        || t.contains("#[distributed_slice(")
+        || (t.contains("distributed_slice") && t.contains('#'));
+    if !is_linkme {
+        return;
+    }
+    // Reject unrelated crates that merely mention the word without attribute shape.
+    if !t.trim_start().starts_with('#') && !t.contains("linkme::") {
+        return;
+    }
+
+    let line = line_of(ctx, node);
+    let snippet: String = t.lines().next().unwrap_or("").chars().take(80).collect();
+
+    // Registration slice name in arguments: distributed_slice(SLICE_NAME)
+    if let Some(slice) = linkme_slice_name(t) {
+        push_l1(
+            references,
+            L1Edge {
+                name: slice,
+                qualifier: None,
+                line,
+                enclosing: None,
+                confidence: Confidence::Heuristic,
+                rule_id: "rs.di.linkme_distributed_slice",
+                snippet: snippet.clone(),
+            },
+        );
+    }
+
+    // Look at following sibling static_item for type / initializer identifiers.
+    let mut sib = node.next_sibling();
+    while let Some(s) = sib {
+        if matches!(
+            s.kind(),
+            "static_item" | "function_item" | "attribute_item" | "attribute"
+        ) {
+            if s.kind() == "attribute_item" || s.kind() == "attribute" {
+                sib = s.next_sibling();
+                continue;
+            }
+            let s_text = node_text(s, source);
+            for ty in rust_type_idents_from_static(s_text) {
+                push_l1(
+                    references,
+                    L1Edge {
+                        name: ty,
+                        qualifier: None,
+                        line,
+                        enclosing: None,
+                        confidence: Confidence::Heuristic,
+                        rule_id: "rs.di.linkme_distributed_slice",
+                        snippet: format!("{snippet} | {}", s_text.lines().next().unwrap_or("")),
+                    },
+                );
+            }
+            break;
+        }
+        // static may be nested under the attribute_item parent walk — also scan
+        // the parent's remaining children when attribute_item wraps things.
+        break;
+    }
+
+    // Fallback: scan nearby text after the attribute for `static X: Ty = ...`
+    if let Some(parent) = node.parent() {
+        let p_text = node_text(parent, source);
+        if p_text.contains("static") && p_text.contains("distributed_slice") {
+            for ty in rust_type_idents_from_static(p_text) {
+                if !references.iter().any(|r| {
+                    r.name == ty
+                        && r.evidence
+                            .as_ref()
+                            .map(|e| e.rule_id == "rs.di.linkme_distributed_slice")
+                            .unwrap_or(false)
+                }) {
+                    push_l1(
+                        references,
+                        L1Edge {
+                            name: ty,
+                            qualifier: None,
+                            line,
+                            enclosing: None,
+                            confidence: Confidence::Heuristic,
+                            rule_id: "rs.di.linkme_distributed_slice",
+                            snippet: snippet.clone(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn linkme_slice_name(attr_text: &str) -> Option<String> {
+    // #[distributed_slice(STRATEGIES)] or #[linkme::distributed_slice(PLUGINS)]
+    let start = attr_text.find("distributed_slice(")? + "distributed_slice(".len();
+    let rest = &attr_text[start..];
+    let end = rest.find(')')?;
+    let inner = rest[..end].trim();
+    // May be `NAME` or `NAME = ...`
+    let name = inner
+        .split(['=', ':'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("::")
+        .rsplit("::")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(name)
+}
+
+/// Type / ctor identifiers from a `static NAME: Ty = Ty { ... Type::new ... }` body.
+fn rust_type_idents_from_static(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    // After `static Name:`
+    if let Some(idx) = text.find("static") {
+        let after = &text[idx + 6..];
+        if let Some(colon) = after.find(':') {
+            let ty_part = after[colon + 1..].split('=').next().unwrap_or("").trim();
+            let ty = ty_part
+                .split('<')
+                .next()
+                .unwrap_or(ty_part)
+                .trim()
+                .trim_start_matches('&')
+                .trim();
+            if is_type_ident(ty) && ty != "fn" && !out.contains(&ty.to_string()) {
+                out.push(ty.to_string());
+            }
+        }
+    }
+    // `Type::new` / `Type {` patterns in the body
+    let mut chars = text.char_indices().peekable();
+    let bytes: Vec<(usize, char)> = text.char_indices().collect();
+    for i in 0..bytes.len() {
+        if bytes[i].1 == ':' && i + 1 < bytes.len() && bytes[i + 1].1 == ':' {
+            // walk back for Type
+            let mut start = i;
+            while start > 0 {
+                let c = bytes[start - 1].1;
+                if c.is_alphanumeric() || c == '_' {
+                    start -= 1;
+                } else {
+                    break;
+                }
+            }
+            let ty: String = bytes[start..i].iter().map(|(_, c)| *c).collect();
+            if is_type_ident(&ty) && ty != "Box" && ty != "Self" && !out.contains(&ty) {
+                // forward: ::new or ::default
+                let fwd: String = bytes[i + 2..].iter().take(12).map(|(_, c)| *c).collect();
+                if fwd.starts_with("new") || fwd.starts_with("default") || fwd.starts_with("from") {
+                    out.push(ty);
+                }
+            }
+        }
+        if bytes[i].1 == '{' {
+            // identifier before `{` may be struct literal type
+            let mut start = i;
+            while start > 0 && bytes[start - 1].1 == ' ' {
+                start -= 1;
+            }
+            let mut s2 = start;
+            while s2 > 0 {
+                let c = bytes[s2 - 1].1;
+                if c.is_alphanumeric() || c == '_' {
+                    s2 -= 1;
+                } else {
+                    break;
+                }
+            }
+            let ty: String = bytes[s2..start].iter().map(|(_, c)| *c).collect();
+            if is_type_ident(&ty) && ty != "Self" && !out.contains(&ty) {
+                out.push(ty);
+            }
+        }
+    }
+    let _ = chars.next();
+    out
 }
 
 /// Local identifiers that refer to `inventory::submit` via `use` (including

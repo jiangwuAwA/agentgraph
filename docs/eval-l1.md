@@ -36,11 +36,15 @@ cargo test --test l1_eval -- --nocapture
 
 | corpus | golden | L0 found | L1 found | L1 recall | Heuristic edges | matched |
 |---|---:|---:|---:|---:|---:|---:|
-| go-routes | 3 | 0 | 3 | 100% | 3 | 3 |
+| go-iface | 4 | 0 | 4 | 100% | 13 | 13 |
+| go-routes | 3 | 0 | 3 | 100% | 4 | 4 |
 | py-fastapi | 4 | 1 | 4 | 100% | 2 | 2 |
-| rust-shapes | 3 | 1 | 3 | 100% | 2 | 2 |
-| ts-di | 8 | 2 | 8 | 100% | 5 | 5 |
-| **total** | **18** | **4 (22%)** | **18 (100%)** | **+350% relative** | **12** | **12 (0% unmatched)** |
+| py-plugins | 4 | 0 | 4 | 100% | 6 | 6 |
+| rust-dyn | 4 | 1 | 4 | 100% | 8 | 8 |
+| rust-shapes | 3 | 1 | 3 | 100% | 4 | 4 |
+| ts-di | 8 | 2 | 8 | 100% | 8 | 8 |
+| ts-router | 4 | 0 | 4 | 100% | 6 | 6 |
+| **total** | **34** | **5 (15%)** | **34 (100%)** | **+580% relative** | **51** | **51 (0% unmatched fixture proxy)** |
 
 ### fixtures/eval-l1-real (framework-idiom multi-module)
 
@@ -67,16 +71,34 @@ CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_
 
 ## Rules covered
 
-| Language | Rule id | Pattern | Confidence |
-|---|---|---|---|
-| TS/JS | `ts.di.register` | `c.register(X)` | Heuristic |
-| TS/JS | `ts.di.bind` / `ts.di.to` | `c.bind(X).to(Y)` | Heuristic |
-| TS/JS | `ts.di.decorator` | `@Inject(X)` / `@Injectable(X)` | Heuristic |
-| TS/JS | `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass, useExisting, useFactory, inject }] })` | Heuristic |
-| TS/JS | `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Heuristic |
-| TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot(), X.forRootAsync()] })` | Heuristic |
-| TS/JS | `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Heuristic |
-| TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` (type annotation, not primitives) | Heuristic |
+| Language | Rule id | Pattern | Confidence | Sound-eligible |
+|---|---|---|---|---|
+| TS/JS | `ts.di.register` | `c.register(X)` | Heuristic | yes |
+| TS/JS | `ts.di.bind` / `ts.di.to` | `c.bind(X).to(Y)` | Heuristic | yes |
+| TS/JS | `ts.di.decorator` | `@Inject(X)` / `@Injectable(X)` | Heuristic | yes |
+| TS/JS | `ts.nest.module_providers` | `@Module({ providers: [S, { provide, useClass, useExisting, useFactory, inject }] })` | Heuristic | yes |
+| TS/JS | `ts.nest.module_controllers` | `@Module({ controllers: [C] })` | Heuristic | yes |
+| TS/JS | `ts.nest.module_imports` | `@Module({ imports: [M, X.forRoot(), X.forRootAsync()] })` | Heuristic | yes |
+| TS/JS | `ts.nest.module_exports` | `@Module({ exports: [E, 'TOKEN'] })` | Heuristic | yes |
+| TS/JS | `ts.nest.ctor_inject` | `constructor(private x: T)` (type annotation, not primitives) | Heuristic | yes |
+| TS/JS | `ts.framework.register` | Express/Fastify `router.get/post(..., h)`, `app.use(mw)`, `app.register(path, h)` | Heuristic | yes (finite handler idents at site) |
+| TS/JS | `ts.event.subscribe` | `emitter.on(evt, handler)` | Heuristic | yes |
+| TS/JS | `ts.dynamic.computed` | `obj['m']()` / `new (reg['X'])()` | DynamicCandidate | finite-domain only |
+| Python | `py.di.depends` | FastAPI `Depends(fn\|Class)` / `Security(fn)` / `Annotated[..., Depends(fn)]` | Heuristic | yes |
+| Python | `py.di.inject` | `@inject(...)` | Heuristic | yes |
+| Python | `py.framework.init_subclass` | subclass of base defining `__init_subclass__` | Heuristic | yes |
+| Python | `py.di.entry_points` | `entry_points(group="g")` / `iter_entry_points("g")` | Heuristic | **no** — plugins not enumerated at site |
+| Python | `py.dynamic.getattr` | `getattr(obj, "m")` | DynamicCandidate | finite-domain only |
+| Python | `py.dynamic.import_module` | `importlib.import_module("pkg.mod")` | DynamicCandidate | finite-domain only |
+| Go | `go.di.handler_map` | `map[string]Handler{ "p": H }` | Heuristic | yes |
+| Go | `go.di.interface_impl` | `func (t *T) Method` | Heuristic | yes |
+| Go | `go.di.interface_assert` | `var _ I = (*T)(nil)` / `T{}` | Heuristic | yes |
+| Go | `go.di.interface_impl_v2` | assertion + method-set name match for indexed types (M3-B) | Heuristic | yes (finite method-set in corpus) |
+| Go | `go.di.route_register` | `e.GET(path, h)` / `mux.HandleFunc` | Heuristic | yes |
+| Rust | `rs.di.impl_trait` | `impl Trait for Type { fn m }` | Heuristic | yes |
+| Rust | `rs.di.inventory_submit` | `inventory::submit! { Reg { factory: \|\| Type::new(..) } }` | Heuristic | yes |
+| Rust | `rs.di.dyn_trait_method` | `recv.method()` on `dyn Trait` → same-file `impl Trait for Type` methods (M3-A) | Heuristic | **no** — open dispatch, not finite registration |
+| Rust | `rs.di.linkme_distributed_slice` | `#[distributed_slice(SLICE)] static X: Ty = ...` (M3-E) | Heuristic | yes (identifiers at attribute/static site) |
 
 **Shapes, not separate rule ids:** `X.forRootAsync({ imports, inject, useFactory })`
 emits under `ts.nest.module_imports` / `ts.nest.module_providers` (and
@@ -84,15 +106,16 @@ emits under `ts.nest.module_imports` / `ts.nest.module_providers` (and
 (`provide: 'CONFIG'` / `exports: ['CONFIG']`) emit under
 `ts.nest.module_providers` / `ts.nest.module_exports`. There are no
 `ts.nest.forRootAsync` or `ts.nest.string_token` rule ids.
-| TS/JS | `ts.event.subscribe` | `emitter.on(evt, handler)` | Heuristic |
-| TS/JS | `ts.dynamic.computed` | `obj['m']()` / `new (reg['X'])()` | DynamicCandidate |
-| Python | `py.di.depends` | FastAPI `Depends(fn\|Class)` | Heuristic |
-| Python | `py.di.inject` | `@inject(...)` | Heuristic |
-| Python | `py.dynamic.getattr` | `getattr(obj, "m")` | DynamicCandidate |
-| Python | `py.dynamic.import_module` | `importlib.import_module("pkg.mod")` | DynamicCandidate |
-| Go | `go.di.handler_map` | `map[string]Handler{ "p": H }` | Heuristic |
-| Rust | `rs.di.impl_trait` | `impl Trait for Type { fn m }` | Heuristic |
-| Rust | `rs.di.inventory_submit` | `inventory::submit! { Reg { factory: \|\| Type::new(..) } }` | Heuristic |
+
+### M3 package notes
+
+| Package | Shipped rule(s) | Noise / flooding notes |
+|---|---|---|
+| **M3-A** dyn Trait | `rs.di.dyn_trait_method` | Emits **method name** edges with implementor `qualifier` (Circle/Rect). Only types from **same-file** `impl Trait for Type` — never invents implementors (`Box<dyn Handler>` with no impl → no edge). Common method names (`fmt`/`clone`/`default`) can flood `callers` when a trait has many impls; `impact` benefits more (blast radius via enclosing call site). **Not sound-eligible**: dyn dispatch is open (cross-crate / blanket impls / generic trait objects). |
+| **M3-B** Go iface | `go.di.interface_impl_v2` | `var _ I = (*T)(nil)` now links each interface method the type provides; method-set name match (all methods of I present on T in this file) fires without assertion. Finite domain over indexed methods — allowlisted like `go.di.interface_impl`. |
+| **M3-C** Python gaps | `py.di.entry_points`; Security folded into `py.di.depends` | Depends/`__init_subclass__` already covered. New: `entry_points(group=…)` / `iter_entry_points("g")`. Plugins loaded by the group are **not** named at the call site → not sound-eligible. Annotated Depends already fired under `py.di.depends`. |
+| **M3-D** TS router | `ts.framework.register` | Express lowercase verbs + `app.use` / `app.register`. Finite handler identifiers at registration site — allowlisted. Uppercase Go-like verbs keep legacy `go.di.route_register`. |
+| **M3-E** inventory/linkme | `rs.di.linkme_distributed_slice` | `inventory::submit!` already covered by `rs.di.inventory_submit` (no duplicate id). Gap closed: linkme `#[distributed_slice]` source rule (not sidecar). |
 
 Bare `@Injectable()` / `@Controller()` (no args) intentionally produce **no**
 edges — do not invent fake callee names. Module metadata arrays are the

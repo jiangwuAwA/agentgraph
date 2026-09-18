@@ -1,0 +1,143 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "B",
+  "policy_label": "Live LLM agent + read/grep only (no agentgraph)",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "task_id": "ts-nest-order-service",
+  "seed": 0,
+  "run_id": "b-0",
+  "fixture": "fixtures/eval-agent-tasks/ts-nest-order-service",
+  "symbol": "OrderService",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "ts-nest-order-service",
+    "title": "Change OrderService.createOrder — find real dependents vs noise",
+    "language": "typescript",
+    "issue": "Issue: OrderService.createOrder must change return type from string to an OrderResult object. Find which files depend on or register OrderService; ignore files that merely mention order-like words. Callees (PaymentService) are adjacent — open the definition or query PaymentService separately; blast-radius dependents do not list callees.",
+    "issue_digest": "OrderService.createOrder return type string→OrderResult; find dependents/registrations vs order-like noise; PaymentService is adjacent callee.",
+    "expected_files": [
+      "src/order.service.ts",
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "noise_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "grep",
+      "args": [
+        "OrderService"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "src/order.service.ts",
+          "src/order.controller.ts",
+          "src/order.module.ts",
+          "src/legacy-report.ts"
+        ]
+      },
+      "note": "legacy-report is comment-only noise after read"
+    },
+    {
+      "seq": 2,
+      "tool": "read",
+      "args": [
+        "src/order.service.ts",
+        "src/order.controller.ts",
+        "src/legacy-report.ts",
+        "src/payment.service.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "definition imports PaymentService → adjacent callee review"
+    },
+    {
+      "seq": 3,
+      "tool": "grep",
+      "args": [
+        "createOrder"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "src/order.service.ts",
+          "src/order.controller.ts"
+        ]
+      },
+      "note": "return-type consumers"
+    }
+  ],
+  "file_set": [
+    "src/order.controller.ts",
+    "src/order.module.ts",
+    "src/order.service.ts",
+    "src/payment.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/order.service.ts",
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/order.controller.ts",
+      "src/order.module.ts",
+      "src/order.service.ts",
+      "src/payment.service.ts"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/ts-nest-order-service/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "B",
+    "rationale": "grep OrderService + createOrder → service/controller/module; read legacy-report comment → omit noise. order.service imports PaymentService — include as adjacent callee per issue text. No agentgraph.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over grep/read evidence (no agentgraph)"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm B: grep OrderService + createOrder → service/controller/module; read legacy-report comment → omit noise. order.service imports PaymentService — include as adjacent callee per issue text. No agentgraph."
+  ],
+  "errors": []
+}

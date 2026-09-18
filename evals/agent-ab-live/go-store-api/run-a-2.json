@@ -1,0 +1,171 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "A",
+  "policy_label": "Live LLM agent + agentgraph CLI/MCP recipes",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "task_id": "go-store-api",
+  "seed": 2,
+  "run_id": "a-2",
+  "fixture": "fixtures/eval-agent-tasks/go-store-api",
+  "symbol": "Get",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "go-store-api",
+    "title": "Change Go Repository.Get — consumers and implementors",
+    "language": "go",
+    "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+    "issue_digest": "Repository.Get must accept context; find implementors (MemRepo/RedisCache) and call sites (api handlers); ignore package noise.",
+    "expected_files": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index"
+    },
+    {
+      "seq": 2,
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "Get",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound"
+      },
+      "note": "handlers call sites + store implementor edges"
+    },
+    {
+      "seq": 3,
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "Get"
+      ],
+      "ok": true,
+      "summary": {
+        "definitions": [
+          "MemRepo.Get",
+          "RedisCache.Get"
+        ]
+      },
+      "note": "both implementors in store/store.go"
+    },
+    {
+      "seq": 4,
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "Get",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "high_freq_name": true,
+        "callers_files": [
+          "api/handlers.go"
+        ],
+        "implementor_count": 7
+      },
+      "note": "high_freq demotes implementor flood in presentation; issue still requires implementor files — keep store/store.go"
+    },
+    {
+      "seq": 5,
+      "tool": "agentgraph.subset",
+      "args": [
+        "subset"
+      ],
+      "ok": true,
+      "summary": {
+        "in_subset": true
+      },
+      "note": "honesty"
+    }
+  ],
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "api/handlers.go",
+      "store/store.go"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/go-store-api/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Issue explicitly asks implementors + call sites. who-calls separates callers (api/handlers.go) from implementors (store/store.go). high_freq_name=true → do not flood with every implementor edge; still include the implementor definition file the issue names. metrics/cmd never use Get — omit.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over agentgraph recipe evidence"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm A: Issue explicitly asks implementors + call sites. who-calls separates callers (api/handlers.go) from implementors (store/store.go). high_freq_name=true → do not flood with every implementor edge; still include the implementor definition file the issue names. metrics/cmd never use Get — omit."
+  ],
+  "errors": []
+}

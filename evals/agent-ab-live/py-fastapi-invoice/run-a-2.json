@@ -1,0 +1,173 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "A",
+  "policy_label": "Live LLM agent + agentgraph CLI/MCP recipes",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "task_id": "py-fastapi-invoice",
+  "seed": 2,
+  "run_id": "a-2",
+  "fixture": "fixtures/eval-agent-tasks/py-fastapi-invoice",
+  "symbol": "InvoiceService",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "py-fastapi-invoice",
+    "title": "Change InvoiceService.total in a FastAPI-like app",
+    "language": "python",
+    "issue": "Bug: InvoiceService.total miscalculates tax. Identify blast radius before fixing — which API/deps/repository files must be reviewed.",
+    "issue_digest": "InvoiceService.total miscalculates tax; identify blast radius — which API/deps/repository files must be reviewed.",
+    "expected_files": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "noise_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index"
+    },
+    {
+      "seq": 2,
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "InvoiceService",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound"
+      },
+      "note": "API + deps + definition"
+    },
+    {
+      "seq": 3,
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "InvoiceService"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "app/invoice_service.py"
+        ]
+      },
+      "note": "definition"
+    },
+    {
+      "seq": 4,
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "InvoiceService",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "app/api/invoices.py",
+          "app/deps.py"
+        ]
+      },
+      "note": "construct/use sites"
+    },
+    {
+      "seq": 5,
+      "tool": "read",
+      "args": [
+        "app/deps.py"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "deps constructs InvoiceService(get_invoice_repository()) — issue asks repository files in review set"
+    }
+  ],
+  "file_set": [
+    "app/api/invoices.py",
+    "app/deps.py",
+    "app/invoice_repo.py",
+    "app/invoice_service.py"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "app/api/invoices.py",
+      "app/deps.py",
+      "app/invoice_repo.py",
+      "app/invoice_service.py"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/py-fastapi-invoice/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Recipes cover service + api + deps. Issue text explicitly asks for repository files in the review set; deps.py constructs the service with invoice_repo → include app/invoice_repo.py. util_log / metrics_names absent from structure edges — omit.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over agentgraph recipe evidence"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm A: Recipes cover service + api + deps. Issue text explicitly asks for repository files in the review set; deps.py constructs the service with invoice_repo → include app/invoice_repo.py. util_log / metrics_names absent from structure edges — omit."
+  ],
+  "errors": []
+}

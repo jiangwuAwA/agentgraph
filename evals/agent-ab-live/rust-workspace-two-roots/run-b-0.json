@@ -1,0 +1,122 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "B",
+  "policy_label": "Live LLM agent + read/grep only (no agentgraph)",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "task_id": "rust-workspace-two-roots",
+  "seed": 0,
+  "run_id": "b-0",
+  "fixture": "fixtures/eval-agent-tasks/rust-workspace-two-roots",
+  "symbol": "compute",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "rust-workspace-two-roots",
+    "title": "Workspace change to engine::compute — stay in-engine",
+    "language": "rust",
+    "issue": "engine::compute must change its algorithm. Using the multi-root workspace index, find files that matter and avoid editing the web package unless it truly depends on compute.",
+    "issue_digest": "engine::compute algorithm change; multi-root workspace; avoid editing web unless it truly depends on compute.",
+    "expected_files": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "grep",
+      "args": [
+        "compute"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "web hits are comment/word noise after read"
+    },
+    {
+      "seq": 2,
+      "tool": "read",
+      "args": [
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs",
+        "packages/engine/src/lib.rs",
+        "packages/engine/src/compute.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "web comments state no call to engine::compute — omit"
+    }
+  ],
+  "file_set": [
+    "packages/engine/src/compute.rs",
+    "packages/engine/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-workspace-two-roots/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "B",
+    "rationale": "grep compute hits engine + web comments; read web → no true dependency per issue instruction — omit web. Keep engine def + engine lib. No agentgraph.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over grep/read evidence (no agentgraph)"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm B: grep compute hits engine + web comments; read web → no true dependency per issue instruction — omit web. Keep engine def + engine lib. No agentgraph."
+  ],
+  "errors": []
+}

@@ -1,0 +1,176 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "A",
+  "policy_label": "Live LLM agent + agentgraph CLI/MCP recipes",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "task_id": "rust-unsafe-scoped",
+  "seed": 1,
+  "run_id": "a-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-unsafe-scoped",
+  "symbol": "export_rows",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "rust-unsafe-scoped",
+    "title": "Sound disabled by unsafe sibling — scoped guidance required",
+    "language": "rust",
+    "issue": "core::export_rows is the symbol under change. The workspace also contains a legacy package with unsafe code that leaves S. Union sound is off — agentgraph must not claim sound, and must recommend scoped sound on the clean core root.",
+    "issue_digest": "core::export_rows under change; workspace has unsafe legacy package; union sound off — must not claim sound; recommend scoped sound on core.",
+    "expected_files": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "workspace index"
+    },
+    {
+      "seq": 2,
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "export_rows",
+        "--depth",
+        "3",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": false
+      },
+      "note": "window=default — do not claim union sound"
+    },
+    {
+      "seq": 3,
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "export_rows",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/core/src/export.rs"
+        ]
+      },
+      "note": "definition in core"
+    },
+    {
+      "seq": 4,
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "export_rows",
+        "--limit",
+        "50",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "callers_files": [
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "core caller only"
+    },
+    {
+      "seq": 5,
+      "tool": "agentgraph.subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "in_subset": false
+      },
+      "note": "legacy unsafe disables union S; scoped candidates on core"
+    }
+  ],
+  "file_set": [
+    "packages/core/src/export.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-unsafe-scoped/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Workspace blast/who-calls: export_rows definition + core lib caller. window=default / subset_ok=false — do not claim sound; recommend scoped sound on clean core root only. legacy unsafe package is not an export_rows review file — omit from edit set.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over agentgraph recipe evidence"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm A: Workspace blast/who-calls: export_rows definition + core lib caller. window=default / subset_ok=false — do not claim sound; recommend scoped sound on clean core root only. legacy unsafe package is not an export_rows review file — omit from edit set."
+  ],
+  "errors": []
+}

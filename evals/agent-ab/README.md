@@ -29,3 +29,7 @@ Schema: `agentgraph.eval_agent_ab.trajectory.v1`.
 | C | `name_grep_control` | symbol token in source files |
 
 Tasks reuse [`fixtures/eval-agent-tasks/`](../../fixtures/eval-agent-tasks/) (read-only).
+
+**P0-5b live host-session trajectories** are **not** in this directory — see
+[`evals/agent-ab-live/`](../agent-ab-live/) and
+[docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md).

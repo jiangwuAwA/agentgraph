@@ -1,0 +1,155 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "A",
+  "policy_label": "Live LLM agent + agentgraph CLI/MCP recipes",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "task_id": "rust-trait-handler",
+  "seed": 0,
+  "run_id": "a-0",
+  "fixture": "fixtures/eval-agent-tasks/rust-trait-handler",
+  "symbol": "render",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "rust-trait-handler",
+    "title": "Change Handler::render trait method — impls + dyn call sites",
+    "language": "rust",
+    "issue": "Handler::render signature must change. Find implementors and dyn dispatch call sites that must be updated.",
+    "issue_digest": "Handler::render signature must change; find implementors and dyn dispatch call sites.",
+    "expected_files": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index"
+    },
+    {
+      "seq": 2,
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "render",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound"
+      },
+      "note": "impls + dyn call sites"
+    },
+    {
+      "seq": 3,
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "render",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "high_freq_name": false,
+        "implementor_count": 4,
+        "callers_files": [
+          "src/lib.rs"
+        ]
+      },
+      "note": "implementors + dyn dispatch callers"
+    },
+    {
+      "seq": 4,
+      "tool": "agentgraph.find",
+      "args": [
+        "find",
+        "render"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "src/handlers.rs"
+        ]
+      },
+      "note": "trait + impls"
+    }
+  ],
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-trait-handler/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "A",
+    "rationale": "Issue asks implementors + dyn call sites: who-calls/blast cover handlers.rs (trait/impls) and lib.rs (dyn render()). metrics.rs self-labels no dependency — omit.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over agentgraph recipe evidence"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm A: Issue asks implementors + dyn call sites: who-calls/blast cover handlers.rs (trait/impls) and lib.rs (dyn render()). metrics.rs self-labels no dependency — omit."
+  ],
+  "errors": []
+}

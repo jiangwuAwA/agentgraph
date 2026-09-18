@@ -1,0 +1,120 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "B",
+  "policy_label": "Live LLM agent + read/grep only (no agentgraph)",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "task_id": "go-store-api",
+  "seed": 2,
+  "run_id": "b-2",
+  "fixture": "fixtures/eval-agent-tasks/go-store-api",
+  "symbol": "Get",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "go-store-api",
+    "title": "Change Go Repository.Get — consumers and implementors",
+    "language": "go",
+    "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+    "issue_digest": "Repository.Get must accept context; find implementors (MemRepo/RedisCache) and call sites (api handlers); ignore package noise.",
+    "expected_files": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "grep",
+      "args": [
+        "Get"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "api/handlers.go",
+          "store/store.go"
+        ]
+      },
+      "note": "token hits only on definition + call sites"
+    },
+    {
+      "seq": 2,
+      "tool": "read",
+      "args": [
+        "store/store.go",
+        "api/handlers.go",
+        "cmd/main.go",
+        "internal/metrics.go"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "confirm cmd/metrics do not implement or call Repository.Get"
+    }
+  ],
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "api/handlers.go",
+      "store/store.go"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/go-store-api/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "B",
+    "rationale": "grep Get hits only handlers + store. Reading cmd/main and internal/metrics shows no Repository.Get use — omit as package noise. No agentgraph.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over grep/read evidence (no agentgraph)"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm B: grep Get hits only handlers + store. Reading cmd/main and internal/metrics shows no Repository.Get use — omit as package noise. No agentgraph."
+  ],
+  "errors": []
+}

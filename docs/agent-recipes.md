@@ -9,7 +9,7 @@ Related: [onboarding.md](onboarding.md) (5-min install → MCP `blast_radius`),
 [sound-subset.md](sound-subset.md), [workspace.md](workspace.md),
 [graph-diff.md](graph-diff.md), [eval-stock-boundary.md](eval-stock-boundary.md),
 [eval-agent-tasks.md](eval-agent-tasks.md) (public code-change task scores),
-[eval-agent-baseline.md](eval-agent-baseline.md) (P0-5 scripted tool-policy A/B/C + replay — **not** live LLM),
+[eval-agent-baseline.md](eval-agent-baseline.md) (P0-5 scripted tool-policy A/B/C + replay; **P0-5b live host-session A/B** — not a public benchmark lab),
 [agent-goldens.md](agent-goldens.md) (P1-3 golden suites — stable-key release gate),
 [ci-blast-radius-demo.md](ci-blast-radius-demo.md) (P2-2 CI blast-radius comment **demo**).
 

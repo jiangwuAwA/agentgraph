@@ -136,7 +136,9 @@ Binary used for the numbers below: debug build with `blast-radius` / `who-calls`
   union), **not** “Agent with MCP vs Agent without MCP” product proof.
   **P0-5** adds **scripted** tool-policy A/B/C + replay on the same public
   tasks — still **not** live LLM agents
-  ([eval-agent-baseline.md](eval-agent-baseline.md)). Live P0-5b remains future work.
+  ([eval-agent-baseline.md](eval-agent-baseline.md)). **P0-5b** adds live
+  **host-session** A/B trajectories under `evals/agent-ab-live/` (not a public
+  benchmark lab; contamination/N limits in the baseline doc).
 - A weaker/noisier name set is exactly the failure mode the tasks label
   (`fmt` substring, docs prose, sibling package comments).
 

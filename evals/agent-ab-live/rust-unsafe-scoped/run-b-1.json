@@ -1,0 +1,116 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.live.v1",
+  "policy": "B",
+  "policy_label": "Live LLM agent + read/grep only (no agentgraph)",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "task_id": "rust-unsafe-scoped",
+  "seed": 1,
+  "run_id": "b-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-unsafe-scoped",
+  "symbol": "export_rows",
+  "model_note": "mimo-desktop-host-session",
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "note": "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "contamination": "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero."
+  },
+  "task": {
+    "id": "rust-unsafe-scoped",
+    "title": "Sound disabled by unsafe sibling — scoped guidance required",
+    "language": "rust",
+    "issue": "core::export_rows is the symbol under change. The workspace also contains a legacy package with unsafe code that leaves S. Union sound is off — agentgraph must not claim sound, and must recommend scoped sound on the clean core root.",
+    "issue_digest": "core::export_rows under change; workspace has unsafe legacy package; union sound off — must not claim sound; recommend scoped sound on core.",
+    "expected_files": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "grep",
+      "args": [
+        "export_rows"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "packages/core/src/export.rs",
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "legacy has no export_rows token"
+    },
+    {
+      "seq": 2,
+      "tool": "read",
+      "args": [
+        "packages/core/src/export.rs",
+        "packages/core/src/lib.rs",
+        "packages/legacy/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "legacy is unsafe sibling — not a call/def site for symbol"
+    }
+  ],
+  "file_set": [
+    "packages/core/src/export.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-unsafe-scoped/task.json"
+  },
+  "extras": {
+    "kind": "live_llm_agent",
+    "model_note": "mimo-desktop-host-session",
+    "arm": "B",
+    "rationale": "grep export_rows only hits core def + core lib. Read legacy to confirm it is unrelated to this symbol (unsafe sibling still relevant for sound claims but not in the edit set). No agentgraph.",
+    "protocol": "file_set decided from issue text + recorded tool/grep evidence; expected labels stamped offline after commitment",
+    "seed_role": "repeat metadata; this host-session live agent was seed-invariant on these fixtures given the same tool evidence",
+    "file_set_method": "live agent judgment over grep/read evidence (no agentgraph)"
+  },
+  "notes": [
+    "live host-session LLM agent (not a public benchmark model; not a standardized lab harness). File sets decided from issue text + tool/grep evidence; structure-fact scores stamped offline after commitment. N small; possible same-session arm contamination.",
+    "Same MiMo Desktop host session previously inspected fixtures/eval-agent-tasks task.json expected labels during P0-5 protocol work; live arms still derive file_set from recorded tool/grep evidence (not by copying expected lists), but contamination risk is real and not zero.",
+    "Arm B: grep export_rows only hits core def + core lib. Read legacy to confirm it is unrelated to this symbol (unsafe sibling still relevant for sound claims but not in the edit set). No agentgraph."
+  ],
+  "errors": []
+}

@@ -76,7 +76,9 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **P0-1 public Agent code-change task evals (shipped):** `fixtures/eval-agent-tasks/` (public mini-repos + `task.json` structure facts) + `scripts/eval_agent_tasks.py` + `tests/agent_task_eval.rs`. Scores blast/who-calls/subset honesty vs a **name-grep** baseline (symbol token in files) — not an LLM baseline; no private corpus. Numbers: [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md).
 
-**P0-5 scripted tool-policy A/B/C evals (shipped this slice):** `scripts/eval_agent_ab.py` + `evals/agent-ab/**` replay trajectories + `tests/agent_ab_eval.rs` + [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md). **A** = agentgraph MCP/CLI recipe policy (scripted); **B** = read/grep policy (no agentgraph); **C** = name-grep control. **Not live LLM agents** — future P0-5b is separate. Offline replay via `scripts/eval_agent_ab.py` `score` subcommand over `evals/agent-ab/`. No private corpus.
+**P0-5 scripted tool-policy A/B/C evals (shipped):** `scripts/eval_agent_ab.py` + `evals/agent-ab/**` replay trajectories + `tests/agent_ab_eval.rs` + [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md). **A** = agentgraph MCP/CLI recipe policy (scripted); **B** = read/grep policy (no agentgraph); **C** = name-grep control. Scripted rows are **not** live LLM agents. Offline replay via `scripts/eval_agent_ab.py` `score` subcommand over `evals/agent-ab/`. No private corpus.
+
+**P0-5b live host-session A/B (shipped):** `scripts/eval_agent_ab_live.py` + `evals/agent-ab-live/**` + `tests/agent_ab_live.rs`. `model_note=mimo-desktop-host-session` (honest — not a public benchmark model / not a standardized lab harness). Arm A = live agentgraph recipes; Arm B = live grep/read only. Scores stamped offline after file-set commitment. On public fixtures this session did **not** separate live A vs live B noise — **no oversell**. Contamination + N limits in [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md).
 
 ## Commits
 

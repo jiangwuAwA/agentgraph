@@ -1,21 +1,28 @@
-# Agent baseline evals — scripted tool-policy A/B/C (P0-5)
+# Agent baseline evals — scripted tool-policy A/B/C (P0-5) + live host-session A/B (P0-5b)
 
-**Status:** shipped first public slice — protocol + scripted policies + replay
-fixtures + harness numbers.  
-**Label (mandatory):** these are **scripted tool-policy agents**
-(deterministic, reproducible) — **not** a live LLM agent experiment. A future
-live run is **P0-5b** (operator/CI track with model, temperature, and
-environment recorded). We do **not** fabricate LLM numbers here.
+**Status:**
+
+- **P0-5 (scripted):** protocol + scripted policies + replay fixtures + harness
+  numbers. **Label (mandatory):** those rows are **scripted tool-policy
+  agents** (deterministic, reproducible) — **not** a live LLM product proof.
+- **P0-5b (live):** host-session live LLM Agent ± agentgraph on the same public
+  tasks — recorded trajectories under [`evals/agent-ab-live/`](../evals/agent-ab-live/).
+  **Label (mandatory):** single-host-session live agent
+  (`model_note=mimo-desktop-host-session`) — **not** a public benchmark model,
+  **not** a standardized lab harness. We do **not** fabricate LLM numbers;
+  only scored, recorded trajectories appear below.
 
 Related: [eval-agent-tasks.md](eval-agent-tasks.md) (P0-1 structure-fact
 scores vs name-grep), [agent-recipes.md](agent-recipes.md),
-[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 card).
+[product-improvement-backlog.md](product-improvement-backlog.md) (P0-5 / P0-5b card).
 
 ---
 
 ## Non-goals / Non-claims
 
-- **Not** a live LLM / “Agent product” proof — only scripted policies below.
+- **Scripted P0-5 rows are not** a live LLM / “Agent product” proof.
+- **P0-5b live rows are not** a public-benchmark or multi-model lab result —
+  one host session, contamination risk disclosed below.
 - **No** private stock / proprietary corpus paths in fixtures, trajectories,
   or docs.
 - **No** sound oversell: `window=sound` on fixtures is the **`ast_modeled`**
@@ -24,6 +31,8 @@ scores vs name-grep), [agent-recipes.md](agent-recipes.md),
 - **No** claim that fixture scores transfer to production monorepo precision.
 - **No** claim that a single lucky run is a conclusion — we record **N≥3**
   runs/policy/task even when the policy is seed-invariant.
+- **No** claim that live A “beats” live B on this slice when the recorded
+  noise/recall tables do not separate them.
 
 ---
 
@@ -206,14 +215,14 @@ Product signal (noise): **B − A = +1.56** extra-noise files on average
     expansion (e.g. `fmt` / `compute` comment hits) but misses B-only noise
     when the token is absent from a sibling file.
 - **A is seed-invariant** on all nine tasks (deterministic recipe policy);
-  N=3 is still recorded for protocol parity and for a future live P0-5b.
+  N=3 is still recorded for protocol parity (live P0-5b reuses the same slots).
 - **Honesty fields (A):** clean tasks report `window=sound` +
   `subset_ok=true`; `rust-unsafe-scoped` stays **`window=default`** with
   scoped `sound_candidates` (eligible `core` / avoid `legacy`) — never a
   union sound claim. `note` always carries “not a complete runtime graph”.
 - **This is not** “Agent with MCP beats Agent without MCP in an LLM product
   sense.” It is a **scripted tool-policy** comparison on public fixtures.
-  Live model runs remain P0-5b.
+  Live host-session results are **P0-5b** below (also not a product proof).
 
 ### Baseline honesty
 
@@ -225,18 +234,119 @@ Product signal (noise): **B − A = +1.56** extra-noise files on average
 - Scores are **structure-fact file sets** on public fixtures — **not**
   production change-quality, **not** ecological soundness, **not** a complete
   runtime graph.
-- Live A/B (model, temperature, N repeats, failure modes) remains
-  **P0-5b** and must not be summarized from these scripted numbers.
+- Live A/B must **not** be summarized from scripted numbers alone — see
+  **P0-5b live** below (host-session limits apply).
+
+---
+
+## P0-5b live — host-session LLM Agent ± agentgraph
+
+**Protocol (what we actually ran):**
+
+For each public task in `fixtures/eval-agent-tasks/` (**9/9**), for repeat
+`seed = 0..2`, the **same live host-session LLM** (`mimo-desktop-host-session`):
+
+1. **Arm A — live + agentgraph:** issue text + agentgraph CLI recipes
+   (`index`, `blast-radius`, `who-calls`, `find`, `related`, `subset`) +
+   reads → JSON file-set trajectory.
+2. **Arm B — live read/grep only:** same issue text; **forbidden**
+   agentgraph binary/MCP; shell `grep`/token search + reads only → JSON
+   file-set trajectory.
+3. Trajectories written to
+   [`evals/agent-ab-live/<task>/run-{a|b}-<seed>.json`](../evals/agent-ab-live/)
+   (`agentgraph.eval_agent_ab.trajectory.v1` + live meta; alias
+   `agentgraph.eval_agent_ab.live.v1`).
+4. File sets **committed first**; structure-fact labels + scores **stamped
+   offline after** from fixture `task.json` (`scripts/eval_agent_ab_live.py
+   stamp`). Offline replay: `score --traj-dir evals/agent-ab-live`.
+
+**Completeness:** tasks **9** × seeds **3** × arms **A/B** = **54/54**
+trajectories recorded (complete). Host-session decisions were
+**seed-invariant** on these fixtures given the same tool/grep evidence.
+
+### Score table — live A/B vs scripted A/B/C vs name-grep (C)
+
+Mean over recorded runs only (no invented cells).
+
+| policy / arm | kind | model_note | runs | mean expected-file recall | mean extra-noise files | mean file-set size |
+|---|---|---|---:|---:|---:|---:|
+| **A live** recipes | `live_llm_agent` | `mimo-desktop-host-session` | 27 | **1.00** | **0.00** | 2.56 |
+| **B live** read/grep | `live_llm_agent` | `mimo-desktop-host-session` | 27 | **1.00** | **0.00** | 2.56 |
+| **A scripted** recipes | `scripted_tool_policy` | n/a (deterministic) | 27 | 1.00 | 0.00 | 2.78 |
+| **B scripted** read/grep | `scripted_read_grep_policy` | n/a (deterministic) | 27 | 1.00 | 1.56 | 4.22 |
+| **C** name-grep control | `name_grep_control` | n/a (P0-1) | 27 | 1.00 | 0.78 | 3.00 |
+
+Per-task live means (seeds 0–2; live A/B file sets matched per task in this run):
+
+| task | symbol | A live recall | A live noise | B live recall | B live noise | A/B size | scripted A noise | scripted B noise | C noise |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| go-store-api | Get | 100% | 0.0 | 100% | 0.0 | 2 | 0.0 | 2.0 | 0.0 |
+| noisy-name-fmt | fmt | 100% | 0.0 | 100% | 0.0 | 1 | 0.0 | 1.0 | 1.0 |
+| py-fastapi-invoice | InvoiceService | 100% | 0.0 | 100% | 0.0 | 4 | 0.0 | 2.0 | 0.0 |
+| py-plugin-registry | PluginRegistry | 100% | 0.0 | 100% | 0.0 | 2 | 0.0 | 1.0 | 1.0 |
+| rust-trait-handler | render | 100% | 0.0 | 100% | 0.0 | 2 | 0.0 | 1.0 | 1.0 |
+| rust-unsafe-scoped | export_rows | 100% | 0.0 | 100% | 0.0 | 2 | 0.0 | 1.0 | 0.0 |
+| rust-workspace-two-roots | compute | 100% | 0.0 | 100% | 0.0 | 2 | 0.0 | 2.0 | 2.0 |
+| ts-nest-order-service | OrderService | 100% | 0.0 | 100% | 0.0 | 4 | 0.0 | 2.0 | 1.0 |
+| ts-nest-user-repo | UserRepository | 100% | 0.0 | 100% | 0.0 | 4 | 0.0 | 2.0 | 1.0 |
+
+### What the live numbers say (honest — no oversell)
+
+- On these **public, tiny, often self-labeled** fixtures, **live A and live B
+  did not separate** on structure-fact recall or noise (both 1.00 / 0.00 in
+  this host-session run). **We do not claim** “Agent+MCP beats grep/read for
+  live LLMs” from this slice.
+- **Scripted B** still shows higher mechanical noise (mean **+1.56** vs A)
+  because its same-dir expansion does not read comments. Live B in this session
+  **read** files after grep and excluded self-labeled noise (`// Noise: …`).
+  That is a **fixture + judgment** effect — **not** proof that structure tools
+  are unnecessary on real monorepos.
+- Live file sets sometimes **differ from scripted A** where the issue text
+  demands adjacency (e.g. Go implementors despite `high_freq_name`,
+  `invoice_repo.py`, `payment.service.ts`). Scored against the same structure
+  facts; extra non-noise files do not count as noise.
+- **C (name-grep)** remains the deterministic lower bound (noise 0.78 mean) —
+  not replaced by live numbers.
+
+### P0-5b honest limits (required)
+
+- **Single host session LLM** (`mimo-desktop-host-session`) — **not** a public
+  benchmark model id; temperature / sampling not a standardized lab config.
+- **Not a standardized lab harness:** operator-driven tool traces in one MiMo
+  Desktop session; no independent harness isolation, no multi-model panel.
+- **Arm contamination:** same session sees both arms; evidence order was
+  Arm A tools → Arm B greps per task (not per-seed randomization). Prior P0-5
+  work also exposed fixture `expected` labels to this session. Mitigations
+  recorded in trajectories (`honesty.contamination`); residual risk remains.
+- **N small:** 9 tasks × 3 repeats × 2 arms, all on **public synthetic
+  mini-repos**. Seed-invariant host decisions ⇒ repeats are protocol parity,
+  **not** independent statistical draws.
+- **No oversell:** these live rows do **not** prove production wrong-file
+  reduction, ecological soundness, or that recipes always beat a careful
+  grepping agent. They **do** document one honest live protocol + replayable
+  trajectories.
+
+### Live reproduce
+
+```bash
+# trajectories already committed under evals/agent-ab-live/
+python scripts/eval_agent_ab_live.py score --traj-dir evals/agent-ab-live
+python scripts/eval_agent_ab.py score --traj-dir evals/agent-ab-live
+cargo test --test agent_ab_live
+```
+
+Harness script: `scripts/eval_agent_ab_live.py` (`write` / `stamp` / `score`).
+Machine-readable live replay: `target/agent_ab_live_replay.json` (not committed).
 
 ---
 
 ## Relationship to P0-1 (`eval-agent-tasks.md`)
 
-| | P0-1 | P0-5 (this doc) |
+| | P0-1 | P0-5 + P0-5b (this doc) |
 |---|---|---|
-| Question | Do recipe structure-fact sets beat **name-grep** on labeled files/noise? | Do **agent-like tool policies** differ from **agent-like read/grep** and name-grep? |
-| Baselines | name-grep only | **B** read/grep policy + **C** name-grep |
-| Agent behavior | none (recipes vs tokens) | **scripted** tool/read policies (still not live LLM) |
+| Question | Do recipe structure-fact sets beat **name-grep** on labeled files/noise? | Do **agent-like tool policies** differ from **agent-like read/grep** and name-grep? How does a **host-session live** A/B compare (honest limits)? |
+| Baselines | name-grep only | **B** read/grep policy + **C** name-grep + live A/B |
+| Agent behavior | none (recipes vs tokens) | **scripted** tool/read policies + **P0-5b live host-session** (not a public benchmark lab) |
 | Scoring | recall / noise / honesty gates | same structure-fact metrics + forbidden hits + replay |
 | Private corpus | forbidden | forbidden |
 
@@ -265,12 +375,16 @@ trajectory replay so a future live run can drop into the same scorer.
 
 | path | role |
 |---|---|
-| `docs/eval-agent-baseline.md` | this protocol + results |
-| `scripts/eval_agent_ab.py` | harness: run A/B/C + offline `score` replay |
-| `evals/agent-ab/<task>/run-*.json` | public scripted trajectories (replay fixtures) |
-| `target/agent_ab_eval.json` | machine-readable aggregate (not committed) |
-| `target/agent_ab_eval.md` | markdown table from harness |
-| `tests/agent_ab_eval.rs` | fixture coverage + replay + harness exit-0 gate |
+| `docs/eval-agent-baseline.md` | this protocol + results (P0-5 scripted + P0-5b live) |
+| `scripts/eval_agent_ab.py` | harness: run scripted A/B/C + offline `score` replay |
+| `scripts/eval_agent_ab_live.py` | P0-5b live: write / stamp / score live trajectories |
+| `evals/agent-ab/<task>/run-*.json` | public **scripted** trajectories (replay fixtures) |
+| `evals/agent-ab-live/<task>/run-*.json` | public **live host-session** trajectories (P0-5b) |
+| `evals/agent-ab-live/README.md` | live honesty + layout |
+| `target/agent_ab_eval.json` | machine-readable scripted aggregate (not committed) |
+| `target/agent_ab_live_replay.json` | machine-readable live replay (not committed) |
+| `tests/agent_ab_eval.rs` | scripted fixture coverage + replay + harness gate |
+| `tests/agent_ab_live.rs` | live trajectory coverage + replay + honesty gates |
 | `fixtures/eval-agent-tasks/**` | reused public tasks (read-only) |
 
 Related: [agent-recipes.md](agent-recipes.md), [eval-agent-tasks.md](eval-agent-tasks.md),

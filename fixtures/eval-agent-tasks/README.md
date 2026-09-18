@@ -35,3 +35,8 @@ Results: `target/agent_task_eval.json` + table in
 see [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md) and
 replay trajectories under [`evals/agent-ab/`](../../evals/agent-ab/)
 (**not** live LLM agents).
+
+**P0-5b (live host-session A/B):** live trajectories under
+[`evals/agent-ab-live/`](../../evals/agent-ab-live/) — host-session LLM
+(`mimo-desktop-host-session`), **not** a public benchmark lab. Honesty limits:
+[docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md).

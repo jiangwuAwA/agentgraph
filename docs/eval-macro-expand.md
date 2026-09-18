@@ -199,10 +199,9 @@ on stock source (`fmt`/`drop`/`default` floods in eval-stock-boundary § noise p
 
 #### Honest noise / caveats
 
-1. **Dual-index duplication:** if an operator indexes stock corpus **and** a shadow tree,
-   every symbol/ref can appear twice under different paths
+1. **Dual-index duplication (pre-M1 spike):** if an operator indexes stock corpus **and** a shadow tree without the product path map, every symbol/ref can appear twice under different paths
    (`crates/foo/src/bar.rs` vs `source-view/crates/foo/src/bar.rs` or
-   `expanded-view/crates/foo/src/bar.rs`). Path mapping is **not** automatic.
+   `expanded-view/crates/foo/src/bar.rs`). **M1 product path maps + de-dups** (`--macro-expanded-root`, `meta.path_map`, default de-dup, `macro rebuild`); spike dual-root notes are operator history, not current product UX.
 2. **Synthetic ≠ rustc:** synthetic expand proves *indexability of expanded-shaped Rust*,
    not exact proc-macro output. Real mini-spike expand validates the rustc path on this machine.
 3. **async_trait:** method **names** already extract at L0 from source (eval-stock-boundary:
@@ -237,7 +236,7 @@ on stock source (`fmt`/`drop`/`default` floods in eval-stock-boundary § noise p
 | **P1** | Operator runbook: expand **1–2 clean crates** when crates.io/nightly available; keep shadow outside repo; never dual-index without path policy | 0.5–1 d | runbook |
 | **P2** (optional product) | Side-index ingest: `confidence=macro_expanded` (or dedicated rule_id) + path map `expanded/…` → `crates/…`; **de-dup** with source Exact edges; CLI flag `--include-macro-expanded` default **off** | **1–2 weeks** eng | only if goldens show L1 gaps expand actually fills |
 
-**P2 shipped form (this repo):** optional sidecar DB + `--macro-expanded-root` / `--with-macro` / `macro status` (origin `macro_expanded`, not sound). **M1 product path:** path map + de-dup + fingerprint/stale + `macro rebuild`. See [macro-sidecar.md](macro-sidecar.md) and §8 below.
+**P2 shipped form (this repo):** optional sidecar DB + `--macro-expanded-root` / `--with-macro` / `macro status` (origin `macro_expanded`, not sound). **M1 product path:** path map + de-dup + fingerprint/stale + `macro rebuild`. See [macro-sidecar.md](macro-sidecar.md) and §8 below. Golden e2e: L0 miss → expand-only `fmt`/`clone` → `--with-macro` finds them with `mapped_path=crates/…/src/…`; de-dup keeps source Exact (`tests/macro_dedup.rs::e2e_golden_l0_miss_expand_finds_mapped_source_crate_path`).
 
 | **P3** | Selective real expand of derive-heavy clean crates (`model-selection-replay`, `event-engine`, `repository`) on a network-enabled builder; store **edges** not sources | +1 week | builder job, **not** required Rust CI |
 
@@ -333,6 +332,12 @@ Reproduce product behavior (no private corpus):
 
 ```bash
 cargo test --test macro_pathmap --test macro_dedup --test macro_rebuild --test macro_sidecar
+```
+
+M1 acceptance golden (source-crate mapped path + de-dup):
+
+```bash
+cargo test --test macro_dedup e2e_golden_l0_miss_expand_finds_mapped_source_crate_path
 ```
 
 Operator spike compare (private machine) remains `scripts/stock_macro_expand_spike.ps1` — **not** a product dependency.

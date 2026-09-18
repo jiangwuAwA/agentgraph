@@ -89,7 +89,7 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 - default: **Exact + Heuristic** (L1 DI/factory/event candidates)
 - `--exact-only`: L0 syntactic edges only
 - `--include-dynamic` / **`--recall`**: also DynamicCandidate (reflection / computed keys — noisier)
-- `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md).
+- `--sound` (L2, S-qualified): modeled edges (direct, literal-key, **emit↔on dispatch**, DI/route registration) when `subset_ok`; registration ≠ HTTP ServeHTTP. See [docs/sound-subset.md](docs/sound-subset.md). Query p95: [docs/eval-query-p95.md](docs/eval-query-p95.md). **Promise tier:** shipped languages (js/ts/tsx/jsx/python/go/rust) are **`ast_modeled`** (tree-sitter AST S gate — engineering subset, **not** ecosystem sound). Type-only `typeof Function` stays **in S**; value-use of `Function`/`eval` leaves S.
 - `--with-macro` (P2/M1, **default OFF**): union optional macro-expanded sidecar hits tagged `origin=macro_expanded` with **mapped source paths** when the path map applies. De-dup ON by default (same logical edge as main Exact/Heuristic keeps the main row); `--no-macro-dedup` is a debug escape. `--exact-only --with-macro` ignores the sidecar. Stale sidecars warn and still union (`macro rebuild` repairs). Not sound; mutually exclusive with `--sound`. See [docs/macro-sidecar.md](docs/macro-sidecar.md).
 
 **怕漏（missed edges）时：** 优先 `--sound`（`subset_ok` 时）或 `--recall`。干净的图 ≠ 完整的图。

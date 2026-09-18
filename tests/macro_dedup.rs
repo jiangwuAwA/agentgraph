@@ -432,3 +432,142 @@ pub fn clone() -> i32 { helper() }
         "status must expose path_map_present: {status}"
     );
 }
+
+/// Track M1 acceptance golden (G4): end-to-end source-crate layout.
+///
+/// - Source tree uses workspace crate path `crates/demo/src/lib.rs`.
+/// - L0 source **misses** fmt/clone impl edges (not present in source file).
+/// - Expanded shadow (crate-dir layout `demo/lib.rs`) adds fmt/clone calling helper.
+/// - Default `callers helper` has no fmt/clone.
+/// - `--with-macro` finds them; `mapped_path` points at **source crate path**
+///   `crates/demo/src/lib.rs`.
+/// - When both source Exact (`process`) and sidecar Exact exist, de-dup keeps
+///   the source Exact row only (no dual path+name+enclosing).
+#[test]
+fn e2e_golden_l0_miss_expand_finds_mapped_source_crate_path() {
+    let base = std::env::temp_dir().join(format!(
+        "agentgraph-e2e-macro-golden-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let root = base.join("src-root");
+    let expanded = base.join("expanded-shadow");
+    std::fs::create_dir_all(root.join("crates/demo/src")).unwrap();
+    std::fs::create_dir_all(expanded.join("demo")).unwrap();
+
+    // Source: Exact process→helper; NO fmt/clone (L0 miss for those edges).
+    std::fs::write(
+        root.join("crates/demo/src/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+
+pub fn process() -> i32 { helper() + 1 }
+"#,
+    )
+    .unwrap();
+    // Expanded crate-dir shadow: same process + derive-shaped fmt/clone edges.
+    std::fs::write(
+        expanded.join("demo/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+
+pub fn process() -> i32 { helper() + 1 }
+
+pub fn fmt() -> i32 { helper() }
+
+pub fn clone() -> i32 { helper() }
+"#,
+    )
+    .unwrap();
+
+    build_sidecar(&root, &expanded);
+
+    // 1) Default source query: L0 has process, misses fmt/clone.
+    let plain = run(&root, &["callers", "helper"]);
+    assert!(plain.status.success(), "{}", stderr(&plain));
+    let plain_enc = enclosings(&result_rows(&parse_json(&plain)));
+    assert!(
+        plain_enc.iter().any(|e| e == "process"),
+        "source Exact process expected: {plain_enc:?}"
+    );
+    assert!(
+        !plain_enc.iter().any(|e| e == "fmt") && !plain_enc.iter().any(|e| e == "clone"),
+        "L0 must miss expand-only fmt/clone edges: {plain_enc:?} raw={}",
+        stdout(&plain)
+    );
+
+    // 2) --with-macro finds expand-only candidates, mapped to source crate path.
+    let with = run(&root, &["callers", "helper", "--with-macro"]);
+    assert!(with.status.success(), "{}", stderr(&with));
+    let payload = parse_json(&with);
+    let rows = result_rows(&payload);
+
+    let side_fmt: Vec<_> = rows
+        .iter()
+        .filter(|r| {
+            r["origin"] == "macro_expanded"
+                && (r["enclosing"] == "fmt" || r["enclosing"] == "clone")
+        })
+        .collect();
+    assert!(
+        !side_fmt.is_empty(),
+        "sidecar fmt/clone candidates expected under --with-macro: {payload}"
+    );
+
+    for r in &side_fmt {
+        assert_eq!(r["origin"], "macro_expanded");
+        assert_eq!(r["mapped"], true, "crate-align map should succeed: {r}");
+        let mapped = r["mapped_path"].as_str().unwrap_or("");
+        assert!(
+            mapped == "crates/demo/src/lib.rs" || mapped.ends_with("crates/demo/src/lib.rs"),
+            "mapped_path must point at source crate path crates/demo/src/lib.rs; got {mapped} row={r}"
+        );
+        let display = r["path"].as_str().unwrap_or("");
+        assert!(
+            display.contains("crates/demo/src/lib.rs"),
+            "display path should be source crate path after map; got {display} row={r}"
+        );
+        // Expanded shadow path preserved for honesty.
+        let exp = r["expanded_path"].as_str().unwrap_or("");
+        assert!(
+            exp.contains("demo/lib.rs") || exp.contains("lib.rs"),
+            "expanded_path should keep shadow path; got {exp} row={r}"
+        );
+    }
+
+    // 3) De-dup keeps source Exact when both sides have process→helper.
+    let process_rows: Vec<_> = rows
+        .iter()
+        .filter(|r| r["enclosing"] == "process")
+        .collect();
+    assert_eq!(
+        process_rows.len(),
+        1,
+        "source Exact + sidecar Exact must de-dup to one process row: {payload}"
+    );
+    let proc_row = process_rows[0];
+    assert!(
+        proc_row["origin"] != "macro_expanded" || proc_row["mapped"] != true,
+        "dedup must prefer source Exact (not mapped sidecar duplicate): {proc_row}"
+    );
+    if payload.is_object() {
+        let stats = &payload["dedup_stats"];
+        assert!(
+            stats["merged_exact"].as_u64().unwrap_or(0) >= 1,
+            "merged_exact expected for process Exact dedup: {payload}"
+        );
+        assert!(
+            stats["kept_sidecar"].as_u64().unwrap_or(0) >= 2,
+            "fmt/clone sidecar candidates must be kept: {payload}"
+        );
+    }
+
+    // 4) mapped rows must not invent expanded-view paths as the primary path.
+    let enc = enclosings(&rows);
+    for e in ["process", "fmt", "clone"] {
+        assert!(
+            enc.iter().any(|x| x == e),
+            "expected enclosing {e}: {enc:?}"
+        );
+    }
+}

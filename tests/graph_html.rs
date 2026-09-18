@@ -510,6 +510,15 @@ pub fn fmt() -> i32 { helper() }
         html.contains("MACRO") || html.contains("macro_expanded"),
         "MACRO badge / origin expected in HTML"
     );
+    // Explicit MACRO badge string (renderer contract).
+    assert!(
+        html.contains("MACRO"),
+        "HTML must render literal MACRO badge for sidecar-origin nodes"
+    );
+    assert!(
+        html.contains("macro_expanded"),
+        "HTML must record origin=macro_expanded on sidecar nodes"
+    );
     // Mapped source path (crate-aligned) should appear, not only the expanded
     // shadow path `event-engine/lib.rs`.
     assert!(
@@ -519,6 +528,108 @@ pub fn fmt() -> i32 { helper() }
     );
     // Honesty line still present.
     assert!(html.contains("not a complete runtime graph"));
+}
+
+/// Track M1 docs contract: MACRO badge + mapped_path + sound mutual exclusion.
+/// `--sound && --with-macro` fails closed; `--sound` page never carries MACRO badge.
+#[test]
+fn graph_macro_badge_and_sound_mutex_contract() {
+    let base = std::env::temp_dir().join(format!(
+        "agentgraph-graph-html-mutex-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    let root = base.join("src-root");
+    let expanded = base.join("expanded-shadow");
+    std::fs::create_dir_all(root.join("crates/demo/src")).unwrap();
+    std::fs::create_dir_all(expanded.join("demo")).unwrap();
+    std::fs::write(
+        root.join("crates/demo/src/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+pub fn process() -> i32 { helper() + 1 }
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        expanded.join("demo/lib.rs"),
+        r#"
+pub fn helper() -> i32 { 1 }
+pub fn process() -> i32 { helper() + 1 }
+pub fn fmt() -> i32 { helper() }
+"#,
+    )
+    .unwrap();
+    assert!(run(&root, &["index", "--force"]).status.success());
+    let exp = expanded.to_string_lossy().into_owned();
+    assert!(
+        run(&root, &["index", "--force", "--macro-expanded-root", &exp])
+            .status
+            .success()
+    );
+
+    // --sound && --with-macro: fail-closed, no HTML treated as sound+macro.
+    let bad = run(
+        &root,
+        &[
+            "graph",
+            "helper",
+            "--sound",
+            "--with-macro",
+            "--out",
+            "x.html",
+        ],
+    );
+    assert!(
+        !bad.status.success(),
+        "graph --sound && --with-macro must fail closed"
+    );
+    let err = stderr(&bad).to_lowercase();
+    assert!(
+        err.contains("mutually") || err.contains("with-macro") || err.contains("with_macro"),
+        "mutex error text expected: {err}"
+    );
+
+    // Clean --sound graph on source: no MACRO badge (sidecar never sound-certified).
+    let sound_out = root.join("sound-only.html");
+    let sound_s = sound_out.to_string_lossy().to_string();
+    let s = run(
+        &root,
+        &["graph", "helper", "--sound", "--out", sound_s.as_str()],
+    );
+    assert!(s.status.success(), "clean --sound graph: {}", stderr(&s));
+    let sound_html = std::fs::read_to_string(&sound_out).expect("sound html");
+    assert!(
+        !sound_html.contains("MACRO"),
+        "--sound page must not show MACRO badge (mutual exclusion of product paths)"
+    );
+
+    // --with-macro graph: MACRO badge + mapped source crate path.
+    let macro_out = root.join("macro-only.html");
+    let macro_s = macro_out.to_string_lossy().to_string();
+    let m = run(
+        &root,
+        &[
+            "graph",
+            "helper",
+            "--with-macro",
+            "--direction",
+            "callers",
+            "--out",
+            macro_s.as_str(),
+        ],
+    );
+    assert!(m.status.success(), "with-macro graph: {}", stderr(&m));
+    let macro_html = std::fs::read_to_string(&macro_out).expect("macro html");
+    assert!(
+        macro_html.contains("MACRO"),
+        "with-macro HTML must show MACRO badge"
+    );
+    assert!(
+        macro_html.contains("crates/demo/src/lib.rs"),
+        "with-macro HTML must show mapped_path source crate path; snippet: {}",
+        &macro_html[..macro_html.len().min(2000)]
+    );
 }
 
 // ---------- Track M4: graph --sound ----------

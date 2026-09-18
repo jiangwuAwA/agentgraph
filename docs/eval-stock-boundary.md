@@ -234,7 +234,7 @@ Same sites appear as Exact call refs **and** `unsafe` S violations — graph edg
 1. Path-scoped or single-crate index of `repository` / `event-engine` for `--sound` demos where `subset_ok` can be true on that slice.
 2. Investigate tree-sitter ERROR files (often very large generated/contract tests) — recovery would shrink `parse_error`, not unsafe.
 3. Do not market L2 on the full monorepo.
-4. Macro-expand spike (derive/async_trait/inventory edges via shadow expanded trees) — see [eval-macro-expand.md](eval-macro-expand.md). Separate roots only; no sound claim; not required CI.
+4. Macro-expand **coverage notes** (pre-M1 spike dual-root experiments) — see [eval-macro-expand.md](eval-macro-expand.md). Operator expand remains optional; **product path** is M1 `--macro-expanded-root` + path_map + de-dup + `macro rebuild` (default OFF; **not sound**; not required CI). Dual-root-only language in older spike notes is historical.
 
 ---
 
@@ -249,9 +249,10 @@ Full write-up: [eval-macro-expand.md](eval-macro-expand.md). Shadow root (operat
 | Stock crate real expand | blocked on crates.io this machine |
 | Synthetic + real mini-spike index | **no parser panic** after UTF-8 |
 | Source-view vs expanded-view (4 crates) | symbols **1100 → 2140**; `fmt` +131, `clone` +121, inventory registrar-shaped +36 |
-| Dual-index noise | path map not automatic; heuristic refs inflate on expand |
+| Dual-index noise (pre-M1 spike) | operator dual-root workflow had **no automatic path map**; heuristic refs inflate on expand |
+| **M1 product path (this repo)** | `index --macro-expanded-root` + `meta.path_map` + de-dup ON + `macro rebuild` / stale fingerprint — product queries map sidecar hits to source crate paths (e.g. `crates/foo/src/lib.rs`). Dual-root **spike notes remain operator history**, not the product UX. Still **not** sound / not expand-complete. |
 | S on expanded trees | **false** — expand injects `unsafe TrivialClone` / large-file `parse_error` |
-| Product `src/` change | **none** from this spike |
+| Product `src/` change | none from the spike itself; Track M1 later productized path map / de-dup / rebuild (see [macro-sidecar.md](macro-sidecar.md), [eval-macro-expand.md](eval-macro-expand.md) §8) |
 
 ---
 

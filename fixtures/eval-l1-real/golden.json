@@ -26,6 +26,37 @@
       { "symbol": "AppController", "site_file": "src/app.module.ts", "site_contains": "controllers", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "ObserveModule", "site_file": "src/app.module.ts", "site_contains": "forRoot", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "AppService", "site_file": "src/app.controller.ts", "site_contains": "appService: AppService", "kind": "di", "min_confidence": "heuristic" }
+    ],
+    "rust-dyn-trait": [
+      { "symbol": "render", "site_file": "src/handlers.rs", "site_contains": "dyn Handler", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "HtmlHandler", "site_file": "src/handlers.rs", "site_contains": "impl Handler for HtmlHandler", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "JsonHandler", "site_file": "src/handlers.rs", "site_contains": "impl Handler for JsonHandler", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "h.render", "site_file": "src/handlers.rs", "site_contains": "h.render()", "kind": "call", "min_confidence": "exact" }
+    ],
+    "rust-linkme-plugins": [
+      { "symbol": "PLUGINS", "site_file": "src/registry.rs", "site_contains": "distributed_slice(PLUGINS)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "PluginRegistration", "site_file": "src/registry.rs", "site_contains": "PluginRegistration", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "MetricsPlugin", "site_file": "src/registry.rs", "site_contains": "factory: MetricsPlugin::new", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "MetricsPlugin::new", "site_file": "src/lib.rs", "site_contains": "MetricsPlugin::new", "kind": "call", "min_confidence": "exact" }
+    ],
+    "go-iface-v2": [
+      { "symbol": "Get", "site_file": "store/store.go", "site_contains": "var _ Repository = (*MemRepo)(nil)", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "Put", "site_file": "store/store.go", "site_contains": "func (m *MemRepo) Put", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "MemRepo", "site_file": "store/store.go", "site_contains": "var _ Repository = (*MemRepo)(nil)", "kind": "impl", "min_confidence": "heuristic" },
+      { "symbol": "Get", "site_file": "api/handlers.go", "site_contains": "r.Get(id)", "kind": "call", "min_confidence": "exact" }
+    ],
+    "ts-express-router": [
+      { "symbol": "getUsers", "site_file": "src/server.ts", "site_contains": "router.get", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "createUser", "site_file": "src/server.ts", "site_contains": "router.post", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "authMiddleware", "site_file": "src/server.ts", "site_contains": "app.use", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "metricsHandler", "site_file": "src/server.ts", "site_contains": "app.register", "kind": "di", "min_confidence": "heuristic" }
+    ],
+    "py-entry-points": [
+      { "symbol": "myapp.audit", "site_file": "app/plugins.py", "site_contains": "entry_points(group=\"myapp.audit\")", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "AuditPlugin", "site_file": "app/plugins.py", "site_contains": "__init_subclass__", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "get_user_service", "site_file": "app/api.py", "site_contains": "Depends(get_user_service)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "get_current_user", "site_file": "app/api.py", "site_contains": "Security(get_current_user)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "load_plugins", "site_file": "app/api.py", "site_contains": "load_plugins()", "kind": "call", "min_confidence": "exact" }
     ]
   }
 }

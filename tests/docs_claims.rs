@@ -316,6 +316,41 @@ fn eval_goldens_fixtures_exist_and_parse() {
         corpora.contains_key("rust-inventory-mini"),
         "golden.json must include rust-inventory-mini"
     );
+    // Track M5 / gap G5: public M3 + M2 S-slice goldens must ship.
+    for required in [
+        "rust-dyn-mini",
+        "go-iface-mini",
+        "ts-router-mini",
+        "ts-typeonly-function",
+        "py-overflag",
+    ] {
+        assert!(
+            corpora.contains_key(required),
+            "golden.json must include public golden corpus `{required}`"
+        );
+        let corpus = &corpora[required];
+        assert!(
+            corpus
+                .get("source_root")
+                .and_then(|s| s.as_str())
+                .is_some_and(|s| s == required),
+            "{required}: source_root must match corpus key"
+        );
+    }
+    // M2 over-flag S goldens must declare expected_in_s (no violation).
+    for s_corpus in ["ts-typeonly-function", "py-overflag"] {
+        let corpus = &corpora[s_corpus];
+        assert_eq!(
+            corpus.get("expected_in_s"),
+            Some(&serde_json::Value::Bool(true)),
+            "{s_corpus} golden must set expected_in_s=true (type-only/literal stays in S)"
+        );
+        let root_rel = corpus["source_root"].as_str().unwrap();
+        assert!(
+            root.join(root_rel).is_dir(),
+            "missing golden source dir {root_rel}"
+        );
+    }
     for (name, corpus) in corpora {
         let edges = corpus
             .get("edges")

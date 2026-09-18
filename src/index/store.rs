@@ -777,11 +777,15 @@ impl Store {
                  ORDER BY path, line{limit_sql}"
             )
         } else {
-            // Indexed materialized column (P2-1); fallback expression for legacy rows.
+            // Qualified form + literal dotted ref name (M3-C entry_points groups
+            // are stored as name="myapp.plugins" with qualifier=NULL). Match either
+            // qualifier.name or the full string as the ref's bare name.
             format!(
                 "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence
                  FROM refs
-                 WHERE (qual_name = ?1 OR (qualifier || '.' || name) = ?1 OR (qualifier || '::' || name) = ?1)
+                 WHERE (qual_name = ?1 OR name = ?1
+                        OR (qualifier || '.' || name) = ?1
+                        OR (qualifier || '::' || name) = ?1)
                    AND {conf}
                  ORDER BY path, line{limit_sql}"
             )

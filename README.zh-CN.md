@@ -57,7 +57,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 - 默认：**Exact + Heuristic**（L1 DI/工厂/事件等候选）
 - `--exact-only`：仅 L0 语法确定边
 - `--include-dynamic` / **`--recall`**：额外纳入 DynamicCandidate（反射/计算属性，噪声更大）
-- `--sound`（L2，S 限定）：在 `subset_ok` 时对**已建模**引用边（直接调用、字面量键、**emit↔on 派发**、DI/路由注册）做 over-approx；注册 ≠ HTTP ServeHTTP。见 [docs/sound-subset.md](docs/sound-subset.md)。查询 p95：[docs/eval-query-p95.md](docs/eval-query-p95.md)。
+- `--sound`（L2，S 限定）：在 `subset_ok` 时对**已建模**引用边（直接调用、字面量键、**emit↔on 派发**、DI/路由注册）做 over-approx；注册 ≠ HTTP ServeHTTP。见 [docs/sound-subset.md](docs/sound-subset.md)。查询 p95：[docs/eval-query-p95.md](docs/eval-query-p95.md)。**承诺档位：** 已交付语言（js/ts/tsx/jsx/python/go/rust）均为 **`ast_modeled`**（tree-sitter AST S 门，工程子集，**不是**生态 sound）。仅类型位置的 `typeof Function` 留在 S 内；对 `Function`/`eval` 的**值使用**会离开 S。
 
 **怕漏时：** 用 `--sound`（`subset_ok`）或 `--recall`。干净的图不等于完整的图。
 

@@ -23,9 +23,11 @@ cargo test --test l1_eval -- --nocapture
 
 ## Honest limits
 
-- Primary golden set in `fixtures/eval-l1` is **fixture-scale** (DI/event/getattr shapes).
-- Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, **real Nest `@Module` shape**, FastAPI tree, Gin-like Go) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
+- Primary golden set in `fixtures/eval-l1` is **fixture-scale** (DI/event/getattr/linkme shapes).
+- Multi-file **framework-idiom** corpus in `fixtures/eval-l1-real` (NestJS/Inversify-like TS, **real Nest `@Module` shape**, FastAPI tree, Gin-like Go, **plus M3 shapes**: dyn Trait, go iface v2, express router, py entry_points, linkme) — not a vendored production monorepo, but multi-module and closer to real layout. Measured by `tests/l1_eval_real.rs`.
+- Public M3/M2 mini goldens: [`fixtures/eval-goldens/`](../fixtures/eval-goldens/) (`rust-dyn-mini`, `go-iface-mini`, `ts-router-mini`, `ts-typeonly-function`, `py-overflag`; `expected_in_s` for clean S slices is **not** an ecosystem-sound claim).
 - L1 edges remain **candidates** — never sound.
+- **L0 vs L1 (this commit, honest):** fixture L0 Exact recall ≈16% of golden sites; L1 Default reaches 100% on these labeled fixtures. That is **labeled-candidate recall**, not “zero missed dynamic calls”.
 - **Large private multi-language repo** (`stock-trading-app`) measured separately: [eval-large-repo.md](eval-large-repo.md).
 - **Real-tree L1 sampling** (stock-trading-app + public `nestjs-starter`) lives in [eval-large-repo.md](eval-large-repo.md) § “L1 sampling (this commit)”. Historical: fixture L1 lift did **not** transfer to the Nest starter (0 Heuristic) until `ts.nest.module_*` / `ts.nest.ctor_inject` landed; Rust monorepo lift is almost entirely `rs.di.impl_trait` implementor edges. Noise proxy there is manual sampling, not golden labels.
 - **Hand-labeled goldens on stock-trading-app clean/mixed crates** (31 edges): L0 68% → L1 **100%** after `rs.di.inventory_submit` (`inventory::submit!` registry/factory types). Details: [eval-stock-boundary.md](eval-stock-boundary.md). Common-name noise (`fmt`/`drop`/`default`) still floods callers — not a production precision number.
@@ -41,24 +43,30 @@ cargo test --test l1_eval -- --nocapture
 | py-fastapi | 4 | 1 | 4 | 100% | 2 | 2 |
 | py-plugins | 4 | 0 | 4 | 100% | 6 | 6 |
 | rust-dyn | 4 | 1 | 4 | 100% | 8 | 8 |
+| **rust-linkme** (M3-E) | 4 | 1 | 4 | 100% | 3 | 3 |
 | rust-shapes | 3 | 1 | 3 | 100% | 4 | 4 |
 | ts-di | 8 | 2 | 8 | 100% | 8 | 8 |
 | ts-router | 4 | 0 | 4 | 100% | 6 | 6 |
-| **total** | **34** | **5 (15%)** | **34 (100%)** | **+580% relative** | **51** | **51 (0% unmatched fixture proxy)** |
+| **total** | **38** | **6 (16%)** | **38 (100%)** | **+533% relative** | **54** | **54 (0% unmatched fixture proxy)** |
 
-### fixtures/eval-l1-real (framework-idiom multi-module)
+Honest L0 vs L1: L0 Exact-only finds the few syntactic call sites (6/38); L1 Default/IncludeDynamic finds all golden DI/impl/linkme/router shapes on this **fixture-scale** corpus. The 0% unmatched heuristic proxy is **not** a production noise rate — goldens intentionally cover fixture heuristic names.
 
-| corpus | golden | L0 | L1 | heur | matched |
-|---|---:|---:|---:|---:|---:|
-| nestjs-inversify | 7 | 2 | **7** | 8 | 8 |
-| nestjs-module | 5 | 0 | **5** | 6 | 6 |
-| fastapi-app | 3 | 2 | **3** | 1 | 1 |
-| ginlike-go | 3 | 1 | **3** | 3 | 3 |
-| **total** | **18** | **5 (28%)** | **18 (100%)** | **18** | **18 (0% unmatched)** |
+### fixtures/eval-l1-real (framework-idiom multi-module, incl. M3 shapes)
 
-Relative lift on nestjs-inversify: 28% → 100% (**+250%** ≥15% M2).
-`nestjs-module` is the real-Nest `@Module({ imports, controllers, providers })`
-+ constructor-DI shape (mirrors nestjs-starter); L0=0 → L1=100%.
+| corpus | golden | L0 | L1 | heur | matched | notes |
+|---|---:|---:|---:|---:|---:|---|
+| nestjs-inversify | 7 | 2 | **7** | 8 | 8 | pre-existing |
+| nestjs-module | 5 | 0 | **5** | 6 | 6 | pre-existing Nest `@Module` |
+| fastapi-app | 3 | 2 | **3** | 1 | 1 | pre-existing |
+| ginlike-go | 3 | 1 | **3** | 3 | 3 | pre-existing |
+| **go-iface-v2** | 4 | 1 | **4** | 13 | 13 | M3-B multi-file assert + method-set + consumer |
+| **ts-express-router** | 4 | 0 | **4** | 6 | 6 | M3-D multi-file router/handlers |
+| **py-entry-points** | 5 | 1 | **5** | 5 | 5 | M3-C entry_points + Depends/Security |
+| **rust-dyn-trait** | 4 | 1 | **4** | 4 | 4 | M3-A dyn + same-file impls + multi-module |
+| **rust-linkme-plugins** | 4 | 1 | **4** | 3 | 3 | M3-E multi-file linkme registry |
+| **total** | **39** | **9 (23%)** | **39 (100%)** | **49** | **49 (0% unmatched)** |
+
+Relative lift on framework/M3 real-shaped corpora: **23% → 100%** L0→L1 (**+334%** relative; ≥15% M2 bar). These are still **synthetic multi-module idioms**, not a vendored production monorepo — production numbers remain operator-only ([eval-large-repo.md](eval-large-repo.md), [eval-stock-boundary.md](eval-stock-boundary.md)).
 
 ### M2 acceptance (PLAN §10)
 
@@ -66,8 +74,9 @@ Relative lift on nestjs-inversify: 28% → 100% (**+250%** ≥15% M2).
 |---|---|---|
 | Heuristic recall lift vs L0 on ≥1 DI corpus | ≥15% relative | **ts-di: 25% → 100%** (+300% relative) |
 | Heuristic noise (proxy: unmatched-by-golden) | ≤30% | **0%** on **fixture** corpora only — **not** a production noise rate |
+| M3 real-shaped multi-module lift | ≥15% relative | **eval-l1-real: 23% L0 → 100% L1** (+334% relative) across 9 corpora including M3 packages |
 
-CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_meets_m2_threshold_on_mixed_corpus`, `heuristic_noise_rate_below_m2_threshold`).
+CI asserts these thresholds (`l1_beats_l0_on_di_corpus`, `l1_recall_improvement_meets_m2_threshold_on_mixed_corpus`, `heuristic_noise_rate_below_m2_threshold`, `framework_corpus_l1_lift_meets_m2`).
 
 ## Rules covered
 

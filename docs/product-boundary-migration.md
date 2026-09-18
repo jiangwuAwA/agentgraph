@@ -482,20 +482,22 @@ macro status
 
 ### 残差 / 缺漏（按严重度）
 
-| ID | Track | 缺漏 | 严重度 | 建议动作 |
-|---|---|---|---|---|
-| G1 | M3 | **M3-E linkme 无 eval-l1 fixture/golden**（仅 unit 测试） | 中 | 补 `fixtures/eval-l1/rust-linkme/` + golden.json 条目 |
-| G2 | M3 | **eval-l1-real 无 M3 形状**（无 dyn Trait / go iface v2 / linkme / express router / entry_points 的真实向 corpus） | 中 | 在 `fixtures/eval-l1-real/` 加 1–2 个 multi-module 形状；或在 stock 对照报告里补 M3 后 delta（不提交源码） |
-| G3 | M3 | `tests/l1_cli.rs` / `store_impact.rs` **未**为新 Heuristic 扩默认含边 / `--exact-only` / impact BFS 用例 | 中 | 各加 1–2 个表驱动用例（rule_id 级） |
-| G4 | M1 | 验收金标「L0 无 → expand 有 → **map 后 crates/… 源码路径**」未做成**一条端到端**测试（现有：expand-only 查询 + path-map golden 分离） | 中 | 在 `macro_dedup`/`macro_sidecar` 加 crates 目录布局 fixture |
-| G5 | M2+M5 | `fixtures/eval-goldens/` 仅 nest + inventory；**缺** M3 包与 M2 S_py/S_go clean/evil 公开金标 | 中 | 扩 golden.json + 对应 mini 目录（README 已写 “for M1–M3” 但未齐） |
-| G6 | 全 | **README.md / README.zh-CN.md 未写 M2** `promise_tier=ast_modeled` / typeof Function 诚实句（仅 AGENTS/eval-l2/sound-subset） | 中 | README L2 段对齐 sound-subset 一句 |
-| G7 | 文档 | `eval-stock-boundary.md` 仍写 **「path map not automatic」**，与 M1 产品化矛盾 | 中 | 改为 “product path maps; stock dual-index notes are pre-M1 spike” |
-| G8 | 文档 | `docs/graph-html.md` 未记录 M1 mapped path / MACRO 徽章（实现与测试已有） | 低 | 补一小节 |
-| G9 | 文档 | **PLAN.md 里程碑 M1–M5 与产品边界 Track M1–M5 同名冲突**；§3.3/§2.2 未列 shipped M3 rule_id / Track M1 宏候选产品路径 | 中 | PLAN 加术语区分 + 链到本文档；补 rule 列表 |
-| G10 | M1 | 清单中的 `--macro-default` **未实现**（`--with-macro` 仍默认 OFF，符合「默认源码 L0/L1」） | 低（有意） | 维持默认 OFF；将清单项标为 **explicit opt-in only** 或以后再做配置 |
-| G11 | M1 | `scripts/expand_index_diff.py` 未接产品 path-map（清单标可选） | 低 | 保持 operator spike；或对照脚本改调用 `macro_map` |
-| G12 | 清单 | 本文 §1.6/§2.6/§3.6 验收复选框尚未勾选；实现状态以本附录为准 | 低 | 残差关闭后统一勾选 |
+> **2026-09-18 close-out (G1–G9):** residual gaps below are closed in-repo. Product Tracks M1–M5 naming disambiguated in PLAN.md. Full test suite + `fmt`/`clippy`/`docs_claims` green after close-out. G10/G11/G12 remain intentional low-priority notes.
+
+| ID | Track | 缺漏 | 严重度 | 建议动作 | Status |
+|---|---|---|---|---|---|
+| G1 | M3 | **M3-E linkme 无 eval-l1 fixture/golden**（仅 unit 测试） | 中 | 补 `fixtures/eval-l1/rust-linkme/` + golden.json 条目 | **closed** — fixture + golden + eval-l1.md table |
+| G2 | M3 | **eval-l1-real 无 M3 形状** | 中 | 在 `fixtures/eval-l1-real/` 加 multi-module 形状 | **closed** — dyn-trait / go-iface-v2 / ts-express-router / py-entry-points / rust-linkme-plugins + honest L0/L1 numbers in eval-l1.md |
+| G3 | M3 | `tests/l1_cli.rs` / `store_impact.rs` **未**为新 Heuristic 扩默认含边 / `--exact-only` / impact BFS 用例 | 中 | 各加表驱动用例（rule_id 级） | **closed** — CLI default/exact-only rule_id matrix + impact BFS through M3 Heuristics |
+| G4 | M1 | 验收金标「L0 无 → expand 有 → **map 后 crates/… 源码路径**」未做成端到端测试 | 中 | 在 `macro_dedup` 加 crates 目录布局 fixture | **closed** — `macro_dedup::e2e_golden_l0_miss_expand_finds_mapped_source_crate_path` |
+| G5 | M2+M5 | `fixtures/eval-goldens/` 仅 nest + inventory | 中 | 扩 golden.json + mini 目录 | **closed** — rust-dyn-mini / go-iface-mini / ts-router-mini / ts-typeonly-function / py-overflag + `expected_in_s` + docs_claims lock |
+| G6 | 全 | **README 未写 M2** `promise_tier=ast_modeled` / typeof Function 诚实句 | 中 | README L2 段对齐 sound-subset | **closed** — README.md + README.zh-CN.md |
+| G7 | 文档 | `eval-stock-boundary.md` 仍写 **「path map not automatic」** | 中 | 改为 M1 product path | **closed** — spike history vs M1 product path split |
+| G8 | 文档 | `docs/graph-html.md` 未记录 M1 mapped path / MACRO 徽章 | 低 | 补一小节 + test assert | **closed** — docs section + `graph_macro_badge_and_sound_mutex_contract` |
+| G9 | 文档 | **PLAN.md 里程碑 M1–M5 与产品 Track M1–M5 同名冲突**；§3.3 未列 shipped M3 rule_id | 中 | PLAN 术语区分 + rule 列表 | **closed** — PLAN naming note + §3.3 shipped table + AGENTS L1 blurb |
+| G10 | M1 | 清单中的 `--macro-default` **未实现**（`--with-macro` 仍默认 OFF，符合「默认源码 L0/L1」） | 低（有意） | 维持默认 OFF；标为 **explicit opt-in only** | intentional (unchanged) |
+| G11 | M1 | `scripts/expand_index_diff.py` 未接产品 path-map（清单标可选） | 低 | 保持 operator spike | intentional (unchanged) |
+| G12 | 清单 | 本文 §1.6/§2.6/§3.6 验收复选框尚未勾选；实现状态以本附录为准 | 低 | 残差关闭后统一勾选 | backlog (appendix is source of truth) |
 
 ### 有意不做成「缺漏」的产品选择
 

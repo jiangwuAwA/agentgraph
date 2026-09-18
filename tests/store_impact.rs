@@ -221,3 +221,176 @@ fn email_validator() {}
     assert!(fuzzy.iter().any(|s| s.name == "validate_email"));
     assert!(fuzzy.iter().any(|s| s.name == "email_validator"));
 }
+
+/// Track M3: impact BFS must expand through new Heuristic registration /
+/// dyn-trait / linkme / go-interface_v2 edges (Default filter).
+/// `rs.di.dyn_trait_method` is Unsound (not allowlisted) but still appears
+/// in default impact — product default path, not sound walk.
+#[test]
+fn impact_bfs_expands_m3_heuristic_registration_edges() {
+    let db = temp_db("impact-m3");
+    let mut store = Store::open(&db).unwrap();
+    let known: HashSet<String> = HashSet::new();
+
+    // TS: metricsHandler registered via ts.framework.register + called from wire.
+    let ts = r#"
+export function metricsHandler() { return 1; }
+export function wire(app: any) {
+  app.register('/metrics', metricsHandler);
+  metricsHandler();
+}
+"#;
+    // Rust dyn: area called on dyn Shape — rs.di.dyn_trait_method (Unsound).
+    let rs = r#"
+trait Shape { fn area(&self) -> f64; }
+struct Circle { r: f64 }
+impl Shape for Circle { fn area(&self) -> f64 { 1.0 } }
+fn total_area(s: &dyn Shape) -> f64 { s.area() }
+"#;
+    // Go: interface assert v2.
+    let go = r#"
+package store
+type Store interface {
+  Get(id string) string
+}
+type MemStore struct{}
+func (m *MemStore) Get(id string) string { return id }
+var _ Store = (*MemStore)(nil)
+func UseStore(s Store) string { return s.Get("k") }
+"#;
+    // Rust linkme: registration static references DemoStrategy / StrategyRegistration.
+    let linkme = r#"
+use linkme::distributed_slice;
+pub struct StrategyRegistration { pub factory: fn() -> u32 }
+pub struct DemoStrategy;
+impl DemoStrategy { pub fn new() -> u32 { 1 } }
+#[distributed_slice(STRATEGIES)]
+static DEMO: StrategyRegistration = StrategyRegistration {
+    factory: DemoStrategy::new,
+};
+fn bootstrap() -> u32 { DemoStrategy::new() }
+"#;
+
+    let parsed_ts = extract_file(ts, Language::TypeScript, "src/metrics.ts", &known).unwrap();
+    let parsed_rs = extract_file(rs, Language::Rust, "rs/shapes.rs", &known).unwrap();
+    let parsed_go = extract_file(go, Language::Go, "go/store.go", &known).unwrap();
+    let parsed_linkme = extract_file(linkme, Language::Rust, "rs/linkme.rs", &known).unwrap();
+
+    // Sanity: M3 rules fired on extract.
+    let has_rule = |p: &agentgraph::index::extract::ExtractedFile, rid: &str| {
+        p.references.iter().any(|r| {
+            r.evidence
+                .as_ref()
+                .map(|e| e.rule_id == rid)
+                .unwrap_or(false)
+        })
+    };
+    assert!(
+        has_rule(&parsed_ts, "ts.framework.register"),
+        "extract must mint ts.framework.register; refs={:?}",
+        parsed_ts
+            .references
+            .iter()
+            .map(|r| &r.name)
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        has_rule(&parsed_rs, "rs.di.dyn_trait_method"),
+        "extract must mint rs.di.dyn_trait_method"
+    );
+    assert!(
+        has_rule(&parsed_go, "go.di.interface_impl_v2")
+            || has_rule(&parsed_go, "go.di.interface_impl"),
+        "extract must mint go interface impl heuristic"
+    );
+    assert!(
+        has_rule(&parsed_linkme, "rs.di.linkme_distributed_slice"),
+        "extract must mint rs.di.linkme_distributed_slice"
+    );
+
+    store.begin_batch().unwrap();
+    store
+        .replace_file("src/metrics.ts", "hts", "typescript", &parsed_ts)
+        .unwrap();
+    store
+        .replace_file("rs/shapes.rs", "hrs", "rust", &parsed_rs)
+        .unwrap();
+    store
+        .replace_file("go/store.go", "hgo", "go", &parsed_go)
+        .unwrap();
+    store
+        .replace_file("rs/linkme.rs", "hlm", "rust", &parsed_linkme)
+        .unwrap();
+    store.commit_batch().unwrap();
+
+    // ts.framework.register: impact(metricsHandler) must include the registration
+    // site (wire / Heuristic) under Default.
+    let impact_ts = store.impact("metricsHandler", 3, 50).unwrap();
+    assert!(
+        impact_ts
+            .iter()
+            .any(|i| i.confidence == agentgraph::model::Confidence::Heuristic
+                && i.enclosing.as_deref() == Some("wire")),
+        "impact BFS must expand through ts.framework.register; got {impact_ts:?}"
+    );
+
+    // Exact-only impact must NOT include the heuristic registration row.
+    let impact_ts_exact = store
+        .impact_filtered(
+            "metricsHandler",
+            3,
+            50,
+            agentgraph::model::ConfidenceFilter::ExactOnly,
+        )
+        .unwrap();
+    assert!(
+        !impact_ts_exact
+            .iter()
+            .any(|i| i.confidence == agentgraph::model::Confidence::Heuristic),
+        "ExactOnly impact must drop heuristic registration rows; got {impact_ts_exact:?}"
+    );
+
+    // dyn_trait_method is Unsound but still appears in default impact.
+    use agentgraph::index::subset::is_sound_eligible;
+    assert!(
+        !is_sound_eligible(
+            agentgraph::model::Confidence::Heuristic,
+            Some("rs.di.dyn_trait_method")
+        ),
+        "dyn-trait must stay unsound-eligible=false"
+    );
+    let impact_dyn = store.impact("area", 3, 50).unwrap();
+    // dyn-trait rule emits Heuristic implementor candidates (e.g. enclosing=Circle).
+    // The Exact `s.area()` call site also appears (enclosing=total_area).
+    assert!(
+        impact_dyn
+            .iter()
+            .any(|i| i.confidence == agentgraph::model::Confidence::Heuristic),
+        "Unsound dyn-trait edges must still appear in default impact BFS; got {impact_dyn:?}"
+    );
+    assert!(
+        impact_dyn
+            .iter()
+            .any(|i| i.enclosing.as_deref() == Some("total_area")
+                || i.enclosing.as_deref() == Some("Circle")),
+        "impact(area) must surface dyn call site / implementor candidates; got {impact_dyn:?}"
+    );
+
+    // go interface v2 / assert: impact(Get) must reach UseStore / assertion site.
+    let impact_go = store.impact("Get", 3, 50).unwrap();
+    assert!(
+        !impact_go.is_empty(),
+        "impact(Get) must expand through go.di.interface_impl(_v2); got {impact_go:?}"
+    );
+
+    // linkme: impact(DemoStrategy) or impact(StrategyRegistration) must see the
+    // registration static / bootstrap heuristic site.
+    let impact_lm = store.impact("DemoStrategy", 3, 50).unwrap();
+    assert!(
+        impact_lm
+            .iter()
+            .any(|i| i.confidence == agentgraph::model::Confidence::Heuristic
+                || i.enclosing.as_deref() == Some("bootstrap")),
+        "impact BFS must expand through rs.di.linkme_distributed_slice; got {impact_lm:?}"
+    );
+}

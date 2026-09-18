@@ -4,12 +4,14 @@
     "L1 edges are candidates, not sound",
     "Not a complete runtime graph",
     "No zero-miss / ecosystem-sound / macro-complete product guarantee",
-    "expand/sidecar completeness is not claimed here"
+    "expand/sidecar completeness is not claimed here",
+    "expected_in_s marks clean modeled slices that should not mint S violations — not an ecosystem-sound claim"
   ],
   "corpora": {
     "ts-nest-mini": {
       "source_root": "ts-nest-mini",
       "language": "typescript",
+      "expected_in_s": true,
       "edges": [
         {
           "symbol": "AppService",
@@ -96,6 +98,160 @@
           "kind": "call",
           "min_confidence": "exact",
           "rule_id_hint": null
+        }
+      ]
+    },
+    "rust-dyn-mini": {
+      "source_root": "rust-dyn-mini",
+      "language": "rust",
+      "edges": [
+        {
+          "symbol": "area",
+          "site_file": "src/lib.rs",
+          "site_contains": "dyn Shape",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.dyn_trait_method"
+        },
+        {
+          "symbol": "Circle",
+          "site_file": "src/lib.rs",
+          "site_contains": "impl Shape for Circle",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.impl_trait"
+        },
+        {
+          "symbol": "Rect",
+          "site_file": "src/lib.rs",
+          "site_contains": "impl Shape for Rect",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "rs.di.impl_trait"
+        },
+        {
+          "symbol": "s.area",
+          "site_file": "src/lib.rs",
+          "site_contains": "s.area()",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        }
+      ]
+    },
+    "go-iface-mini": {
+      "source_root": "go-iface-mini",
+      "language": "go",
+      "edges": [
+        {
+          "symbol": "Get",
+          "site_file": "store.go",
+          "site_contains": "var _ Store = (*MemStore)(nil)",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "go.di.interface_impl_v2"
+        },
+        {
+          "symbol": "Put",
+          "site_file": "store.go",
+          "site_contains": "func (m *MemStore) Put",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "go.di.interface_impl_v2"
+        },
+        {
+          "symbol": "MemStore",
+          "site_file": "store.go",
+          "site_contains": "var _ Store = (*MemStore)(nil)",
+          "kind": "impl",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "go.di.interface_impl_v2"
+        },
+        {
+          "symbol": "s.Get",
+          "site_file": "store.go",
+          "site_contains": "s.Get(\"k\")",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        }
+      ]
+    },
+    "ts-router-mini": {
+      "source_root": "ts-router-mini",
+      "language": "typescript",
+      "edges": [
+        {
+          "symbol": "getUsers",
+          "site_file": "src/routes.ts",
+          "site_contains": "router.get",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.framework.register"
+        },
+        {
+          "symbol": "createUser",
+          "site_file": "src/routes.ts",
+          "site_contains": "router.post",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.framework.register"
+        },
+        {
+          "symbol": "authMiddleware",
+          "site_file": "src/routes.ts",
+          "site_contains": "app.use",
+          "kind": "di",
+          "min_confidence": "heuristic",
+          "rule_id_hint": "ts.framework.register"
+        }
+      ]
+    },
+    "ts-typeonly-function": {
+      "source_root": "ts-typeonly-function",
+      "language": "typescript",
+      "expected_in_s": true,
+      "non_claim_note": "type-only typeof Function stays in S (M2 over-flag fix); value-use would leave S",
+      "edges": [
+        {
+          "symbol": "cfg.run",
+          "site_file": "src/handler.ts",
+          "site_contains": "cfg.run(...args)",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        },
+        {
+          "symbol": "h",
+          "site_file": "src/handler.ts",
+          "site_contains": "h(1, 2)",
+          "kind": "call",
+          "min_confidence": "exact",
+          "rule_id_hint": null
+        }
+      ]
+    },
+    "py-overflag": {
+      "source_root": "py-overflag",
+      "language": "python",
+      "expected_in_s": true,
+      "non_claim_note": "literal getattr + literal import_module stay in S; non-literal dynamic forms would leave S",
+      "edges": [
+        {
+          "symbol": "load",
+          "site_file": "app/clean.py",
+          "site_contains": "getattr(svc, \"load\")",
+          "kind": "dynamic",
+          "min_confidence": "dynamic_candidate",
+          "rule_id_hint": "py.dynamic.getattr"
+        },
+        {
+          "symbol": "json",
+          "site_file": "app/clean.py",
+          "site_contains": "import_module(\"json\")",
+          "kind": "dynamic",
+          "min_confidence": "dynamic_candidate",
+          "rule_id_hint": "py.dynamic.import_module"
         }
       ]
     }

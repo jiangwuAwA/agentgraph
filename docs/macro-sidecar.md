@@ -242,11 +242,11 @@ The spike ([eval-macro-expand.md](eval-macro-expand.md)) showed expanded trees m
 ## Tests
 
 - `tests/macro_pathmap.rs` — map table (prefix, crate align, Windows abs, `../`, explicit pairs, unmappable)
-- `tests/macro_dedup.rs` — full §1.4 table + `--no-macro-dedup` + status fields
+- `tests/macro_dedup.rs` — full §1.4 table + `--no-macro-dedup` + status fields + **M1 e2e golden** (`e2e_golden_l0_miss_expand_finds_mapped_source_crate_path`: L0 miss → expand `fmt`/`clone` → `mapped_path=crates/demo/src/lib.rs` → source Exact kept on de-dup)
 - `tests/macro_rebuild.rs` — fingerprint/stale/rebuild idempotence + nested still rejects
 - `tests/macro_sidecar.rs` — absent-sidecar grace; union tagging; no subset_ok
 - `tests/r26_adversarial.rs` / `r27` / `r28` — nesting, relative roots, MCP schema, help text
-- `tests/graph_html.rs` — MACRO badge + mapped source path
+- `tests/graph_html.rs` — MACRO badge + mapped source path + `--sound` mutex
 - `tests/e2e_cli.rs` — flag matrix; sound+with_macro still fails
 
 Gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.

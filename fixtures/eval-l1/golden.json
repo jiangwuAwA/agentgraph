@@ -50,6 +50,12 @@
       { "symbol": "createUser", "site_file": "src/routes.ts", "site_contains": "router.post", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "authMiddleware", "site_file": "src/routes.ts", "site_contains": "app.use", "kind": "di", "min_confidence": "heuristic" },
       { "symbol": "metricsHandler", "site_file": "src/routes.ts", "site_contains": "app.register", "kind": "di", "min_confidence": "heuristic" }
+    ],
+    "rust-linkme": [
+      { "symbol": "STRATEGIES", "site_file": "src/lib.rs", "site_contains": "distributed_slice(STRATEGIES)", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "StrategyRegistration", "site_file": "src/lib.rs", "site_contains": "StrategyRegistration", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "DemoStrategy", "site_file": "src/lib.rs", "site_contains": "factory: DemoStrategy::new", "kind": "di", "min_confidence": "heuristic" },
+      { "symbol": "DemoStrategy::new", "site_file": "src/lib.rs", "site_contains": "DemoStrategy::new()", "kind": "call", "min_confidence": "exact" }
     ]
   }
 }

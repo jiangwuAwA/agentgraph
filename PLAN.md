@@ -3,6 +3,24 @@
 > 本文是产品/工程计划，不是研究综述。  
 > 开发流程默认 **TDD**（见 [AGENTS.md](AGENTS.md)）。
 
+## Naming note — PLAN milestones vs product Tracks (M1–M5)
+
+**This document’s §7 milestones M1–M5** are the *original analysis-capability roadmap*
+(L0 hardening → L1 rules → L2 sound subset → L3 formal).
+
+**Product-boundary Tracks M1–M5** in
+[docs/product-boundary-migration.md](docs/product-boundary-migration.md) are a
+*separate migration program* (macro sidecar productization, L2 promise-tier, L1
+default recall, query API, docs credibility gate). They intentionally reuse the
+same labels; when both appear in one discussion use:
+
+| Disambiguated label | Meaning |
+|---|---|
+| **PLAN milestone M1…M5** | §7 of this file (fsnotify / L1 engine / L2 S / L3 formal) |
+| **Track-M1…M5** (product-boundary) | Migration tracks in `product-boundary-migration.md` — e.g. **Track-M1 macro sidecar**, **Track-M3 L1 rules**, **Track-M5 docs gate** |
+
+Do not mix acceptance criteria across the two naming systems.
+
 ---
 
 ## 0. 问题与边界
@@ -172,6 +190,32 @@ ref {
 | `dyn Trait` + impl 集合 | 可能实现 | Heuristic |
 | `inventory`/`linkme` 式注册 | 宏/链接注册 | Heuristic（可选） |
 
+### 3.3 Shipped M3 rule_ids (product-boundary Track M3)
+
+Default Heuristic/Dynamic candidates already in `src/index/rules.rs` (disable with
+`--exact-only`; **candidates, not sound**):
+
+| rule_id | Package | Sound-eligible allowlist? |
+|---|---|---|
+| `rs.di.dyn_trait_method` | Track-M3-A Rust dyn Trait method → same-file implementors | **no** (open dispatch) |
+| `go.di.interface_impl_v2` | Track-M3-B Go iface assert + method-set name match | yes (finite method-set) |
+| `py.di.entry_points` | Track-M3-C `entry_points(group=…)` / `iter_entry_points` | **no** (plugins not enumerated at site) |
+| `ts.framework.register` | Track-M3-D Express/Fastify `router.*` / `app.use` / `app.register` | yes (finite handler idents) |
+| `rs.di.linkme_distributed_slice` | Track-M3-E linkme `#[distributed_slice]` source rule | yes (attr/static identifiers) |
+
+Already-listed elsewhere in this plan and also shipped: Nest `ts.nest.*`
+(module providers/controllers/imports/exports, forRootAsync, ctor_inject,
+string tokens); Rust `rs.di.impl_trait` / `rs.di.inventory_submit`;
+Go `go.di.interface_impl` / `interface_assert` / `handler_map` / `route_register`;
+Python `py.di.depends` / `py.framework.init_subclass`; TS `ts.di.*` /
+`ts.event.subscribe` / dynamic computed keys.
+
+Eval fixtures: [`fixtures/eval-l1/`](fixtures/eval-l1/) (+ `rust-linkme`),
+[`fixtures/eval-l1-real/`](fixtures/eval-l1-real/),
+public goldens [`fixtures/eval-goldens/`](fixtures/eval-goldens/).
+Numbers: [docs/eval-l1.md](docs/eval-l1.md). Migration status:
+[docs/product-boundary-migration.md](docs/product-boundary-migration.md).
+
 ### 3.4 存储与迁移
 
 - `refs.confidence TEXT`、`refs.evidence TEXT`（JSON）  
@@ -325,15 +369,21 @@ ref {
 
 ## 7. 里程碑与粗估
 
+> **命名提醒：** 下表 **PLAN milestone M1–M5** ≠
+> [product-boundary Tracks M1–M5](docs/product-boundary-migration.md)
+> （Track-M1 宏 sidecar 产品化 / Track-M2 L2 档位 / Track-M3 L1 召回 / Track-M4 查询 API / Track-M5 文档门禁）。
+> 详细迁移状态与残差见该迁移文档附录。
+
 | 阶段 | 内容 | 粗估 |
 |---|---|---|
-| **M1** | L0.1 fsnotify + L0.3 证据 + L0.5 文档 | 1–2 周 |
-| **M2** | L1 规则引擎 v1（TS DI + 反射字面量）+ 评测 corpus 起步 | 2–4 周 |
-| **M3** | L1 Python/Go/Rust 启发式 + MCP/CLI 开关 + 报告 | 2–3 周 |
-| **M4** | L2 子集文档 + `--sound` + Node/Go 差分 harness | 4–8 周 |
-| **M5** | L3 TLA+ 增量模型；可选 Lean I4 | 持续，不挡版本 |
+| **PLAN milestone M1** | L0.1 fsnotify + L0.3 证据 + L0.5 文档 | 1–2 周 |
+| **PLAN milestone M2** | L1 规则引擎 v1（TS DI + 反射字面量）+ 评测 corpus 起步 | 2–4 周 |
+| **PLAN milestone M3** | L1 Python/Go/Rust 启发式 + MCP/CLI 开关 + 报告 | 2–3 周 |
+| **PLAN milestone M4** | L2 子集文档 + `--sound` + Node/Go 差分 harness | 4–8 周 |
+| **PLAN milestone M5** | L3 TLA+ 增量模型；可选 Lean I4 | 持续，不挡版本 |
 
-版本策略：M1 后可发 `v0.2`；M2/M3 后 `v0.3`；M4 后 `v0.4`（标注 experimental sound）。
+版本策略：PLAN M1 后可发 `v0.2`；M2/M3 后 `v0.3`；M4 后 `v0.4`（标注 experimental sound）。
+产品边界 Track 切片另见迁移文档「发版切片建议」。
 
 ---
 

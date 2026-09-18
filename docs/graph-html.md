@@ -71,6 +71,26 @@ Empty neighborhood is **not** a hard failure (non-sound path): the deliverable i
 
 ---
 
+## Macro sidecar (M1) visualization
+
+When `--with-macro` unions the optional expanded sidecar (default OFF):
+
+| Surface | Behavior |
+|---|---|
+| **MACRO badge** | Nodes with `origin=macro_expanded` render a literal `MACRO` badge + distinct stroke (CSS var `macro`). Legend includes `macro_expanded / 宏展开 sidecar`. |
+| **`mapped_path`** | Sidecar rows display the **mapped source path** when the path map applies (e.g. `crates/demo/src/lib.rs`), not only the expanded shadow path. Unmappable rows keep the expanded path (`mapped=false`). |
+| **Honesty** | Sidecar edges are **candidates**, not sound; page honesty line stays “not a complete runtime graph”. |
+| **`--sound` mutex** | `--sound && --with-macro` is **fail-closed** (exit non-zero, no combined page). A `--sound` page never shows a MACRO badge — expanded edges are never sound-certified. |
+| **Disabled UX (`--sound`)** | When `subset_ok=false`, HTML is still written but marked disabled / **not** a sound graph (exit non-zero). That banner is for S violations on the **main** index — it does not silently fold sidecar rows into a sound claim. |
+
+Reproduce badge + mapped path + mutex:
+
+```bash
+cargo test --test graph_html
+```
+
+---
+
 ## `--sound` (L2) visualization — Track M4
 
 Edges on a `--sound` page come from the same eligibility filter as

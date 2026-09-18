@@ -27,13 +27,33 @@ agentgraph impact <symbol> --sound --workspace-root <eligible-root> --workspace 
 Same fields on `agentgraph workspace status --workspace …` and MCP `subset` /
 `workspace_status`.
 
-Stable helpers other tools may read (do not rename):
+### Stable keys (勿改名)
 
-- CLI/MCP payload keys: `sound_candidates`, `recommendation`, `by_root`,
-  `by_top_dir`, `sound_eligible`, `promise_tier`
-- Rust: `agentgraph::index::subset::{scoped_sound_by_root, scoped_sound_by_top_dir}`
+Stable helpers other tools may read — **do not rename** (勿改名):
+
+**CLI/MCP payload keys** (subset / workspace status / blast_radius / recipes)
+— names are **勿改名** / do not rename:
+
+| Key | Where | Meaning |
+|---|---|---|
+| payload key `window` | blast_radius / graph | `sound` \| `default` \| `disabled` |
+| payload key `promise_tier` | all honesty payloads | `ast_modeled` \| `lexical_v1` \| `mixed_lexical_v1` \| `disabled` |
+| payload key `subset_ok` | blast_radius / sound queries | Selected store/root S gate |
+| payload key `recommendation` | all recipes + subset | Next legal step / one-liner |
+| payload key `note` | all recipes | Always “not a complete runtime graph” |
+| payload key `sound_candidates` | subset / status / blast_radius | Scoped `--sound` candidates, eligible first |
+| payload keys `by_root` / `by_top_dir` | subset / blast_radius | Per-scope buckets (workspace roots / single-root top dirs) |
+| payload key `sound_eligible` | candidate rows | True only when that scope has 0 S violations |
+| payload key `example_command` | blast_radius (default window) | e.g. `impact <sym> --sound --workspace-root <id>` |
+| payload keys `baseline_stale` / `sidecar_stale` / `sidecar_exists` | status / stats / recipes | Honesty flags (never auto-refresh baseline; never create sidecar) |
+| payload keys `root_id` / `root_path` | query rows | Workspace multi-root tagging |
+
+**Rust helpers** (do not rename):
+
+- `agentgraph::index::subset::{scoped_sound_by_root, scoped_sound_by_top_dir, aggregate_scoped_sound}`
+- `agentgraph::query::recipes::{decide_blast_window, build_blast_radius_payload, build_who_calls_payload, build_scoped_sound_guidance, scoped_sound_aggregation}`
 - Honesty flags on status/stats/diff: `baseline_stale`, `sidecar_exists`,
-  `sidecar_stale` (never auto-refresh baseline; never create sidecar)
+  `sidecar_stale`
 
 Stock honesty: private corpus per-crate tables in
 [eval-stock-boundary.md](eval-stock-boundary.md) / [eval-stock-s-map.md](eval-stock-s-map.md)
@@ -63,7 +83,7 @@ full `agentgraph index` or lock current edges via `diff --write-snapshot`.
 MCP `blast_radius` / `who_calls` and CLI `agentgraph blast-radius` /
 `agentgraph who-calls` auto-select a confidence window and always return
 honesty fields (`window`, `subset_ok`, `promise_tier`, `recommendation`,
-`note` = not a complete runtime graph):
+`note` = not a complete runtime graph; plus `sound_candidates`):
 
 ```text
 agentgraph blast-radius <sym> --depth 3
@@ -73,14 +93,35 @@ agentgraph who-calls <sym>
 | Behavior | Detail |
 |---|---|
 | Window | `subset_ok` → `window=sound` (S-qualified edges); else `window=default` (Exact+Heuristic) — **never** blind `--recall` |
-| `who-calls` | Default separates implementors + demotes high-freq names; `--noisy` merges |
-| `include_macro` | Only when sidecar exists && !stale && !nested; refused under sound window |
+| Default-window recommendation (P0-4) | Names **next legal commands**: `sound_candidates[]` (eligible roots/dirs first) + example `impact <sym> --sound --workspace-root <id>`; single-root → `by_top_dir` path hint; no eligible root → say so + default blast_radius + review implementors — **never** blind `--recall` as default; mentions `baseline_stale` / `sidecar_stale` when true |
+| Dirty union | **Never** labeled `window=sound` (weakest root wins) |
+| `who-calls` behavior | Default separates implementors + demotes high-freq names; `--noisy` merges |
+| `include_macro` behavior | Only when sidecar exists && !stale && !nested; refused under sound window |
 | Honesty | `note` always: not a complete runtime graph |
 
 Helpers live in `agentgraph::query::recipes` (`decide_blast_window`,
-`build_blast_radius_payload`, `build_who_calls_payload`). Pair with P4
-`sound_candidates` from `subset` when the **global** window is disabled but a
-sibling root is clean.
+`build_blast_radius_payload`, `build_who_calls_payload`,
+`build_scoped_sound_guidance`, `scoped_sound_aggregation`). CLI + MCP share
+this payload builder. Pair with P4 `sound_candidates` from `subset` when the
+**global** window is disabled but a sibling root is clean.
+
+Example dirty multi-root payload shape (keys stable / 勿改名):
+
+```json
+{
+  "tool": "blast_radius",
+  "window": "default",
+  "subset_ok": false,
+  "promise_tier": "disabled",
+  "sound_candidates": [
+    {"root_id": "api", "sound_eligible": true, "promise_tier": "ast_modeled", "reason": "…"},
+    {"root_id": "nn-ranker", "sound_eligible": false, "promise_tier": "disabled", "reason": "…"}
+  ],
+  "example_command": "impact createUser --sound --workspace-root api",
+  "recommendation": "sound disabled because …; scoped sound candidates (eligible first): api; avoid nn-ranker; e.g. `impact createUser --sound --workspace-root api` — do not claim union --sound on dirty roots",
+  "note": "not a complete runtime graph (…)"
+}
+```
 
 ---
 
@@ -103,7 +144,7 @@ agentgraph graph <sym> --depth 3 --out graph.html   # CLI file write
 |---|---|
 | Default delivery | **String-only** — `html` in JSON, `path=null`. File write only when `out` is set and resolves under the workspace root jail |
 | Window | `sound=true` + `subset_ok` → `window=sound`; `sound=true` + dirty S → `window=disabled` + honest disabled HTML + `recommendation` (never labeled OK sound) |
-| `auto_window` | Reuses blast_radius decision: sound only when `subset_ok`; else `window=default` — never blind recall |
+| `auto_window` flag | Reuses blast_radius decision: sound only when `subset_ok`; else `window=default` — never blind recall |
 | Mutex | `sound` + `with_macro` rejected (also sound vs `exact_only` / `include_dynamic`) |
 | Honesty | `note` always: not a complete runtime graph; `recommendation` when `include_recommendation` is true (default) |
 
@@ -116,6 +157,7 @@ Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
 - **Find → callers → impact** on one workspace root: pass
   `--workspace-root <dir> --workspace-db <shared.db>` (or MCP `root_id`).
 - **怕漏:** prefer scoped `--sound` on clean roots; else `--recall` /
-  `--include-dynamic` for a wider heuristic window. Never invent zero-miss.
+  `--include-dynamic` for a wider heuristic window **as an explicit choice**,
+  never as the recipe default. Never invent zero-miss.
 - **Macro sidecar:** optional, per-root, not sound. `callers --with-macro`
   unions candidates only after `macro status` shows `sidecar_exists=true`.

@@ -2,16 +2,22 @@
 //!
 //! TDD contract:
 //! - blast_radius auto-window: sound when subset_ok else default (never blind --recall)
+//! - P0-4: default/disabled window recommendation names scoped sound candidates +
+//!   example legal commands; all-dirty stays honest (no sound command / no blind --recall)
 //! - include_macro only when sidecar exists && !stale && !nested; else refuse with reason
 //! - who_calls noisy=false separates implementors; noisy=true merges (old noisy shape)
 //! - response always carries recommendation + promise_tier + note (honesty)
+//! - stable payload keys: window, promise_tier, subset_ok, recommendation, note,
+//!   sound_candidates (勿改名)
 //! - MCP tools/list advertises blast_radius / who_calls
 //! - docs_claims stays green for recipe flags/commands
 
+use agentgraph::index::subset::{SoundAggregation, SoundCandidate, SoundScopeKind};
 use agentgraph::model::{Confidence, EdgeKind, Evidence, MacroSidecarStatus, ReferenceRecord};
 use agentgraph::query::recipes::{
-    build_blast_radius_payload, build_who_calls_payload, decide_blast_window, decide_include_macro,
-    BlastRadiusPayloadInput, BlastWindowDecision, RECIPE_NOTE,
+    build_blast_radius_payload, build_scoped_sound_guidance, build_who_calls_payload,
+    decide_blast_window, decide_include_macro, BlastRadiusPayloadInput, BlastWindowDecision,
+    ScopedSoundGuidance, RECIPE_NOTE,
 };
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -238,6 +244,7 @@ fn blast_payload_always_has_honesty_fields() {
         include_macro: false,
         include_macro_reason: Some("include_macro refused: macro sidecar missing".into()),
         stale: Some(false),
+        scoped_sound: ScopedSoundGuidance::default(),
     });
     assert_eq!(v["tool"], "blast_radius");
     assert_eq!(v["window"], "default");
@@ -257,6 +264,18 @@ fn blast_payload_always_has_honesty_fields() {
         .as_str()
         .unwrap()
         .contains("not a complete runtime graph"));
+    // Stable keys always present (勿改名) — even without scoped guidance.
+    for key in [
+        "window",
+        "promise_tier",
+        "subset_ok",
+        "recommendation",
+        "note",
+        "sound_candidates",
+    ] {
+        assert!(v.get(key).is_some(), "stable key missing: {key} in {v}");
+    }
+    assert!(v["sound_candidates"].as_array().is_some());
 }
 
 #[test]
@@ -316,6 +335,195 @@ fn who_calls_payload_noisy_merges() {
 }
 
 // ---------------------------------------------------------------------------
+// P0-4: scoped sound guidance when window is default/disabled
+// ---------------------------------------------------------------------------
+
+fn candidate(root_or_path: &str, scope: SoundScopeKind, eligible: bool) -> SoundCandidate {
+    SoundCandidate {
+        key: root_or_path.into(),
+        kind: scope,
+        promise_tier: if eligible {
+            "ast_modeled".into()
+        } else {
+            "disabled".into()
+        },
+        reason: if eligible {
+            "0 S violations".into()
+        } else {
+            "S violations".into()
+        },
+        sound_eligible: eligible,
+    }
+}
+
+fn aggregation(scope: SoundScopeKind, candidates: Vec<SoundCandidate>) -> SoundAggregation {
+    SoundAggregation {
+        scope,
+        buckets: vec![],
+        sound_candidates: candidates,
+        recommendation: String::new(),
+    }
+}
+
+#[test]
+fn unit_scoped_guidance_names_eligible_root_and_example_command() {
+    let agg = aggregation(
+        SoundScopeKind::Root,
+        vec![
+            candidate("api", SoundScopeKind::Root, true),
+            candidate("nn-ranker", SoundScopeKind::Root, false),
+        ],
+    );
+    let g = build_scoped_sound_guidance("createUser", &agg, false, false);
+    assert!(g.has_eligible);
+    assert_eq!(g.sound_candidates.len(), 2);
+    assert_eq!(
+        g.sound_candidates[0]
+            .get("root_id")
+            .and_then(|v| v.as_str()),
+        Some("api"),
+        "eligible first: {:?}",
+        g.sound_candidates
+    );
+    let cmd = g.example_command.as_deref().unwrap_or_default();
+    assert!(
+        cmd.contains("impact createUser --sound --workspace-root api"),
+        "example command: {cmd}"
+    );
+    assert!(g.guidance.contains("api"), "{}", g.guidance);
+    assert!(g.guidance.contains("nn-ranker"), "{}", g.guidance);
+    // Union dirty must never be framed as sound.
+    assert!(
+        !g.guidance.contains("window=sound"),
+        "guidance must not claim union sound: {}",
+        g.guidance
+    );
+}
+
+#[test]
+fn unit_scoped_guidance_all_dirty_honest_no_sound_command() {
+    let agg = aggregation(
+        SoundScopeKind::Root,
+        vec![
+            candidate("dirty-a", SoundScopeKind::Root, false),
+            candidate("dirty-b", SoundScopeKind::Root, false),
+        ],
+    );
+    let g = build_scoped_sound_guidance("helper", &agg, false, false);
+    assert!(!g.has_eligible);
+    assert!(g.example_command.is_none());
+    assert!(
+        g.guidance.contains("no sound-eligible") || g.guidance.contains("every scope"),
+        "honest all-dirty: {}",
+        g.guidance
+    );
+    assert!(
+        !g.guidance.contains("--sound --workspace-root"),
+        "all-dirty must not emit scoped sound command: {}",
+        g.guidance
+    );
+    assert!(
+        g.guidance.to_lowercase().contains("default")
+            && (g.guidance.contains("implementor") || g.guidance.contains("implementors")),
+        "suggest default + review implementors: {}",
+        g.guidance
+    );
+    assert!(
+        !g.guidance.contains("blind --recall")
+            || g.guidance.contains("do NOT")
+            || g.guidance.contains("never"),
+        "must never suggest blind --recall as default: {}",
+        g.guidance
+    );
+}
+
+#[test]
+fn unit_scoped_guidance_top_dir_path_hint() {
+    let agg = aggregation(
+        SoundScopeKind::TopDir,
+        vec![
+            candidate("repository", SoundScopeKind::TopDir, true),
+            candidate("nn-ranker", SoundScopeKind::TopDir, false),
+        ],
+    );
+    let g = build_scoped_sound_guidance("insert", &agg, false, false);
+    assert!(g.has_eligible);
+    assert!(
+        g.guidance.contains("by_top_dir") || g.guidance.contains("repository"),
+        "top_dir path hint: {}",
+        g.guidance
+    );
+    assert!(g.guidance.contains("repository"), "{}", g.guidance);
+}
+
+#[test]
+fn unit_scoped_guidance_mentions_stale_flags_when_true() {
+    let agg = aggregation(
+        SoundScopeKind::Root,
+        vec![candidate("api", SoundScopeKind::Root, true)],
+    );
+    let g = build_scoped_sound_guidance("x", &agg, true, true);
+    assert!(g.baseline_stale);
+    assert!(g.sidecar_stale);
+    assert!(g.guidance.contains("baseline_stale"), "{}", g.guidance);
+    assert!(g.guidance.contains("sidecar_stale"), "{}", g.guidance);
+}
+
+#[test]
+fn unit_blast_payload_with_guidance_keeps_stable_keys() {
+    let d = decide_blast_window(false, Some("ws"));
+    let agg = aggregation(
+        SoundScopeKind::Root,
+        vec![candidate("api", SoundScopeKind::Root, true)],
+    );
+    let g = build_scoped_sound_guidance("createUser", &agg, true, false);
+    let rec = format!("{}; {}", d.recommendation, g.guidance);
+    let window = BlastWindowDecision {
+        recommendation: rec,
+        ..d
+    };
+    let v = build_blast_radius_payload(BlastRadiusPayloadInput {
+        symbol: "createUser".into(),
+        depth: 3,
+        limit: 50,
+        nodes: vec![],
+        window,
+        promise_tier: "disabled".into(),
+        languages: vec!["typescript".into()],
+        include_macro: false,
+        include_macro_reason: None,
+        stale: None,
+        scoped_sound: g,
+    });
+    assert_eq!(v["window"], "default");
+    assert_ne!(v["window"], "sound");
+    for key in [
+        "window",
+        "promise_tier",
+        "subset_ok",
+        "recommendation",
+        "note",
+        "sound_candidates",
+    ] {
+        assert!(v.get(key).is_some(), "stable key missing: {key}");
+    }
+    let cands = v["sound_candidates"]
+        .as_array()
+        .expect("sound_candidates[]");
+    assert_eq!(cands[0]["root_id"], "api");
+    assert_eq!(cands[0]["sound_eligible"], true);
+    assert!(v["example_command"]
+        .as_str()
+        .unwrap_or("")
+        .contains("--sound --workspace-root api"));
+    assert_eq!(v["baseline_stale"], true);
+    assert!(v["recommendation"]
+        .as_str()
+        .unwrap()
+        .contains("--sound --workspace-root api"));
+}
+
+// ---------------------------------------------------------------------------
 // CLI e2e
 // ---------------------------------------------------------------------------
 
@@ -370,11 +578,270 @@ fn e2e_blast_radius_clean_js_sound_window() {
     assert_eq!(v["promise_tier"], "ast_modeled");
     assert!(v["nodes"].is_array());
     assert!(v["recommendation"].as_str().unwrap().len() > 8);
+    // Clean window: short recommendation (already sound) — no scoped command spam.
+    let rec = v["recommendation"].as_str().unwrap();
+    assert!(
+        rec.contains("subset_ok") || rec.contains("sound window"),
+        "clean rec: {rec}"
+    );
+    assert!(
+        !rec.contains("--sound --workspace-root"),
+        "clean window rec must stay short: {rec}"
+    );
+    // Stable keys present even on sound window.
+    assert!(v.get("sound_candidates").is_some(), "payload={v}");
     assert_eq!(v["include_macro"], false);
     assert!(v["note"]
         .as_str()
         .unwrap()
         .contains("not a complete runtime graph"));
+}
+
+fn write_clean_root_fixture(root: &Path) {
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/auth.ts"),
+        r#"
+export function validateEmail(email: string): boolean {
+  return email.includes("@");
+}
+export function createUser(email: string) {
+  if (!validateEmail(email)) throw new Error("bad");
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+}
+
+fn write_dirty_root_fixture(root: &Path) {
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/bad.ts"),
+        r#"
+export function evil(c: string) {
+  return eval(c);
+}
+export function helper() { return 1; }
+"#,
+    )
+    .unwrap();
+}
+
+fn index_workspace(roots: &[&Path], db: &Path) {
+    let mut args: Vec<String> = vec!["index".into()];
+    for p in roots {
+        args.push("--workspace-root".into());
+        args.push(p.to_string_lossy().into_owned());
+    }
+    args.push("--workspace-db".into());
+    args.push(db.to_string_lossy().into_owned());
+    args.push("--force".into());
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let out = Command::new(bin())
+        .args(&refs)
+        .stdin(Stdio::null())
+        .output()
+        .expect("workspace index");
+    assert!(out.status.success(), "workspace index: {}", stderr(&out));
+}
+
+#[test]
+fn e2e_blast_radius_dirty_multiroot_recommends_scoped_sound() {
+    let base = temp_root("blast-multi");
+    let api = base.join("api");
+    let nn = base.join("nn-ranker");
+    write_clean_root_fixture(&api);
+    write_dirty_root_fixture(&nn);
+    let db = base.join("ws.db");
+    index_workspace(&[&api, &nn], &db);
+
+    // Union blast_radius (no --workspace-root): dirty sibling → default window.
+    let out = Command::new(bin())
+        .args([
+            "blast-radius",
+            "createUser",
+            "--workspace-db",
+            db.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .expect("blast multi");
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["window"], "default", "dirty union must not be sound: {v}");
+    assert_eq!(v["subset_ok"], false);
+    assert_ne!(v["window"], "sound");
+    assert_ne!(v["window"], "recall");
+
+    let rec = v["recommendation"].as_str().unwrap().to_string();
+    assert!(
+        rec.contains("api"),
+        "recommendation must name clean root id: {rec}"
+    );
+    assert!(
+        rec.contains("--sound --workspace-root") || rec.contains("--workspace-root"),
+        "recommendation must include example legal command: {rec}"
+    );
+    assert!(
+        rec.contains("impact") && rec.contains("createUser"),
+        "example command should reference the query symbol: {rec}"
+    );
+
+    let cands = v["sound_candidates"]
+        .as_array()
+        .unwrap_or_else(|| panic!("sound_candidates required on default window: {v}"));
+    assert!(!cands.is_empty(), "{v}");
+    let api_c = cands
+        .iter()
+        .find(|c| c.get("root_id").and_then(|r| r.as_str()) == Some("api"))
+        .expect("api candidate");
+    assert_eq!(api_c["sound_eligible"], true, "{api_c}");
+    // Eligible first.
+    assert_eq!(
+        cands[0].get("root_id").and_then(|r| r.as_str()),
+        Some("api"),
+        "eligible first: {cands:?}"
+    );
+
+    // Stable honesty keys still present.
+    for key in [
+        "window",
+        "promise_tier",
+        "subset_ok",
+        "recommendation",
+        "note",
+    ] {
+        assert!(v.get(key).is_some(), "missing {key}: {v}");
+    }
+
+    // Scoped to clean root → still allowed to select sound (not union).
+    let scoped = Command::new(bin())
+        .args([
+            "blast-radius",
+            "createUser",
+            "--workspace-db",
+            db.to_str().unwrap(),
+            "--workspace-root",
+            api.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .expect("blast scoped");
+    assert!(scoped.status.success(), "{}", stderr(&scoped));
+    let sv: serde_json::Value = serde_json::from_str(&stdout(&scoped)).unwrap();
+    assert_eq!(
+        sv["window"], "sound",
+        "clean root filter may select sound: {sv}"
+    );
+}
+
+#[test]
+fn e2e_blast_radius_all_dirty_honest_no_sound_command() {
+    let base = temp_root("blast-all-dirty");
+    let a = base.join("dirty-a");
+    let b = base.join("dirty-b");
+    write_dirty_root_fixture(&a);
+    write_dirty_root_fixture(&b);
+    let db = base.join("ws.db");
+    index_workspace(&[&a, &b], &db);
+
+    let out = Command::new(bin())
+        .args([
+            "blast-radius",
+            "helper",
+            "--workspace-db",
+            db.to_str().unwrap(),
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .expect("blast all-dirty");
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["window"], "default");
+    assert_eq!(v["subset_ok"], false);
+    assert_ne!(v["window"], "sound");
+    assert_ne!(v["window"], "recall");
+
+    let rec = v["recommendation"].as_str().unwrap().to_lowercase();
+    assert!(
+        rec.contains("no sound-eligible")
+            || rec.contains("every scope")
+            || rec.contains("s violations"),
+        "all-dirty recommendation must be honest: {}",
+        v["recommendation"]
+    );
+    assert!(
+        !rec.contains("--sound --workspace-root"),
+        "all-dirty must not suggest scoped sound command: {}",
+        v["recommendation"]
+    );
+    assert!(
+        rec.contains("default") && rec.contains("implementor"),
+        "suggest default blast_radius + review implementors: {}",
+        v["recommendation"]
+    );
+    // Never present blind --recall as the default next step.
+    if rec.contains("--recall") {
+        assert!(
+            rec.contains("do not")
+                || rec.contains("never")
+                || rec.contains("don't")
+                || rec.contains("do NOT"),
+            "if --recall is mentioned it must be prohibited: {}",
+            v["recommendation"]
+        );
+    }
+
+    let cands = v["sound_candidates"].as_array().expect("candidates");
+    assert!(!cands.is_empty());
+    assert!(
+        cands.iter().all(|c| c["sound_eligible"] == false),
+        "all candidates ineligible: {cands:?}"
+    );
+}
+
+#[test]
+fn e2e_blast_radius_single_root_dirty_by_top_dir_hint() {
+    let base = temp_root("blast-topdir");
+    std::fs::create_dir_all(base.join("repository/src")).unwrap();
+    std::fs::create_dir_all(base.join("nn-ranker/src")).unwrap();
+    std::fs::write(
+        base.join("repository/src/auth.ts"),
+        r#"
+export function createUser(email: string) {
+  return { email };
+}
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        base.join("nn-ranker/src/bad.ts"),
+        "export function evil(c: string) { return eval(c); }\nexport function helper() { return 1; }\n",
+    )
+    .unwrap();
+    let idx = run(&base, &["index", "--force"]);
+    assert!(idx.status.success(), "{}", stderr(&idx));
+
+    let out = run(&base, &["blast-radius", "createUser"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(v["window"], "default", "single-root store is dirty: {v}");
+    let rec = v["recommendation"].as_str().unwrap();
+    assert!(
+        rec.contains("by_top_dir") || rec.contains("repository"),
+        "single-root path hint: {rec}"
+    );
+    assert!(rec.contains("repository"), "clean top dir named: {rec}");
+    // sound_candidates present (stable key) with eligible first.
+    let cands = v["sound_candidates"].as_array().expect("sound_candidates");
+    assert!(
+        cands.iter().any(
+            |c| c.get("path").and_then(|p| p.as_str()) == Some("repository")
+                && c["sound_eligible"] == true
+        ),
+        "{cands:?}"
+    );
 }
 
 #[test]
@@ -398,6 +865,8 @@ fn e2e_blast_radius_eval_js_default_window() {
     );
     // Must NOT be blind --recall window.
     assert_ne!(v["window"], "recall");
+    // P0-4: still carries stable keys + honest scoped guidance when nothing is clean.
+    assert!(v.get("sound_candidates").is_some(), "payload={v}");
 }
 
 #[test]

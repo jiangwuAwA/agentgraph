@@ -130,7 +130,10 @@ pub enum Commands {
     /// Picks `impact --sound` when the selected store/root is `subset_ok`;
     /// otherwise default Exact+Heuristic impact (never blind `--recall`).
     /// Response always includes `window`, `subset_ok`, `promise_tier`,
-    /// `recommendation`, and `note` (not a complete runtime graph).
+    /// `recommendation`, `sound_candidates`, and `note` (not a complete runtime graph).
+    /// When window is default/disabled, `recommendation` names next legal
+    /// scoped-sound commands (`impact <sym> --sound --workspace-root <id>`)
+    /// or honest no-eligible-root guidance.
     BlastRadius {
         /// Query symbol name
         name: String,

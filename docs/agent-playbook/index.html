@@ -123,13 +123,18 @@ MCP: graph  →  { html, window, subset_ok, promise_tier, recommendation, node_c
     <pre>agentgraph subset --workspace workspace.json
 # 看 sound_candidates[] + recommendation
 
+agentgraph blast-radius X --workspace workspace.json
+# window=default 时 recommendation 已含：sound_candidates[] + 示例
+# impact X --sound --workspace-root &lt;eligible_root&gt;（脏 union 永不 window=sound）
+
 agentgraph blast-radius X --workspace workspace.json --workspace-root ./packages/repository
 # 或
 agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
     <ul>
       <li>全仓有 unsafe/parse_error → 全局 sound <span class="pill bad">disabled</span> 是诚实行为</li>
       <li>用 <code>sound_candidates</code> 里 <code>sound_eligible=true</code> 的 crate/root 做 <strong>scoped sound</strong></li>
-      <li>不要用全局 <code>--recall</code> 代替 scoped sound</li>
+      <li>blast_radius 的 <code>recommendation</code> / <code>example_command</code> 给出下一步合法命令；无合格 root 时诚实说明并引导 default + review implementors</li>
+      <li>不要用全局 <code>--recall</code> 代替 scoped sound（勿作默认）</li>
     </ul>
   </div>
 </section>
@@ -151,15 +156,20 @@ agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
   <h2>4. 机器可读字段</h2>
   <table>
     <tr><th>字段</th><th>含义</th></tr>
-    <tr><td><code>edge_role</code></td><td>call | implementor | registration | dynamic</td></tr>
-    <tr><td><code>window</code></td><td>sound | default | disabled（blast_radius / MCP graph）</td></tr>
-    <tr><td><code>html</code> / <code>sha256</code></td><td>MCP graph 自包含 HTML + 内容摘要</td></tr>
-    <tr><td><code>promise_tier</code></td><td>ast_modeled | lexical_v1 | mixed | disabled</td></tr>
-    <tr><td><code>sound_candidates</code></td><td>还可做 scoped sound 的 root/path</td></tr>
-    <tr><td><code>baseline_stale</code></td><td>watch/增量后 diff 基线未刷新</td></tr>
-    <tr><td><code>sidecar_stale</code> / <code>sidecar_exists</code></td><td>宏旁路状态（status 即可读，不建文件）</td></tr>
-    <tr><td><code>recommendation</code></td><td>一句话建议（sound/默认/宏/stale）</td></tr>
-    <tr><td><code>root_id</code> / <code>root_path</code></td><td>workspace 多根归属</td></tr>
+    <tr><td><code>edge_role</code></td><td>call | implementor | registration | dynamic · <strong>勿改名</strong></td></tr>
+    <tr><td><code>window</code></td><td>sound | default | disabled（blast_radius / MCP graph）· <strong>勿改名</strong></td></tr>
+    <tr><td><code>subset_ok</code></td><td>选中 store/root 的 S 闸门 · <strong>勿改名</strong></td></tr>
+    <tr><td><code>html</code> / <code>sha256</code></td><td>MCP graph 自包含 HTML + 内容摘要 · <strong>勿改名</strong></td></tr>
+    <tr><td><code>promise_tier</code></td><td>ast_modeled | lexical_v1 | mixed | disabled · <strong>勿改名</strong></td></tr>
+    <tr><td><code>sound_candidates</code></td><td>还可做 scoped sound 的 root/path（eligible first）· <strong>勿改名</strong></td></tr>
+    <tr><td><code>by_root</code> / <code>by_top_dir</code></td><td>scoped-sound 分桶（多根 / 单根顶层目录）· <strong>勿改名</strong></td></tr>
+    <tr><td><code>sound_eligible</code></td><td>该 scope 是否 0 S violations · <strong>勿改名</strong></td></tr>
+    <tr><td><code>example_command</code></td><td>default window 时的合法下一步，如 <code>impact &lt;sym&gt; --sound --workspace-root &lt;id&gt;</code> · <strong>勿改名</strong></td></tr>
+    <tr><td><code>baseline_stale</code></td><td>watch/增量后 diff 基线未刷新 · <strong>勿改名</strong></td></tr>
+    <tr><td><code>sidecar_stale</code> / <code>sidecar_exists</code></td><td>宏旁路状态（status 即可读，不建文件）· <strong>勿改名</strong></td></tr>
+    <tr><td><code>recommendation</code></td><td>一句话建议（sound/默认/宏/stale/下一步合法命令）· <strong>勿改名</strong></td></tr>
+    <tr><td><code>note</code></td><td>恒为 not a complete runtime graph · <strong>勿改名</strong></td></tr>
+    <tr><td><code>root_id</code> / <code>root_path</code></td><td>workspace 多根归属 · <strong>勿改名</strong></td></tr>
   </table>
 </section>
 

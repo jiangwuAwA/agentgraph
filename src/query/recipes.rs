@@ -5,6 +5,12 @@
 //! always carry honesty fields (`window`, `subset_ok`, `promise_tier`,
 //! `recommendation`, `note`).
 //!
+//! **P0-4:** when auto-window is default/disabled, `recommendation` also names
+//! next legal commands — scoped `sound_candidates` (eligible roots/dirs first)
+//! plus example `impact <sym> --sound --workspace-root <id>` — or an honest
+//! "no eligible root; use default + review implementors" (never blind
+//! `--recall` as the default). CLI + MCP share this payload builder.
+//!
 //! **Non-claims (honesty):** recipes never promise a complete runtime graph,
 //! zero missed dynamic edges, ecosystem sound, or macro-complete graphs.
 //! Prefer raw flags (`callers`/`impact` + `--sound`/`--exact-only`/…)
@@ -17,7 +23,10 @@ use anyhow::Result;
 use serde_json::{json, Value};
 
 use crate::index::store::Store;
-use crate::index::subset::select_sound_promise;
+use crate::index::subset::{
+    scoped_sound_by_root, scoped_sound_by_top_dir, select_sound_promise, top_dir_of_path,
+    SoundAggregation, SoundScopeKind, SubsetViolation,
+};
 use crate::index::{union_impact, Indexer, UnionOptions};
 use crate::model::{is_high_freq_name, ConfidenceFilter, MacroSidecarStatus, ReferenceRecord};
 use crate::query::{build_callers_payload, CallersRoleMode};
@@ -63,6 +72,186 @@ pub fn decide_blast_window(subset_ok: bool, root_label: Option<&str>) -> BlastWi
                 "sound disabled because unsafe/S-violated{root_part}; use default (Exact+Heuristic) + review implementors — not a complete runtime graph"
             ),
         }
+    }
+}
+
+/// P0-4 machine-readable next-step guidance for default/disabled windows.
+///
+/// Stable payload keys (勿改名): `sound_candidates`, `example_command`,
+/// `by_root` / `by_top_dir`, `baseline_stale`, `sidecar_stale`.
+#[derive(Debug, Clone, Default)]
+pub struct ScopedSoundGuidance {
+    /// Candidates from `aggregate_scoped_sound` / subset helpers (eligible first).
+    pub sound_candidates: Vec<Value>,
+    /// Workspace-root buckets when scope is Root.
+    pub by_root: Option<Value>,
+    /// Top-level dir buckets when scope is TopDir (single-root path hint).
+    pub by_top_dir: Option<Value>,
+    /// Example legal command when an eligible root exists.
+    pub example_command: Option<String>,
+    /// True when at least one candidate is sound-eligible.
+    pub has_eligible: bool,
+    /// Honesty flags (P5) — mentioned in recommendation when true.
+    pub baseline_stale: bool,
+    pub sidecar_stale: bool,
+    /// One-liner to append to `recommendation` when window is default/disabled.
+    pub guidance: String,
+}
+
+/// Aggregate scoped-sound candidates for blast_radius guidance (P0-4).
+///
+/// Workspace multi-root → `scoped_sound_by_root` over **all** roots (so a dirty
+/// union still surfaces clean sibling roots). Single-root store →
+/// `scoped_sound_by_top_dir` path hints.
+pub fn scoped_sound_aggregation(
+    store: &Store,
+    root_filter: Option<&str>,
+    languages: &[String],
+    violations: &[SubsetViolation],
+) -> SoundAggregation {
+    let roots = store.root_status_rows().unwrap_or_default();
+    let is_workspace =
+        store.is_workspace().unwrap_or(false) || roots.iter().any(|r| !r.id.is_empty());
+    if is_workspace {
+        // Always aggregate all roots: union guidance needs clean siblings even
+        // when this call selected one root or is a dirty union.
+        let all_violations = store
+            .subset_violations()
+            .unwrap_or_else(|_| violations.to_vec());
+        return scoped_sound_by_root(&roots, &all_violations, languages);
+    }
+    let mut keys: Vec<(String, Option<String>)> = Vec::new();
+    if let Ok(dirs) = store.distinct_file_top_dirs(root_filter) {
+        for d in dirs {
+            keys.push((d, None));
+        }
+    }
+    for v in violations {
+        let d = top_dir_of_path(&v.path);
+        let key = if d.is_empty() {
+            "(root)".to_string()
+        } else {
+            d
+        };
+        if !keys.iter().any(|(k, _)| *k == key) {
+            keys.push((key, None));
+        }
+    }
+    scoped_sound_by_top_dir(&keys, violations, languages)
+}
+
+/// Build next-legal-command text + payload fields when window is default/disabled.
+///
+/// Honesty rules:
+/// - Eligible roots first; example `impact <sym> --sound --workspace-root <id>`
+/// - Single-root: `by_top_dir` path hint only (`--sound` stays store-wide)
+/// - No eligible root: say so; suggest default + review implementors
+/// - **Never** suggest blind `--recall` as the default next step
+/// - Dirty union is **never** labeled `window=sound`
+pub fn build_scoped_sound_guidance(
+    symbol: &str,
+    agg: &SoundAggregation,
+    baseline_stale: bool,
+    sidecar_stale: bool,
+) -> ScopedSoundGuidance {
+    let sound_candidates: Vec<Value> = agg
+        .sound_candidates
+        .iter()
+        .map(|c| c.to_payload_json())
+        .collect();
+    let eligible: Vec<&crate::index::subset::SoundCandidate> = agg
+        .sound_candidates
+        .iter()
+        .filter(|c| c.sound_eligible)
+        .collect();
+
+    let buckets_json = json!(agg
+        .buckets
+        .iter()
+        .map(|b| b.to_payload_json())
+        .collect::<Vec<_>>());
+    let (by_root, by_top_dir) = match agg.scope {
+        SoundScopeKind::Root => (Some(buckets_json), None),
+        SoundScopeKind::TopDir => (None, Some(buckets_json)),
+    };
+
+    let mut example_command = None;
+    let mut parts: Vec<String> = Vec::new();
+
+    if !eligible.is_empty() {
+        let keys: Vec<&str> = eligible.iter().map(|c| c.key.as_str()).collect();
+        let ineligible: Vec<&str> = agg
+            .sound_candidates
+            .iter()
+            .filter(|c| !c.sound_eligible)
+            .map(|c| c.key.as_str())
+            .collect();
+        let avoid_part = if ineligible.is_empty() {
+            String::new()
+        } else {
+            format!("; avoid {}", ineligible.join(", "))
+        };
+        match agg.scope {
+            SoundScopeKind::Root => {
+                let first = keys[0];
+                let cmd = format!("impact {symbol} --sound --workspace-root {first}");
+                example_command = Some(cmd.clone());
+                parts.push(format!(
+                    "scoped sound candidates (eligible first): {}{avoid_part}; e.g. `{cmd}` — do not claim union --sound on dirty roots",
+                    keys.join(", ")
+                ));
+            }
+            SoundScopeKind::TopDir => {
+                parts.push(format!(
+                    "by_top_dir sound-eligible path hint (single-root: --sound is still store-wide; \
+                     re-index a clean path/parent for a scoped store): {}{avoid_part}",
+                    keys.join(", ")
+                ));
+                parts.push(format!(
+                    "next legal step: default blast_radius / impact (Exact+Heuristic) + review implementors; \
+                     for a scoped sound trial re-index a clean top dir then `impact {symbol} --sound` on that store"
+                ));
+            }
+        }
+    } else {
+        let label = match agg.scope {
+            SoundScopeKind::Root => "workspace root",
+            SoundScopeKind::TopDir => "top-level dir",
+        };
+        parts.push(format!(
+            "no sound-eligible {label} — every scope has S violations"
+        ));
+        parts.push(
+            "next legal step: default blast_radius / impact (Exact+Heuristic) + review implementors — \
+             do NOT pass blind --recall as the default window"
+                .to_string(),
+        );
+    }
+
+    if baseline_stale {
+        parts.push(
+            "baseline_stale=true — dirty reindex after last full snapshot; run `agentgraph index` \
+             to refresh baseline (never auto-refreshed)"
+                .into(),
+        );
+    }
+    if sidecar_stale {
+        parts.push(
+            "sidecar_stale=true — macro sidecar fingerprint stale; run `agentgraph macro rebuild` \
+             if you use --with-macro (sidecar edges are not sound-certified)"
+                .into(),
+        );
+    }
+
+    ScopedSoundGuidance {
+        sound_candidates,
+        by_root,
+        by_top_dir,
+        example_command,
+        has_eligible: !eligible.is_empty(),
+        baseline_stale,
+        sidecar_stale,
+        guidance: parts.join("; "),
     }
 }
 
@@ -145,9 +334,14 @@ pub struct BlastRadiusPayloadInput {
     pub include_macro: bool,
     pub include_macro_reason: Option<String>,
     pub stale: Option<bool>,
+    /// P0-4 scoped-sound next-step guidance (empty on sound window).
+    pub scoped_sound: ScopedSoundGuidance,
 }
 
 /// Build the locked `blast_radius` JSON payload.
+///
+/// Stable keys (勿改名): `window`, `promise_tier`, `subset_ok`,
+/// `recommendation`, `note`, `sound_candidates`.
 pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
     let BlastRadiusPayloadInput {
         symbol,
@@ -160,6 +354,7 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
         include_macro,
         include_macro_reason,
         stale,
+        scoped_sound,
     } = input;
     let mut v = json!({
         "tool": "blast_radius",
@@ -174,6 +369,8 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
         "include_macro": include_macro,
         "recommendation": window.recommendation,
         "note": RECIPE_NOTE,
+        // Always present (stable key); empty when window=sound or no store scopes.
+        "sound_candidates": scoped_sound.sound_candidates,
     });
     if let Some(obj) = v.as_object_mut() {
         obj.insert(
@@ -189,6 +386,28 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
                 Some(s) => Value::Bool(s),
                 None => Value::Null,
             },
+        );
+        // P0-4 optional scoped-sound fields (present when applicable / when true).
+        if let Some(cmd) = &scoped_sound.example_command {
+            obj.insert("example_command".into(), Value::String(cmd.clone()));
+        } else {
+            obj.insert("example_command".into(), Value::Null);
+        }
+        if let Some(b) = &scoped_sound.by_root {
+            obj.insert("by_root".into(), b.clone());
+        }
+        if let Some(b) = &scoped_sound.by_top_dir {
+            obj.insert("by_top_dir".into(), b.clone());
+        }
+        // Honesty flags: always emit booleans when guidance was computed
+        // (sound window still attaches cheap flags for key stability).
+        obj.insert(
+            "baseline_stale".into(),
+            Value::Bool(scoped_sound.baseline_stale),
+        );
+        obj.insert(
+            "sidecar_stale".into(),
+            Value::Bool(scoped_sound.sidecar_stale),
         );
         // Alias for muscle-memory with raw `impact` tool.
         obj.insert(
@@ -343,6 +562,10 @@ fn refuse_macro_workspace(
 }
 
 /// Execute blast_radius against an open store + indexer.
+///
+/// CLI + MCP share this builder (P0-4). When auto-window is default/disabled,
+/// the payload gains scoped-sound next-step guidance (`sound_candidates`,
+/// example command / by_top_dir hint, stale honesty flags).
 pub fn run_blast_radius(
     store: &Store,
     indexer: &Indexer,
@@ -355,7 +578,37 @@ pub fn run_blast_radius(
     let languages = store.stats(root_label)?.languages;
     let subset_ok = violations.is_empty();
     let (promise_tier, _promise) = select_sound_promise(subset_ok, &languages);
-    let decision = decide_blast_window(subset_ok, rf);
+    let mut decision = decide_blast_window(subset_ok, rf);
+
+    // P5 cheap honesty flags (never create sidecar / never refresh baseline).
+    let baseline_stale = crate::index::diff::baseline_stale_flag(store);
+    let mut sidecar_roots: Vec<PathBuf> = store
+        .workspace_roots_meta()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| !r.path.is_empty())
+        .map(|r| PathBuf::from(r.path))
+        .collect();
+    if sidecar_roots.is_empty() {
+        sidecar_roots.push(indexer.root.clone());
+    }
+    let (_sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+
+    // P0-4: default/disabled window → next legal commands + scoped candidates.
+    let scoped_sound = if !decision.use_sound {
+        let agg = scoped_sound_aggregation(store, rf, &languages, &violations);
+        let guidance =
+            build_scoped_sound_guidance(&args.symbol, &agg, baseline_stale, sidecar_stale);
+        decision.recommendation = format!("{}; {}", decision.recommendation, guidance.guidance);
+        guidance
+    } else {
+        // Sound window: keep keys stable, no scoped-command spam.
+        ScopedSoundGuidance {
+            baseline_stale,
+            sidecar_stale,
+            ..ScopedSoundGuidance::default()
+        }
+    };
 
     let mut include_macro = args.include_macro;
     let mut include_macro_reason: Option<String> = None;
@@ -432,6 +685,7 @@ pub fn run_blast_radius(
         include_macro,
         include_macro_reason,
         stale,
+        scoped_sound,
     }))
 }
 
@@ -506,8 +760,12 @@ mod tests {
             include_macro: false,
             include_macro_reason: None,
             stale: None,
+            scoped_sound: ScopedSoundGuidance::default(),
         });
         assert_eq!(v["window"], "sound");
         assert!(v["stale"].is_null());
+        assert!(v.get("sound_candidates").is_some());
+        assert!(v["sound_candidates"].as_array().unwrap().is_empty());
+        assert!(v["recommendation"].as_str().unwrap().contains("subset_ok"));
     }
 }

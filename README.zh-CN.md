@@ -16,6 +16,44 @@
 
 **流水线：** tree-sitter 解析 → SQLite 符号/引用库 → 面向 Agent 的查询 API。
 
+## Agent 主路径
+
+Agent 宿主该按什么顺序调用。底层 CLI / MCP 全表仍在下文 —— 这里是一页纸。
+
+```bash
+agentgraph index                    # 每仓一次（MCP: index）
+agentgraph blast-radius <sym>       # MCP: blast_radius
+agentgraph who-calls <sym>          # MCP: who_calls
+agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
+```
+
+| 步骤 | 调用 | 得到什么 |
+|---|---|---|
+| 1. 索引 | `agentgraph index` / MCP `index` | SQLite 库 `<root>/.agentgraph/index.db`；未索引就查询会明确报错 |
+| 2. 爆炸半径 | MCP `blast_radius` / CLI `blast-radius` | 自动 `window=sound\|default` + `recommendation` / 诚实 `note` |
+| 3. 谁在调 | MCP `who_calls` / CLI `who-calls` | 默认分离 implementor（`noisy=false`）；高频名 demote |
+| 4. 图 | MCP `graph` / CLI `graph` | 自包含 HTML + `window` / `subset_ok` / `promise_tier` / `note` |
+
+### 诚实表（window / subset_ok / note）
+
+| 字段 | sound 何时适用 | 非声称 |
+|---|---|---|
+| **window=sound** | 仅当 `subset_ok`（S 限定的**已建模**边）；否则 `window=default`（Exact+Heuristic） | 绝不把盲 `--recall` 标成 sound；**不是**完整运行时图 |
+| **subset_ok** | 已建模边的 per-root / per-path S 门 | **不是**生态 sound；**不是** production sound |
+| **note** | recipe / graph 载荷始终携带 | `note` = **不是**完整运行时图 |
+
+**Agent 请先读：** `window`、`subset_ok`、`recommendation`。全局 window 关闭时，干净的 workspace root 上仍可能做 scoped sound —— 见 [docs/agent-recipes.md](docs/agent-recipes.md)。
+
+**更多：** [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
+
+**进阶**（只给链接，不在此堆表）：
+
+- flags / 窗口 / 配方全文 —— 下文 [查询](#查询) · [docs/agent-recipes.md](docs/agent-recipes.md)
+- Workspace 多根 —— [docs/workspace.md](docs/workspace.md)
+- 宏旁路（默认 OFF）—— [docs/macro-sidecar.md](docs/macro-sidecar.md)
+- Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
+- 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)
+
 ## 快速开始
 
 ```bash

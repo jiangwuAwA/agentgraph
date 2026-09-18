@@ -16,6 +16,44 @@ Not another embedding RAG. When an agent needs *who calls this*, *what breaks if
 
 **Pipeline:** tree-sitter parse → SQLite symbol/reference store → query API for agents.
 
+## Agent path
+
+What an Agent host should call, in order. Deep CLI / MCP tables stay below — this is the one-pager.
+
+```bash
+agentgraph index                    # once per repo (MCP: index)
+agentgraph blast-radius <sym>       # MCP: blast_radius
+agentgraph who-calls <sym>          # MCP: who_calls
+agentgraph graph <sym> --depth 2    # MCP: graph → offline HTML + honesty fields
+```
+
+| Step | Call | What you get |
+|---|---|---|
+| 1. Index | `agentgraph index` / MCP `index` | SQLite store at `<root>/.agentgraph/index.db`; query before index fails loud |
+| 2. Blast radius | MCP `blast_radius` / CLI `blast-radius` | Auto `window=sound\|default` + `recommendation` / honesty `note` |
+| 3. Who calls | MCP `who_calls` / CLI `who-calls` | Implementors separated by default (`noisy=false`); high-freq names demoted |
+| 4. Graph | MCP `graph` / CLI `graph` | Self-contained HTML + `window` / `subset_ok` / `promise_tier` / `note` |
+
+### Honesty (window / subset_ok / note)
+
+| Field | When sound applies | Non-claim |
+|---|---|---|
+| **window=sound** | Only when `subset_ok` (S-qualified **modeled** edges); else `window=default` (Exact+Heuristic) | Never blind `--recall` labeled as sound; **not** a complete runtime graph |
+| **subset_ok** | Per-root / per-path S gate for modeled edges | **Not** ecosystem sound; **not** production sound |
+| **note** | Always present on recipe / graph payloads | `note` = **not a complete runtime graph** |
+
+**Agents:** read `window`, `subset_ok`, and `recommendation` before acting. Scoped sound may be available on a clean workspace root even when the global window is off — see [docs/agent-recipes.md](docs/agent-recipes.md).
+
+**More:** [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
+
+**Advanced** (links, not an inline dump):
+
+- Flags, windows, recipes — [Queries](#queries) below · [docs/agent-recipes.md](docs/agent-recipes.md)
+- Workspace multi-root — [docs/workspace.md](docs/workspace.md)
+- Macro sidecar (default OFF) — [docs/macro-sidecar.md](docs/macro-sidecar.md)
+- Sound subset / S gate — [docs/sound-subset.md](docs/sound-subset.md)
+- Noise / implementors — [docs/noise-governance.md](docs/noise-governance.md)
+
 ## Quick start
 
 ```bash

@@ -11,7 +11,7 @@
 
 use agentgraph::query::recipes::{
     build_blast_radius_payload, build_who_calls_payload, decide_blast_window,
-    BlastRadiusPayloadInput,
+    BlastRadiusPayloadInput, ScopedSoundGuidance,
 };
 use agentgraph::viz::graph_tool::resolve_out_under_root;
 use agentgraph::viz::{
@@ -234,6 +234,7 @@ fn blast_radius_dirty_union_never_claims_sound() {
         include_macro: false,
         include_macro_reason: None,
         stale: None,
+        scoped_sound: ScopedSoundGuidance::default(),
     });
     assert_eq!(v["window"], "default");
     assert_eq!(v["subset_ok"], false);

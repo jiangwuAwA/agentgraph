@@ -125,6 +125,41 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         implementors_only: bool,
     },
+    /// High-level blast-radius recipe: auto sound vs default window + honesty payload
+    ///
+    /// Picks `impact --sound` when the selected store/root is `subset_ok`;
+    /// otherwise default Exact+Heuristic impact (never blind `--recall`).
+    /// Response always includes `window`, `subset_ok`, `promise_tier`,
+    /// `recommendation`, and `note` (not a complete runtime graph).
+    BlastRadius {
+        /// Query symbol name
+        name: String,
+        /// BFS depth (recipe default 3)
+        #[arg(long, default_value_t = 3)]
+        depth: usize,
+        /// Cap impact nodes
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+        /// Include macro sidecar only when safe (exists && !stale && !nested)
+        #[arg(long, default_value_t = false)]
+        include_macro: bool,
+    },
+    /// High-level who-calls recipe: implementors separated by default; --noisy merges
+    ///
+    /// Default (noisy=false) reuses the store callers payload builder:
+    /// implementors are separated/collapsed + high-freq names demoted.
+    /// `--noisy` restores the old merged shape. Response carries `callers`,
+    /// `implementors`, `high_freq_name`, `promise_tier`, `recommendation`.
+    WhoCalls {
+        /// Query symbol name
+        name: String,
+        /// Cap callers / implementors sections
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        /// Old noisy shape: merge implementors into callers
+        #[arg(long, default_value_t = false)]
+        noisy: bool,
+    },
     /// Blast radius: who transitively depends on this symbol
     Impact {
         name: String,
@@ -179,7 +214,15 @@ pub enum Commands {
         interval: u64,
     },
     /// Scan the index for language-subset S violations (L2)
-    Subset,
+    ///
+    /// Always includes `sound_candidates` + `recommendation` (scoped --sound).
+    /// Workspace stores always include `by_root` buckets; single-root trees
+    /// include `by_top_dir`. `--by-root` forces root buckets when needed.
+    Subset {
+        /// Force/include `by_root` aggregation (always on for workspace stores).
+        #[arg(long, default_value_t = false)]
+        by_root: bool,
+    },
     /// Compare indexed edge set against the snapshot baseline written at `index` time.
     ///
     /// Honesty: indexed edges only (name+path+line+confidence+enclosing);
@@ -319,6 +362,85 @@ fn store_is_workspace(store: &crate::index::store::Store) -> bool {
         .unwrap_or(false)
 }
 
+/// Cheap P5 honesty flags for a store root (and optional workspace roots).
+/// Never creates a macro sidecar; never refreshes the diff baseline.
+fn attach_stale_flags(
+    payload: &mut serde_json::Value,
+    store: &crate::index::store::Store,
+    classic_root: &std::path::Path,
+) -> Result<()> {
+    let baseline_stale = crate::index::diff::baseline_stale_flag(store);
+    let mut roots: Vec<PathBuf> = store
+        .workspace_roots_meta()?
+        .into_iter()
+        .filter(|r| !r.path.is_empty())
+        .map(|r| PathBuf::from(r.path))
+        .collect();
+    if roots.is_empty() {
+        roots.push(classic_root.to_path_buf());
+    }
+    let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&roots);
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("baseline_stale".into(), serde_json::json!(baseline_stale));
+        obj.insert("sidecar_exists".into(), serde_json::json!(sidecar_exists));
+        obj.insert("sidecar_stale".into(), serde_json::json!(sidecar_stale));
+    }
+    Ok(())
+}
+
+/// stderr one-liner when stale honesty flags are set (P5).
+fn warn_stale_flags(baseline_stale: bool, sidecar_stale: bool, context: &str) {
+    if baseline_stale {
+        eprintln!(
+            "warn: baseline_stale=true ({context}) — dirty reindex after last full snapshot; \
+             run `agentgraph index` to refresh baseline or `diff --write-snapshot` to lock current"
+        );
+    }
+    if sidecar_stale {
+        eprintln!(
+            "warn: sidecar_stale=true ({context}) — main source fingerprint changed since \
+             sidecar build; run `agentgraph macro rebuild` if you use --with-macro"
+        );
+    }
+}
+
+/// Build scoped-sound aggregation for `subset` payloads (P4).
+fn subset_sound_aggregation(
+    store: &crate::index::store::Store,
+    root_filter: Option<&str>,
+    languages: &[String],
+    violations: &[crate::index::subset::SubsetViolation],
+    force_by_root: bool,
+) -> crate::index::subset::SoundAggregation {
+    let roots = store.root_status_rows().unwrap_or_default();
+    let is_workspace = store_is_workspace(store) || roots.iter().any(|r| !r.id.is_empty());
+    if is_workspace || force_by_root {
+        // When a single root filter is active, still aggregate all roots so
+        // Agents see the full candidate list; filter only the violation list.
+        return crate::index::subset::scoped_sound_by_root(&roots, violations, languages);
+    }
+    // Single-root tree: aggregate by top-level path segment.
+    let mut keys: Vec<(String, Option<String>)> = Vec::new();
+    if let Ok(dirs) = store.distinct_file_top_dirs(root_filter) {
+        for d in dirs {
+            keys.push((d, None));
+        }
+    }
+    // Include top dirs that only appear on violations (oversized / parse_error).
+    for v in violations {
+        let d = crate::index::subset::top_dir_of_path(&v.path);
+        let key = if d.is_empty() {
+            "(root)".to_string()
+        } else {
+            d
+        };
+        if !keys.iter().any(|(k, _)| *k == key) {
+            keys.push((key, None));
+        }
+    }
+    crate::index::subset::scoped_sound_by_top_dir(&keys, violations, languages)
+}
+
 /// Tag query JSON rows with `root_id` / `root_path` when the store is workspace.
 fn print_query_json(value: &serde_json::Value, store: &crate::index::store::Store) -> Result<()> {
     let mut v = value.clone();
@@ -439,6 +561,11 @@ pub fn run(cli: Cli) -> Result<()> {
                     indexer.db_path.clone()
                 };
                 let status = crate::index::workspace::workspace_status(&db)?;
+                warn_stale_flags(
+                    status.baseline_stale,
+                    status.sidecar_stale,
+                    "workspace status",
+                );
                 println!("{}", serde_json::to_string_pretty(&status)?);
             }
         },
@@ -502,6 +629,21 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
                 stats.root = format!("{}#{}", stats.root, rid);
             }
+            // P5: cheap stale honesty flags (no sidecar create / no baseline write).
+            stats.baseline_stale = crate::index::diff::baseline_stale_flag(&store);
+            let mut sidecar_roots: Vec<PathBuf> = store
+                .workspace_roots_meta()?
+                .into_iter()
+                .filter(|r| !r.path.is_empty())
+                .map(|r| PathBuf::from(r.path))
+                .collect();
+            if sidecar_roots.is_empty() {
+                sidecar_roots.push(indexer.root.clone());
+            }
+            let (se, ss) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+            stats.sidecar_exists = se;
+            stats.sidecar_stale = ss;
+            warn_stale_flags(stats.baseline_stale, stats.sidecar_stale, "stats");
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Commands::Find { name, limit, fuzzy } => {
@@ -621,6 +763,7 @@ pub fn run(cli: Cli) -> Result<()> {
                              unioning existing rows — run `agentgraph macro rebuild`"
                         );
                     }
+                    warn_stale_flags(status.baseline_stale, status.stale, "callers --with-macro");
                     let side_hits = side.callers_filtered(&name, limit, filter)?;
                     let expanded_root = status
                         .expanded_root
@@ -653,6 +796,47 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             print_query_json(&role_payload, &store)?;
             let _ = main_rows; // used above when with_macro sidecar present
+        }
+        Commands::BlastRadius {
+            name,
+            depth,
+            limit,
+            include_macro,
+        } => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let args = crate::query::recipes::BlastRadiusArgs {
+                symbol: name,
+                depth,
+                limit,
+                include_macro,
+                root_id: root_filter.clone(),
+            };
+            let payload = crate::query::recipes::run_blast_radius(
+                &store,
+                &indexer,
+                &indexer.root.to_string_lossy(),
+                &args,
+            )?;
+            print_query_json(&payload, &store)?;
+        }
+        Commands::WhoCalls { name, limit, noisy } => {
+            let store = indexer.open_store()?;
+            store.ensure_indexed()?;
+            let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
+            let args = crate::query::recipes::WhoCallsArgs {
+                symbol: name,
+                noisy,
+                limit,
+                root_id: root_filter.clone(),
+            };
+            let payload = crate::query::recipes::run_who_calls(
+                &store,
+                &indexer.root.to_string_lossy(),
+                &args,
+            )?;
+            print_query_json(&payload, &store)?;
         }
         Commands::Impact {
             name,
@@ -725,6 +909,7 @@ pub fn run(cli: Cli) -> Result<()> {
                              unioning existing rows — run `agentgraph macro rebuild`"
                         );
                     }
+                    warn_stale_flags(status.baseline_stale, status.stale, "impact --with-macro");
                     let side_hits = side.impact_filtered(&name, depth, limit, filter)?;
                     let expanded_root = status
                         .expanded_root
@@ -839,7 +1024,7 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             println!("wrote {format} → {}", out.display());
         }
-        Commands::Subset => {
+        Commands::Subset { by_root } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
             let root_filter = resolve_query_root_filter(&store, &workspace_roots)?;
@@ -848,6 +1033,11 @@ pub fn run(cli: Cli) -> Result<()> {
             let languages = store.stats(&indexer.root.to_string_lossy())?.languages;
             let (promise_tier, promise) =
                 crate::index::subset::select_sound_promise(violations.is_empty(), &languages);
+            // P4: scoped-sound aggregation (workspace → by_root; single-root → by_top_dir).
+            let agg = subset_sound_aggregation(&store, rf, &languages, &violations, by_root);
+            let agg_payload = agg.to_payload_json();
+            // Legacy per-root summary kept for older consumers; enriched buckets
+            // live under by_root / sound_candidates.
             let per_root: Vec<serde_json::Value> = store
                 .root_status_rows()?
                 .into_iter()
@@ -857,10 +1047,11 @@ pub fn run(cli: Cli) -> Result<()> {
                         "path": r.path,
                         "subset_ok": r.subset_violations == 0,
                         "subset_violations": r.subset_violations,
+                        "promise_tier": r.promise_tier,
                     })
                 })
                 .collect();
-            let payload = serde_json::json!({
+            let mut payload = serde_json::json!({
                 "in_subset": violations.is_empty(),
                 "violation_count": violations.len(),
                 "violations": violations,
@@ -868,9 +1059,21 @@ pub fn run(cli: Cli) -> Result<()> {
                 "promise": promise,
                 "promise_languages": languages,
                 "root_id": root_filter,
-                "by_root": if per_root.is_empty() { serde_json::Value::Null } else { serde_json::json!(per_root) },
-                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1); workspace union subset_ok = weakest selected root",
+                "by_root": if per_root.is_empty() && !agg_payload.get("by_root").map(|v| v.is_array()).unwrap_or(false) {
+                    serde_json::Value::Null
+                } else {
+                    agg_payload
+                        .get("by_root")
+                        .cloned()
+                        .filter(|v| v.is_array() && !v.as_array().map(|a| a.is_empty()).unwrap_or(true))
+                        .unwrap_or_else(|| serde_json::json!(per_root))
+                },
+                "by_top_dir": agg_payload.get("by_top_dir").cloned().unwrap_or(serde_json::Value::Null),
+                "sound_candidates": agg_payload.get("sound_candidates").cloned().unwrap_or_else(|| serde_json::json!([])),
+                "recommendation": agg_payload.get("recommendation").cloned().unwrap_or_else(|| serde_json::json!(agg.recommendation.clone())),
+                "note": "in_subset=true is required for the L2 soundness claim on impact/callers --sound; promise_tier is language-aware (ast_modeled vs lexical_v1 vs mixed_lexical_v1); workspace union subset_ok = weakest selected root; sound_candidates are scoped --sound hints (eligible first) — global --sound still uses weakest selected root",
             });
+            attach_stale_flags(&mut payload, &store, &indexer.root)?;
             print_query_json(&payload, &store)?;
             if !violations.is_empty() {
                 std::process::exit(2);
@@ -909,6 +1112,14 @@ pub fn run(cli: Cli) -> Result<()> {
                     } else {
                         rid.clone()
                     }
+                );
+            }
+            // P5: stderr one-liner when dirty reindex drifted after last full snapshot.
+            if d.baseline_stale {
+                eprintln!(
+                    "warn: baseline_stale=true — dirty reindex after last full snapshot \
+                     (baseline not auto-refreshed); run `agentgraph index` or \
+                     `diff --write-snapshot` to lock current edges"
                 );
             }
             print_query_json(&serde_json::to_value(&d)?, &store)?;
@@ -1016,6 +1227,16 @@ pub fn run(cli: Cli) -> Result<()> {
                         );
                     }
                 }
+                // P5: ensure honesty flags + stderr one-liners.
+                if let Some(obj) = payload.as_object_mut() {
+                    obj.entry("sidecar_exists")
+                        .or_insert(serde_json::json!(status.exists));
+                    obj.entry("sidecar_stale")
+                        .or_insert(serde_json::json!(status.stale));
+                    obj.entry("baseline_stale")
+                        .or_insert(serde_json::json!(status.baseline_stale));
+                }
+                warn_stale_flags(status.baseline_stale, status.stale, "macro status");
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             }
             MacroCmd::Rebuild { force } => {

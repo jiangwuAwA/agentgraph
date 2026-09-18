@@ -140,6 +140,39 @@ fn tools_list() -> Value {
                 }
             },
             {
+                "name": "blast_radius",
+                "description": "High-level blast-radius recipe (agent-friendly). Auto confidence window: sound when the selected store/root is subset_ok (S-qualified modeled edges); otherwise default Exact+Heuristic impact — never blind recall. Response always includes nodes (edge_role tagged), window (sound|default), promise_tier, subset_ok, stale (macro sidecar if relevant), include_macro + include_macro_reason, recommendation (short zh/en sentence), note (not a complete runtime graph). include_macro=true is accepted only when macro sidecar exists && !stale && !nested; otherwise refused with a reason in the payload. Optional workspace_db / root_id filter (default off).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string", "description": "Query symbol name (alias: name)"},
+                        "name": {"type": "string", "description": "Alias for symbol (CLI parity)"},
+                        "depth": {"type": "integer", "default": 3},
+                        "limit": {"type": "integer", "default": 100},
+                        "include_macro": {"type": "boolean", "default": false, "description": "Include macro sidecar only when safe; refused with reason otherwise. Mutually exclusive with a sound window (not sound-certified)."},
+                        "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional; multi-root)"},
+                        "root_id": {"type": "string", "description": "Filter rows to this workspace root_id (optional; default = union all roots)"}
+                    },
+                    "required": ["symbol"]
+                }
+            },
+            {
+                "name": "who_calls",
+                "description": "High-level who-calls recipe (agent-friendly). noisy=false (default) uses the store callers payload builder: implementors separated/collapsed from call sites + high-frequency names demoted (cap implementors). noisy=true merges implementors into callers (old noisy shape). Always returns callers + implementors sections, edge_role tags, high_freq_name, promise_tier, subset_ok, recommendation, note (not a complete runtime graph). Window is default Exact+Heuristic — not a runtime call graph. Optional workspace_db / root_id filter (default off).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {"type": "string", "description": "Query symbol name (alias: name)"},
+                        "name": {"type": "string", "description": "Alias for symbol (CLI parity)"},
+                        "noisy": {"type": "boolean", "default": false, "description": "true = merge implementors into callers (old noisy shape); false = separate/collapse implementors"},
+                        "limit": {"type": "integer", "default": 50},
+                        "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional; multi-root)"},
+                        "root_id": {"type": "string", "description": "Filter rows to this workspace root_id (optional; default = union all roots)"}
+                    },
+                    "required": ["symbol"]
+                }
+            },
+            {
                 "name": "impact",
                 "description": "Multi-hop blast radius: who transitively depends on this symbol (call graph BFS). Default Exact + Heuristic; recall/include_dynamic widen for missed-edge safety; sound=true uses L2 S-qualified edges. Rows carry edge_role (call|implementor|registration|dynamic); implementor edges still expand (blast radius) but are tagged. with_macro unions optional sidecar (mapped path + de-dup ON; not sound). Optional workspace_db / root_id filter (default off).",
                 "inputSchema": {
@@ -180,12 +213,13 @@ fn tools_list() -> Value {
             },
             {
                 "name": "subset",
-                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may emit its (weakened) eligibility promise; it is still not a runtime call-graph theorem. After watch/index_paths, violations reflect current disk (S re-cert on dirty files). Optional workspace_db / root_id filter (default off).",
+                "description": "List language-subset S violations stored at last index (L2). Empty list means --sound may emit its (weakened) eligibility promise; it is still not a runtime call-graph theorem. After watch/index_paths, violations reflect current disk (S re-cert on dirty files). P4: always includes sound_candidates[] (eligible first) + recommendation + by_root/by_top_dir for scoped --sound when global promise is disabled. P5: baseline_stale / sidecar_exists / sidecar_stale (never creates sidecar). Optional workspace_db / root_id filter (default off).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "workspace_db": {"type": "string", "description": "Explicit shared workspace SQLite path (optional)"},
-                        "root_id": {"type": "string", "description": "Filter violations to this workspace root_id (optional)"}
+                        "root_id": {"type": "string", "description": "Filter violations to this workspace root_id (optional)"},
+                        "by_root": {"type": "boolean", "default": false, "description": "Force by_root buckets (workspace stores always include them; single-root trees get by_top_dir instead)"}
                     }
                 }
             },
@@ -592,6 +626,62 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let payload = mcp_print_rows(role_payload, &store)?;
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
+            "blast_radius" => {
+                let sym = args
+                    .get("symbol")
+                    .or_else(|| args.get("name"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("symbol (or name) required"))?;
+                let depth = args.get("depth").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+                let include_macro = args
+                    .get("include_macro")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let (indexer, root_filter) = open_mcp_store(&root, &args)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let recipe_args = crate::query::recipes::BlastRadiusArgs {
+                    symbol: sym.to_string(),
+                    depth,
+                    limit,
+                    include_macro,
+                    root_id: root_filter.clone(),
+                };
+                let payload = crate::query::recipes::run_blast_radius(
+                    &store,
+                    &indexer,
+                    &root.to_string_lossy(),
+                    &recipe_args,
+                )?;
+                let payload = mcp_print_rows(payload, &store)?;
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
+            }
+            "who_calls" => {
+                let sym = args
+                    .get("symbol")
+                    .or_else(|| args.get("name"))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("symbol (or name) required"))?;
+                let noisy = args.get("noisy").and_then(|v| v.as_bool()).unwrap_or(false);
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                let (indexer, root_filter) = open_mcp_store(&root, &args)?;
+                let store = indexer.open_store()?;
+                store.ensure_indexed()?;
+                let recipe_args = crate::query::recipes::WhoCallsArgs {
+                    symbol: sym.to_string(),
+                    noisy,
+                    limit,
+                    root_id: root_filter.clone(),
+                };
+                let payload = crate::query::recipes::run_who_calls(
+                    &store,
+                    &root.to_string_lossy(),
+                    &recipe_args,
+                )?;
+                let payload = mcp_print_rows(payload, &store)?;
+                Ok(ok_text(serde_json::to_string_pretty(&payload)?))
+            }
             "impact" => {
                 let sym = args
                     .get("name")
@@ -720,6 +810,7 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
             "macro_status" => {
                 let indexer = Indexer::new(&root)?;
                 let status = indexer.macro_status()?;
+                // P5 honesty flags already on MacroSidecarStatus (sidecar_* + baseline_stale).
                 Ok(ok_text(serde_json::to_string_pretty(&status)?))
             }
             "macro_rebuild" => {
@@ -739,11 +830,50 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                 let store = indexer.open_store()?;
                 store.ensure_indexed()?;
                 let rf = root_filter.as_deref();
+                let force_by_root = args
+                    .get("by_root")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let violations = store.subset_violations_in(rf)?;
                 let languages = store.stats(&root.to_string_lossy())?.languages;
                 let (promise_tier, promise) =
                     select_sound_promise(violations.is_empty(), &languages);
-                let payload = serde_json::json!({
+                // P4: scoped-sound helpers (same shape as CLI subset).
+                let roots = store.root_status_rows().unwrap_or_default();
+                let is_workspace = store.is_workspace().unwrap_or(false)
+                    || roots.iter().any(|r| !r.id.is_empty())
+                    || force_by_root;
+                let agg = if is_workspace {
+                    crate::index::subset::scoped_sound_by_root(&roots, &violations, &languages)
+                } else {
+                    let mut keys: Vec<(String, Option<String>)> = Vec::new();
+                    if let Ok(dirs) = store.distinct_file_top_dirs(rf) {
+                        for d in dirs {
+                            keys.push((d, None));
+                        }
+                    }
+                    for v in &violations {
+                        let d = crate::index::subset::top_dir_of_path(&v.path);
+                        let key = if d.is_empty() { "(root)".into() } else { d };
+                        if !keys.iter().any(|(k, _)| *k == key) {
+                            keys.push((key, None));
+                        }
+                    }
+                    crate::index::subset::scoped_sound_by_top_dir(&keys, &violations, &languages)
+                };
+                let agg_payload = agg.to_payload_json();
+                let baseline_stale = crate::index::diff::baseline_stale_flag(&store);
+                let mut sidecar_roots: Vec<std::path::PathBuf> = roots
+                    .iter()
+                    .filter(|r| !r.path.is_empty())
+                    .map(|r| std::path::PathBuf::from(&r.path))
+                    .collect();
+                if sidecar_roots.is_empty() {
+                    sidecar_roots.push(indexer.root.clone());
+                }
+                let (sidecar_exists, sidecar_stale) =
+                    crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+                let mut payload = serde_json::json!({
                     "in_subset": violations.is_empty(),
                     "violation_count": violations.len(),
                     "violations": violations,
@@ -751,7 +881,26 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                     "promise": promise,
                     "promise_languages": languages,
                     "root_id": root_filter,
+                    "by_root": agg_payload.get("by_root").cloned().unwrap_or(serde_json::Value::Null),
+                    "by_top_dir": agg_payload.get("by_top_dir").cloned().unwrap_or(serde_json::Value::Null),
+                    "sound_candidates": agg_payload.get("sound_candidates").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "recommendation": agg_payload.get("recommendation").cloned().unwrap_or_else(|| serde_json::json!(agg.recommendation.clone())),
+                    "baseline_stale": baseline_stale,
+                    "sidecar_exists": sidecar_exists,
+                    "sidecar_stale": sidecar_stale,
+                    "note": "sound_candidates are scoped --sound hints (eligible first); global workspace --sound = weakest root",
                 });
+                let by_root_empty = payload
+                    .get("by_root")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.is_empty())
+                    .unwrap_or(false);
+                if by_root_empty {
+                    if let Some(obj) = payload.as_object_mut() {
+                        // Keep by_root null when empty for non-workspace clarity.
+                        obj.insert("by_root".into(), serde_json::Value::Null);
+                    }
+                }
                 let payload = mcp_print_rows(payload, &store)?;
                 Ok(ok_text(serde_json::to_string_pretty(&payload)?))
             }
@@ -798,6 +947,12 @@ fn handle_tools_call(state: &Mutex<ServerState>, params: &Value) -> Result<Value
                         } else {
                             rid.as_str()
                         }
+                    );
+                }
+                if d.baseline_stale {
+                    eprintln!(
+                        "graph_diff: baseline_stale=true — dirty reindex after last full snapshot \
+                         (baseline not auto-refreshed)"
                     );
                 }
                 let payload = mcp_print_rows(serde_json::to_value(&d)?, &store)?;

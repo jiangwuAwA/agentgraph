@@ -52,12 +52,31 @@ agentgraph diff \
   "note": "indexed edges only; not a runtime call-graph diff (...)",
   "baseline_index_seq": 1,
   "current_index_seq": 2,
-  "baseline_source": "previous"
+  "baseline_source": "previous",
+  "baseline_stale": false
 }
 ```
 
 JSON fields: `added` / `removed` (edge rows), `summary` (full counts),
 `exact_only`, `note` (honesty), plus optional baseline metadata.
+
+### `baseline_stale` (P5 honesty)
+
+| Value | Meaning |
+|---|---|
+| false | Last write to the snapshot baseline was a **full** `index` (or `diff --write-snapshot`). Live edges may still differ — that is a normal diff. |
+| true | A dirty reindex (`watch` → `index_paths`, or path-scoped index) ran **after** the last full-index snapshot. The baseline was **not** auto-refreshed; added/removed rows include watch drift by design. |
+
+CLI `diff` prints a stderr one-liner when `baseline_stale=true`. Full
+`agentgraph index` (including noop early-out) clears the flag after writing a
+fresh baseline. Stored as `meta.baseline_stale` in SQLite (`"true"` / `"false"`).
+
+Helpers: `agentgraph::index::diff::{baseline_stale_flag, set_baseline_stale}`.
+
+Related surfaces that echo the same flag (plus cheap `sidecar_exists` /
+`sidecar_stale` — never create a sidecar): `workspace status`, `stats`,
+`macro status`, MCP `subset` / `graph_diff` / `macro_status`. See
+[sound-subset.md](sound-subset.md) scoped-sound section.
 
 ### Exit contract
 

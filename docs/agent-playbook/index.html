@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agentgraph · Agent 查询配方</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2332;
+    --ink: #e7ecf3;
+    --muted: #9aa8b8;
+    --acc: #3d9cf0;
+    --ok: #1f9d55;
+    --warn: #d97706;
+    --bad: #dc2626;
+    --line: #2a3548;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 15px/1.55 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  header {
+    padding: 28px 24px 16px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #152033, var(--bg));
+  }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 13px; max-width: 720px; }
+  main { max-width: 960px; margin: 0 auto; padding: 20px 20px 48px; }
+  section { margin: 28px 0; }
+  h2 { font-size: 16px; margin: 0 0 10px; color: var(--acc); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 10px 0;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 14px; }
+  code, pre {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: #0c1016;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .pill.ok { color: var(--ok); border-color: var(--ok); }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.bad { color: var(--bad); border-color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  ul { margin: 6px 0; padding-left: 1.2em; color: var(--ink); }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; margin-top: 32px; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent 查询配方 <span class="pill">v0.5.1+</span></h1>
+  <p class="sub">端到端改代码时优先用高层工具；底层 flag 仅在需要精确控制时使用。所有结果都是<strong>已索引边</strong>，不是完整运行时图。</p>
+</header>
+<main>
+
+<section>
+  <h2>1. 优先命令（MCP / CLI）</h2>
+  <div class="card">
+    <h3>爆炸半径 <span class="pill ok">blast_radius</span></h3>
+    <pre>agentgraph blast-radius &lt;symbol&gt; [--depth 3] [--include-macro]
+MCP: blast_radius</pre>
+    <ul>
+      <li>自动选窗：<code>subset_ok</code> → <code>window=sound</code>，否则 <code>window=default</code></li>
+      <li>不会盲目开 <code>--recall</code></li>
+      <li>返回 <code>promise_tier</code> / <code>recommendation</code> / <code>stale</code></li>
+      <li><code>--include-macro</code> 仅当 sidecar 存在且非 stale/嵌套</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>谁调用了它 <span class="pill ok">who_calls</span></h3>
+    <pre>agentgraph who-calls &lt;symbol&gt; [--noisy] [--limit 50]
+MCP: who_calls</pre>
+    <ul>
+      <li>默认 <code>noisy=false</code>：callers 与 implementors <strong>分栏</strong>；fmt/clone 等高频名 demote</li>
+      <li><code>--noisy</code>：合并旧式嘈杂列表</li>
+      <li>Exact 调用在低 <code>--limit</code> 下<strong>不会</strong>被 implementor 挤掉（R31）</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>2. sound 关闸时怎么问（怕漏）</h2>
+  <div class="card">
+    <pre>agentgraph subset --workspace workspace.json
+# 看 sound_candidates[] + recommendation
+
+agentgraph blast-radius X --workspace workspace.json --workspace-root ./packages/repository
+# 或
+agentgraph impact X --sound --workspace-root &lt;eligible_root&gt;</pre>
+    <ul>
+      <li>全仓有 unsafe/parse_error → 全局 sound <span class="pill bad">disabled</span> 是诚实行为</li>
+      <li>用 <code>sound_candidates</code> 里 <code>sound_eligible=true</code> 的 crate/root 做 <strong>scoped sound</strong></li>
+      <li>不要用全局 <code>--recall</code> 代替 scoped sound</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>3. flag 速查</h2>
+  <table>
+    <tr><th>场景</th><th>用法</th></tr>
+    <tr><td>只要语法确定边</td><td><code>--exact-only</code></td></tr>
+    <tr><td>默认爆炸半径 / DI</td><td><code>blast-radius</code> / 默认 <code>impact</code></td></tr>
+    <tr><td>看实现者</td><td>payload <code>implementors[]</code> 或 <code>who-calls --noisy</code></td></tr>
+    <tr><td>宏生成边</td><td><code>index --macro-expanded-root</code> + <code>--with-macro</code>（默认关）</td></tr>
+    <tr><td>时序边变化</td><td><code>index</code> 后 <code>diff</code>；注意 <code>baseline_stale</code></td></tr>
+    <tr><td>多包 monorepo</td><td><code>index --workspace</code> + <code>--workspace-root</code></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. 机器可读字段</h2>
+  <table>
+    <tr><th>字段</th><th>含义</th></tr>
+    <tr><td><code>edge_role</code></td><td>call | implementor | registration | dynamic</td></tr>
+    <tr><td><code>window</code></td><td>sound | default（blast_radius 自动选择）</td></tr>
+    <tr><td><code>promise_tier</code></td><td>ast_modeled | lexical_v1 | mixed | disabled</td></tr>
+    <tr><td><code>sound_candidates</code></td><td>还可做 scoped sound 的 root/path</td></tr>
+    <tr><td><code>baseline_stale</code></td><td>watch/增量后 diff 基线未刷新</td></tr>
+    <tr><td><code>sidecar_stale</code> / <code>sidecar_exists</code></td><td>宏旁路状态（status 即可读，不建文件）</td></tr>
+    <tr><td><code>recommendation</code></td><td>一句话建议（sound/默认/宏/stale）</td></tr>
+    <tr><td><code>root_id</code> / <code>root_path</code></td><td>workspace 多根归属</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. 禁止误读</h2>
+  <div class="card">
+    <ul>
+      <li>没有「零漏报 / 生态 sound / 宏完整」</li>
+      <li><code>--sound</code> 与 <code>--with-macro</code> 互斥</li>
+      <li>workspace union 的 sound = <strong>最弱 root</strong></li>
+      <li>L1 / implementor 是<strong>候选</strong>，不是运行时完备调用图</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  源码文档：<code>docs/agent-recipes.md</code> · <code>docs/sound-subset.md</code> · <code>docs/workspace.md</code> ·
+  <code>docs/noise-governance.md</code> · <code>docs/macro-sidecar.md</code>
+  <br />本页为离线说明，不连接网络；与 CLI/MCP 实现同步维护。
+</footer>
+</body>
+</html>

@@ -411,6 +411,15 @@ pub struct IndexStats {
     /// Per-root counts when the store holds a multi-root workspace (M4-W).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub by_root: Vec<RootIndexStats>,
+    /// P5: dirty reindex after last full-index baseline snapshot.
+    #[serde(default)]
+    pub baseline_stale: bool,
+    /// P5: cheap macro-sidecar existence flag (never creates the sidecar file).
+    #[serde(default)]
+    pub sidecar_exists: bool,
+    /// P5: cheap macro-sidecar fingerprint-stale flag.
+    #[serde(default)]
+    pub sidecar_stale: bool,
 }
 
 /// Per-root index counters (workspace multi-root).
@@ -484,6 +493,24 @@ pub struct WorkspaceStatus {
     /// Root id with the weakest S gate (violations first; empty when clean).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weakest_root: Option<String>,
+    /// P4: machine-readable scoped-sound candidates (eligible first).
+    #[serde(default)]
+    pub sound_candidates: Vec<serde_json::Value>,
+    /// P4: one-liner scoped `--sound` recommendation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommendation: Option<String>,
+    /// P4: per-root sound buckets (violations / top_kinds / promise / eligible).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub by_root: Vec<serde_json::Value>,
+    /// P5: dirty reindex after last full-index baseline snapshot.
+    #[serde(default)]
+    pub baseline_stale: bool,
+    /// P5: cheap macro-sidecar existence flag (never creates sidecar).
+    #[serde(default)]
+    pub sidecar_exists: bool,
+    /// P5: cheap macro-sidecar fingerprint-stale flag.
+    #[serde(default)]
+    pub sidecar_stale: bool,
 }
 
 /// Result of `index --workspace` / `--workspace-root`.
@@ -606,6 +633,15 @@ pub struct MacroSidecarStatus {
     /// Sidecars are operator-rebuilt (`macro rebuild`); no auto cargo-expand.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rebuild_policy: Option<String>,
+    /// P5 alias of `exists` (stable honesty field for Agents).
+    #[serde(default)]
+    pub sidecar_exists: bool,
+    /// P5 alias of `stale` (stable honesty field for Agents).
+    #[serde(default)]
+    pub sidecar_stale: bool,
+    /// P5: dirty reindex after last full-index baseline snapshot.
+    #[serde(default)]
+    pub baseline_stale: bool,
 }
 
 impl Default for MacroSidecarStatus {
@@ -627,6 +663,9 @@ impl Default for MacroSidecarStatus {
             path_map: Vec::new(),
             dedup_stats: DedupStats::default(),
             rebuild_policy: Some("manual".into()),
+            sidecar_exists: false,
+            sidecar_stale: false,
+            baseline_stale: false,
         }
     }
 }

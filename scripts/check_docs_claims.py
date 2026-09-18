@@ -229,6 +229,7 @@ DEFAULT_DOCS = [
     "docs/graph-html.md",
     "docs/graph-diff.md",
     "docs/workspace.md",
+    "docs/agent-recipes.md",
     "docs/eval-l1.md",
     "docs/eval-l2.md",
     "docs/eval-large-repo.md",
@@ -250,6 +251,7 @@ DEFAULT_FLAG_DOCS = [
     "docs/workspace.md",
     "docs/macro-sidecar.md",
     "docs/sound-subset.md",
+    "docs/agent-recipes.md",
 ]
 
 
@@ -479,7 +481,7 @@ _AGENTGRAPH_CMD_RE = re.compile(
 )
 _TABLE_CMD_RE = re.compile(r"(?m)^\|\s*`([a-z][a-z0-9-]*(?:\s+[a-z][a-z0-9-]*)?)`\s*\|")
 _BACKTICK_CMD_RE = re.compile(
-    r"`(macro status|workspace status|workspace|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp|diff)`"
+    r"`(macro status|workspace status|workspace|subset|importers|enrich|watch|related|callers|impact|find|index|stats|graph|export|bench-query|mcp|diff|blast-radius|who-calls)`"
 )
 
 
@@ -530,6 +532,7 @@ def extract_doc_cli_mentions(text: str) -> Tuple[Set[str], Set[str]]:
                 "index", "stats", "find", "callers", "impact", "related",
                 "importers", "enrich", "watch", "subset", "export", "mcp",
                 "bench-query", "macro", "graph", "diff", "workspace",
+                "blast-radius", "who-calls",
             }:
                 commands.add(cmd)
             i += 1
@@ -616,7 +619,7 @@ def check_flags_in_docs(
             if cmd in known_commands:
                 continue
             # ignore table false-positives that are pure prose nouns
-            if cmd in {"confidence", "evidence", "promise", "subset_ok"}:
+            if cmd in {"confidence", "evidence", "promise", "subset_ok", "recommendation", "true", "false"}:
                 continue
             violations.append(
                 f"{path}: doc mentions command `{cmd}` but it is not present in clap CLI "

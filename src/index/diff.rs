@@ -96,6 +96,35 @@ pub struct EdgeDiff {
     /// Workspace root filter applied to this diff (if any).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_id: Option<String>,
+    /// True when a dirty reindex (`watch` / `index_paths`) ran after the last
+    /// full-index baseline write. Diff baseline was **not** auto-refreshed.
+    #[serde(default)]
+    pub baseline_stale: bool,
+}
+
+/// Meta key for the baseline-stale honesty flag (P5).
+pub const BASELINE_STALE_META_KEY: &str = "baseline_stale";
+
+/// Read `meta.baseline_stale` (false when unset / after full index).
+///
+/// Stable helper for CLI / MCP / Agents — never writes meta.
+pub fn baseline_stale_flag(store: &Store) -> bool {
+    store
+        .get_meta(BASELINE_STALE_META_KEY)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("true")
+}
+
+/// Set `meta.baseline_stale`. Full index / `--write-snapshot` clear it;
+/// dirty `index_paths` / watch scoped reindex set it. Does **not** rewrite
+/// the snapshot baseline itself.
+pub fn set_baseline_stale(store: &Store, stale: bool) -> Result<()> {
+    store.set_meta(
+        BASELINE_STALE_META_KEY,
+        if stale { "true" } else { "false" },
+    )
 }
 
 /// Stable set-key for one edge: name + path + line + confidence + enclosing.
@@ -176,6 +205,7 @@ pub fn diff_edges(
         current_index_seq: None,
         baseline_source: None,
         root_id: None,
+        baseline_stale: false,
     }
 }
 
@@ -289,6 +319,8 @@ pub fn write_index_snapshot_for_root(
     let index_seq = next_index_seq(store)?;
     store.set_meta("index_seq", &index_seq.to_string())?;
     store.set_meta("indexed_at", &now_stamp())?;
+    // P5: full-index snapshot write clears the dirty-reindex stale flag.
+    let _ = set_baseline_stale(store, false);
 
     let (snap_path, prev_path) = if root_id.is_empty() {
         (snapshot_path(root), snapshot_prev_path(root))
@@ -353,6 +385,8 @@ pub fn write_baseline_snapshot_for_root(
     };
     write_snapshot_file(&snap_path, &snap)?;
     write_snapshot_file(&prev_path, &snap)?;
+    // P5: explicit baseline promote locks "now" — clear stale flag.
+    let _ = set_baseline_stale(store, false);
     Ok(snap)
 }
 
@@ -479,6 +513,8 @@ pub fn run_diff_for_root(
     if !root_id.is_empty() {
         d.root_id = Some(root_id.to_string());
     }
+    // P5: always report whether dirty reindex drifted after the last full snapshot.
+    d.baseline_stale = baseline_stale_flag(store);
     let current_seq = store
         .get_meta("index_seq")?
         .and_then(|s| s.parse::<u64>().ok());

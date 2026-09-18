@@ -313,9 +313,9 @@ Py/Go AST S + 差分 + 文档：**约 2–4 周**（视 tracer 基建是否复�
 - [x] Agent 可用 CLI/MCP 回答：「索引层面，改文件后哪些调用边新增？」（`agentgraph diff` / MCP `graph_diff`；honesty: indexed edges only）
 - [x] watch 后 `--sound` 不使用陈旧 S。（`index_paths` + `refresh_subset_for_paths`；`tests/s_recert_watch.rs`）
 - [x] HTML `--sound` 在违例时**不**展示为合格 sound 图。（仍写 HTML；`subset_ok=false` 标记 disabled；exit 非 0；`tests/graph_html.rs`）
-- [x] 文档与实现一致；全门禁绿。（`docs/graph-diff.md`、`graph-html.md`、`sound-subset.md`；workspace 多 root 记为 backlog）
+- [x] 文档与实现一致；全门禁绿。（`docs/workspace.md`、`graph-diff.md`、`graph-html.md`、`sound-subset.md`）
 
-**M4 落地备注：** workspace `index --workspace` 未做，backlog 见 `docs/graph-diff.md`；推荐将来单库 + `root_id`。
+**M4 落地备注（2026-09-18 close）:** workspace **已交付**（Track M4-W）：单库 + `root_id`；`index --workspace` / `--workspace-root` + `--workspace-db`；`workspace status`；查询过滤与 union 打标；`--sound` union = weakest root；macro sidecar 仍 per-root 且 multi-root 无 root 过滤时拒绝。Watch 仍为 classic `--root`（文档化 non-goal）。详见 [workspace.md](workspace.md)。
 
 ### 4.7 粗估
 
@@ -528,13 +528,13 @@ macro status
 | watch 后 S 重认证 | **已交付** | `Store::refresh_subset_for_paths` + `index_paths` 钩子；`tests/s_recert_watch.rs`（脏文件违例 → `promise_tier=disabled` → 修复清除 → 删除 prune） |
 | HTML L2 | **已交付** | CLI `graph --sound`；`subset_ok=false` 仍写页 + exit 非 0 + disabled 标记；与 `--with-macro`/`--exact-only` 互斥 fail-closed；`docs/graph-html.md` |
 | 语义诚实 | **已交付** | diff 文案固定 “indexed edges only; not a runtime call-graph diff” |
-| 多根 workspace | **未交付（backlog）** | 无 `index --workspace` / `workspace_index.rs`；`docs/graph-diff.md` §Workspace multi-root 已写明将来推荐单库 + `root_id` |
+| 多根 workspace | **已交付（M4-W）** | `src/index/workspace.rs` + schema `root_id` 迁移；CLI/MCP；`tests/workspace_index.rs`(17)+`r31_adversarial`；`docs/workspace.md` |
 
 ### 相对清单的 M4 残差
 
 | ID | 缺漏 | 严重度 | 说明 |
 |---|---|---|---|
-| M4-W | `index --workspace` 多根 monorepo | 中（功能缺口） | 目标表四行之一；实现有意延后且已文档化，**不能**说「M4 全部做完了」 |
+| M4-W | `index --workspace` 多根 monorepo | — | **closed 2026-09-18** — 单库 + `root_id`；测试/文档/MCP 齐 |
 | M4-P | `tests/query_p95.rs` / `docs/eval-query-p95.md` 无 diff / S-recert 延迟预算 | 低 | 清单 M4.5/M4.11 要求；查询主路径 p95 仍有效 |
 | M4-M | MCP 无 `graph`（HTML/sound）tool | 低 | 清单 M4.6 写了 `graph_diff` + 可选 `graph`；Agent 仍可走 CLI `graph --sound` |
 | M4-S | 形态非 `diff --since <time>` | 无（有意） | 采用双 sidecar 快照，优于时间戳语义；与清单「或 graph-diff」一致 |
@@ -551,7 +551,7 @@ macro status
 ### 总评
 
 - **M4 核心三件（diff / S 重认证 / HTML L2）产品路径完整**，测试与文档齐，可称 API 面已前移。  
-- **不能**在无保留意义上写「M4 全部完成」：**workspace 多根**明确 backlog；p95 预算与 MCP HTML graph 为次要缺口。  
+- **M4 可称主体完成**：diff / S 重认证 / HTML L2 / **workspace 多根**均已交付。次要残留：`query_p95.rs` 无自动化 workspace p95 用例（docs 有 soft SLO）；MCP 无 HTML `graph` tool；watch 非多根（有意）。  
 - 此前你点名的若干问题（M2 README 诚实句、M3 fixture/real eval、CLI/impact 测试、M1 e2e 金标、PLAN 命名等）**均已闭环**。
 
 ---

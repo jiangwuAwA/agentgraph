@@ -34,6 +34,41 @@ pub fn macro_sidecar_path(root: &Path) -> PathBuf {
     root.join(".agentgraph").join(MACRO_SIDECAR_DB_NAME)
 }
 
+/// Cheap sidecar flags for status/stats honesty (P5).
+///
+/// Returns `(sidecar_exists, sidecar_stale)`. **Never creates** the sidecar
+/// file. Missing recorded fingerprint → `stale=false` (same rule as
+/// `Indexer::macro_sidecar_stale`). Unreadable sidecar → `(true, true)`.
+pub fn cheap_sidecar_flags(root: &Path) -> (bool, bool) {
+    let path = macro_sidecar_path(root);
+    if !path.exists() {
+        return (false, false);
+    }
+    match store::Store::open(&path) {
+        Ok(st) => {
+            let fp = st.get_meta("source_fingerprint").ok().flatten();
+            let stale = match fp.as_deref() {
+                Some(r) if !r.is_empty() => macro_map::source_fingerprint(root) != r,
+                _ => false,
+            };
+            (true, stale)
+        }
+        Err(_) => (true, true),
+    }
+}
+
+/// Aggregate cheap sidecar flags across one or more roots (OR of exists/stale).
+pub fn cheap_sidecar_flags_multi(roots: &[PathBuf]) -> (bool, bool) {
+    let mut any_exists = false;
+    let mut any_stale = false;
+    for r in roots {
+        let (e, s) = cheap_sidecar_flags(r);
+        any_exists |= e;
+        any_stale |= s;
+    }
+    (any_exists, any_stale)
+}
+
 pub struct Indexer {
     pub root: PathBuf,
     pub db_path: PathBuf,
@@ -308,9 +343,19 @@ impl Indexer {
         let path = self.macro_sidecar_path();
         let path_str = path.to_string_lossy().into_owned();
         if !path.exists() {
+            // P5: cheap honesty flags even when the sidecar was never built.
+            let baseline_stale = {
+                match store::Store::open(&self.db_path) {
+                    Ok(st) => diff::baseline_stale_flag(&st),
+                    Err(_) => false,
+                }
+            };
             return Ok(MacroSidecarStatus {
                 path: path_str,
                 rebuild_policy: Some("manual".into()),
+                sidecar_exists: false,
+                sidecar_stale: false,
+                baseline_stale,
                 ..MacroSidecarStatus::default()
             });
         }
@@ -356,6 +401,11 @@ impl Indexer {
             None => DedupStats::default(),
         };
 
+        let baseline_stale = match store::Store::open(&self.db_path) {
+            Ok(main) => diff::baseline_stale_flag(&main),
+            Err(_) => false,
+        };
+
         Ok(MacroSidecarStatus {
             exists: true,
             path: path_str,
@@ -373,6 +423,9 @@ impl Indexer {
             path_map: path_map_pairs,
             dedup_stats,
             rebuild_policy: Some("manual".into()),
+            sidecar_exists: true,
+            sidecar_stale: stale,
+            baseline_stale,
         })
     }
 
@@ -917,6 +970,13 @@ impl Indexer {
             recert.extend(deleted.iter().cloned());
             if let Err(e) = store.refresh_subset_for_paths(&recert) {
                 eprintln!("warn: S re-cert refresh failed: {e:#}");
+            }
+        }
+        // P5: dirty reindex after last full snapshot — mark baseline stale.
+        // Do **not** auto-refresh the refs.snapshot baseline (diff must show drift).
+        if !dirty_paths.is_empty() || !deleted.is_empty() {
+            if let Err(e) = diff::set_baseline_stale(&store, true) {
+                eprintln!("warn: failed to set meta.baseline_stale: {e:#}");
             }
         }
         Ok(stats)

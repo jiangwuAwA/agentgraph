@@ -82,6 +82,8 @@ TypeScript, TSX, JavaScript, JSX, Python, Go, Rust.
 | `related` | Definition + importers + references (scope retrieval) |
 | `importers` | Who imports a given file |
 | `workspace status` | Multi-root workspace index health (per-root counts, exact/heur, violations, `promise_tier`, `index_seq`, `missing`) — one-liner: `agentgraph index --workspace-root api --workspace-root web --workspace-db ./ws.db` then `workspace status` — [docs/workspace.md](docs/workspace.md) |
+| `blast-radius` | High-level blast-radius recipe: auto `window=sound\|default` (sound only when `subset_ok`; default Exact+Heuristic otherwise — never blind `--recall`) + `recommendation` / honesty `note` — [docs/agent-recipes.md](docs/agent-recipes.md) |
+| `who-calls` | High-level who-calls recipe: implementors separated/collapsed by default (`--noisy` merges); high-freq names demoted — [docs/agent-recipes.md](docs/agent-recipes.md) |
 | `macro status` | Optional macro-expanded sidecar (P2/M1, default OFF) — path + counts + `expanded_root_missing` / `expanded_root_nested` / `subset_violation_count` / `stale` / `path_map_present` / `dedup_stats` / `rebuild_policy`. Sidecar is **per-root**; workspace multi-root `--with-macro` needs a single `--workspace-root` filter |
 | `macro rebuild` | Re-index recorded expanded shadow into sidecar (idempotent; no `cargo expand`; not sound) |
 
@@ -143,7 +145,7 @@ Uses **fsnotify** with debounce; falls back to poll (mtime nanos + size) if the 
 agentgraph --root /path/to/repo mcp
 ```
 
-Tools: `index`, `find_symbol`, `callers`, `impact`, `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), **`graph_diff`** (indexed-edge snapshot diff; not runtime semantics — [docs/graph-diff.md](docs/graph-diff.md)), **`workspace_status`** (multi-root health — [docs/workspace.md](docs/workspace.md)), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)). Query tools accept optional `workspace_db` / `root_id` filters (default off).
+Tools: `index`, `find_symbol`, `callers`, `impact`, **`blast_radius`** / **`who_calls`** (high-level agent recipes — auto window + implementor separation; [docs/agent-recipes.md](docs/agent-recipes.md)), `related_files`, `importers`, `enrich`, `stats`, **`subset`** (S-violation report that gates `--sound`), **`graph_diff`** (indexed-edge snapshot diff; not runtime semantics — [docs/graph-diff.md](docs/graph-diff.md)), **`workspace_status`** (multi-root health — [docs/workspace.md](docs/workspace.md)), optional **`macro_status`** / **`macro_rebuild`** / `with_macro` + `no_macro_dedup` (P2/M1 sidecar, default off — [docs/macro-sidecar.md](docs/macro-sidecar.md)). Query tools accept optional `workspace_db` / `root_id` filters (default off).
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 

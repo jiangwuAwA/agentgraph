@@ -1,3 +1,5 @@
+pub mod recipes;
+
 use anyhow::Result;
 use serde_json::{json, Value};
 

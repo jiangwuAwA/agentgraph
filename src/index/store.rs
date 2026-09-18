@@ -941,6 +941,10 @@ impl Store {
             } else {
                 Vec::new()
             },
+            // Filled by CLI/status via cheap meta/sidecar reads (P5).
+            baseline_stale: false,
+            sidecar_exists: false,
+            sidecar_stale: false,
         })
     }
 
@@ -2529,6 +2533,45 @@ impl Store {
             }
         }
         Ok(by_id.into_values().collect())
+    }
+
+    /// Distinct top-level path segments of indexed files (single-root trees).
+    /// Used by scoped-sound `by_top_dir` aggregation. Never creates files.
+    pub fn distinct_file_top_dirs(&self, root_id: Option<&str>) -> Result<Vec<String>> {
+        use crate::index::subset::top_dir_of_path;
+        use std::collections::BTreeSet;
+        let sql = match root_id {
+            None => "SELECT DISTINCT path FROM files".to_string(),
+            Some(_) => "SELECT DISTINCT path FROM files WHERE root_id = ?1".to_string(),
+        };
+        let mut stmt = self.conn.prepare(&sql)?;
+        // Collect first — avoids two distinct MappedRows closure types in match arms.
+        let paths: Vec<String> = match root_id {
+            None => {
+                let mut v = Vec::new();
+                let mut rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                for row in rows.by_ref() {
+                    v.push(row?);
+                }
+                v
+            }
+            Some(rid) => {
+                let mut v = Vec::new();
+                let mut rows = stmt.query_map(params![rid], |r| r.get::<_, String>(0))?;
+                for row in rows.by_ref() {
+                    v.push(row?);
+                }
+                v
+            }
+        };
+        let mut dirs = BTreeSet::new();
+        for path in paths {
+            let d = top_dir_of_path(&path);
+            if !d.is_empty() {
+                dirs.insert(d);
+            }
+        }
+        Ok(dirs.into_iter().collect())
     }
 }
 

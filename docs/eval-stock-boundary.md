@@ -14,6 +14,7 @@ Related:
 - Per-crate S table: [eval-stock-s-map.md](eval-stock-s-map.md) (+ `.tsv`)
 - Prior large-repo sampling: [eval-large-repo.md](eval-large-repo.md)
 - S / promise rules: [sound-subset.md](sound-subset.md)
+- Machine-readable scoped candidates (`sound_candidates` / one-click recipe): [agent-recipes.md](agent-recipes.md), [workspace.md](workspace.md)
 
 Reproduce scripts (operator):
 

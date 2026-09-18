@@ -548,6 +548,34 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
             (None, None)
         }
     };
+
+    // P4: scoped-sound aggregation by root_id (eligible first + recommendation).
+    let violations = store.subset_violations()?;
+    let agg = crate::index::subset::scoped_sound_by_root(&roots, &violations, &stats.languages);
+    let sound_candidates: Vec<serde_json::Value> = agg
+        .sound_candidates
+        .iter()
+        .map(|c| c.to_payload_json())
+        .collect();
+    let by_root_buckets: Vec<serde_json::Value> =
+        agg.buckets.iter().map(|b| b.to_payload_json()).collect();
+
+    // P5: cheap stale honesty flags (never create sidecar / never refresh baseline).
+    let baseline_stale = crate::index::diff::baseline_stale_flag(&store);
+    let mut sidecar_roots: Vec<PathBuf> = roots
+        .iter()
+        .filter(|r| !r.path.is_empty())
+        .map(|r| PathBuf::from(&r.path))
+        .collect();
+    if sidecar_roots.is_empty() {
+        // Classic single-root store sitting in a workspace-status call: check
+        // `<db_parent_parent>/.agentgraph` heuristic via db path parent chain.
+        if let Some(parent) = db_path.parent().and_then(|p| p.parent()) {
+            sidecar_roots.push(parent.to_path_buf());
+        }
+    }
+    let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+
     Ok(WorkspaceStatus {
         db_path: db_path.to_string_lossy().into_owned(),
         workspace,
@@ -557,10 +585,18 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
         references: stats.references,
         note: "per-root counts from root_id column; empty root_id = legacy single-root rows; \
                --sound + workspace: subset_ok is per selected root (union = weakest root); \
-               macro sidecar is per-root at <root>/.agentgraph/index.macro.db"
+               macro sidecar is per-root at <root>/.agentgraph/index.macro.db; \
+               sound_candidates list scoped --sound roots eligible first; \
+               baseline_stale / sidecar_* are honesty flags (no auto-refresh)"
             .to_string(),
         index_seq,
         promise_tier,
         weakest_root,
+        sound_candidates,
+        recommendation: Some(agg.recommendation.clone()),
+        by_root: by_root_buckets,
+        baseline_stale,
+        sidecar_exists,
+        sidecar_stale,
     })
 }

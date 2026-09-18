@@ -1607,6 +1607,367 @@ fn walk_rs_s(node: Node, source: &str, path: &str, violations: &mut Vec<SubsetVi
     }
 }
 
+// ---------------------------------------------------------------------------
+// P4: scoped-sound aggregation (workspace root_id / single-root top-dir)
+//
+// Stable helpers exported for CLI / MCP / Agents. Honesty: a scoped candidate
+// is sound-eligible only when that bucket has **0** S violations. Global
+// workspace `--sound` remains weakest-root; these helpers only tell Agents
+// where a **scoped** `--sound --workspace-root <eligible>` is honest.
+// ---------------------------------------------------------------------------
+
+/// How a sound-scope bucket is keyed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoundScopeKind {
+    /// Workspace multi-root: keyed by `root_id`.
+    Root,
+    /// Single-root tree: keyed by top-level path segment.
+    TopDir,
+}
+
+/// Metadata used to seed a bucket that must appear even when clean.
+#[derive(Debug, Clone)]
+pub struct SoundBucketInput {
+    pub key: String,
+    /// Recorded workspace root path (when known).
+    pub path: Option<String>,
+    /// Languages for this bucket (falls back to corpus languages).
+    pub languages: Option<Vec<String>>,
+}
+
+/// One aggregated S-violation bucket for scoped sound UX.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoundBucket {
+    /// `root_id` (workspace) or top-level path segment (single-root).
+    pub key: String,
+    pub kind: SoundScopeKind,
+    /// Recorded workspace root path when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub violations: usize,
+    /// Top violation kinds (`kind`, count), most frequent first.
+    pub top_kinds: Vec<(String, usize)>,
+    pub promise_tier: String,
+    /// True only when this bucket has 0 S violations.
+    pub sound_eligible: bool,
+}
+
+/// Machine-readable scoped `--sound` candidate (Agents / other tools).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoundCandidate {
+    pub key: String,
+    pub kind: SoundScopeKind,
+    pub promise_tier: String,
+    pub reason: String,
+    pub sound_eligible: bool,
+}
+
+/// Aggregation payload shared by CLI `subset` / `workspace status` / MCP.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoundAggregation {
+    pub scope: SoundScopeKind,
+    pub buckets: Vec<SoundBucket>,
+    /// Sorted eligible first, then ineligible by key.
+    pub sound_candidates: Vec<SoundCandidate>,
+    /// One-liner recommendation for scoped `--sound`.
+    pub recommendation: String,
+}
+
+impl SoundBucket {
+    /// Payload JSON: `root_id|path` + counts + promise + eligibility.
+    pub fn to_payload_json(&self) -> serde_json::Value {
+        let id_field = match self.kind {
+            SoundScopeKind::Root => "root_id",
+            SoundScopeKind::TopDir => "path",
+        };
+        let mut obj = serde_json::Map::new();
+        obj.insert(id_field.into(), serde_json::json!(self.key));
+        if let Some(p) = &self.path {
+            if self.kind == SoundScopeKind::Root {
+                obj.insert("path".into(), serde_json::json!(p));
+            }
+        }
+        obj.insert("violations".into(), serde_json::json!(self.violations));
+        obj.insert(
+            "top_kinds".into(),
+            serde_json::json!(self
+                .top_kinds
+                .iter()
+                .map(|(k, n)| serde_json::json!({"kind": k, "count": n}))
+                .collect::<Vec<_>>()),
+        );
+        obj.insert("promise_tier".into(), serde_json::json!(self.promise_tier));
+        obj.insert(
+            "sound_eligible".into(),
+            serde_json::json!(self.sound_eligible),
+        );
+        serde_json::Value::Object(obj)
+    }
+}
+
+impl SoundCandidate {
+    /// Payload JSON: `{root_id|path, promise_tier, reason, sound_eligible}`.
+    pub fn to_payload_json(&self) -> serde_json::Value {
+        let id_field = match self.kind {
+            SoundScopeKind::Root => "root_id",
+            SoundScopeKind::TopDir => "path",
+        };
+        let mut obj = serde_json::Map::new();
+        obj.insert(id_field.into(), serde_json::json!(self.key));
+        obj.insert("promise_tier".into(), serde_json::json!(self.promise_tier));
+        obj.insert("reason".into(), serde_json::json!(self.reason));
+        obj.insert(
+            "sound_eligible".into(),
+            serde_json::json!(self.sound_eligible),
+        );
+        serde_json::Value::Object(obj)
+    }
+}
+
+impl SoundAggregation {
+    /// Stable payload object for CLI/MCP subset + workspace status.
+    pub fn to_payload_json(&self) -> serde_json::Value {
+        let buckets_field = match self.scope {
+            SoundScopeKind::Root => "by_root",
+            SoundScopeKind::TopDir => "by_top_dir",
+        };
+        serde_json::json!({
+            buckets_field: self.buckets.iter().map(|b| b.to_payload_json()).collect::<Vec<_>>(),
+            "sound_candidates": self.sound_candidates.iter().map(|c| c.to_payload_json()).collect::<Vec<_>>(),
+            "recommendation": self.recommendation,
+        })
+    }
+}
+
+/// Top-level path segment for single-root trees. Root-level files → `""`.
+pub fn top_dir_of_path(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    match p.split_once('/') {
+        Some((dir, _)) if !dir.is_empty() => dir.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn top_kinds_for(violations: &[&SubsetViolation]) -> Vec<(String, usize)> {
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for v in violations {
+        *counts.entry(v.kind.clone()).or_default() += 1;
+    }
+    let mut pairs: Vec<(String, usize)> = counts.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    pairs.truncate(5);
+    pairs
+}
+
+fn reason_for_eligible(tier: &str) -> String {
+    format!("0 S violations; promise_tier={tier} — honest for scoped --sound on this root/path")
+}
+
+fn reason_for_ineligible(violations: usize, top_kinds: &[(String, usize)], tier: &str) -> String {
+    let kinds: Vec<String> = top_kinds
+        .iter()
+        .map(|(k, n)| {
+            if *n > 1 {
+                format!("{k}×{n}")
+            } else {
+                k.clone()
+            }
+        })
+        .collect();
+    if kinds.is_empty() {
+        format!("{violations} S violations; promise_tier={tier} — avoid --sound on this scope")
+    } else {
+        format!(
+            "{violations} S violations ({}); promise_tier={tier} — avoid --sound on this scope",
+            kinds.join(", ")
+        )
+    }
+}
+
+fn recommend_scoped_sound(scope: SoundScopeKind, candidates: &[SoundCandidate]) -> String {
+    let eligible: Vec<&str> = candidates
+        .iter()
+        .filter(|c| c.sound_eligible)
+        .map(|c| c.key.as_str())
+        .collect();
+    let ineligible: Vec<&str> = candidates
+        .iter()
+        .filter(|c| !c.sound_eligible)
+        .map(|c| c.key.as_str())
+        .collect();
+    let label = match scope {
+        SoundScopeKind::Root => "workspace roots",
+        SoundScopeKind::TopDir => "top-level dirs",
+    };
+    if eligible.is_empty() {
+        return format!(
+            "no sound-eligible {label} — every scope has S violations; do not claim --sound \
+             (see docs/sound-subset.md scoped recipe after cleaning a root)"
+        );
+    }
+    let mut rec = format!("scoped --sound on {}", eligible.join("/"));
+    if !ineligible.is_empty() {
+        rec.push_str(&format!("; avoid {}", ineligible.join("/")));
+    }
+    rec.push_str(" — e.g. impact X --sound --workspace-root <eligible> (see docs/sound-subset.md)");
+    rec
+}
+
+/// One scoped-sound aggregation key: `(key, path, languages)`.
+pub type ScopedSoundKey = (String, Option<String>, Option<Vec<String>>);
+
+/// Aggregate violations into scoped-sound buckets (stable helper).
+///
+/// - `keys`: `(key, path, languages)` buckets that must appear even when clean.
+/// - `key_of_violation`: maps a violation to its bucket key.
+/// - `default_languages`: corpus languages used when a bucket has none.
+pub fn aggregate_scoped_sound(
+    scope: SoundScopeKind,
+    keys: &[ScopedSoundKey],
+    violations: &[SubsetViolation],
+    key_of_violation: impl Fn(&SubsetViolation) -> String,
+    default_languages: &[String],
+) -> SoundAggregation {
+    use std::collections::BTreeMap;
+
+    let mut order: Vec<String> = Vec::new();
+    let mut paths: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut langs: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
+    let mut by_key: BTreeMap<String, Vec<&SubsetViolation>> = BTreeMap::new();
+
+    for (key, path, languages) in keys {
+        if !by_key.contains_key(key) && !order.contains(key) {
+            order.push(key.clone());
+        }
+        paths.insert(key.clone(), path.clone());
+        langs.insert(key.clone(), languages.clone());
+    }
+    for v in violations {
+        let key = key_of_violation(v);
+        if key.is_empty() {
+            continue;
+        }
+        if !order.contains(&key) {
+            order.push(key.clone());
+        }
+        by_key.entry(key).or_default().push(v);
+    }
+
+    let mut buckets: Vec<SoundBucket> = Vec::new();
+    for key in order {
+        let viols = by_key.get(&key).cloned().unwrap_or_default();
+        let count = viols.len();
+        let top = top_kinds_for(&viols);
+        let bucket_langs = langs
+            .get(&key)
+            .cloned()
+            .flatten()
+            .unwrap_or_else(|| default_languages.to_vec());
+        let eligible = count == 0;
+        let tier = sound_promise_tier(eligible, &bucket_langs)
+            .as_str()
+            .to_string();
+        buckets.push(SoundBucket {
+            key: key.clone(),
+            kind: scope,
+            path: paths.get(&key).cloned().flatten(),
+            violations: count,
+            top_kinds: top,
+            promise_tier: tier,
+            sound_eligible: eligible,
+        });
+    }
+
+    let mut candidates: Vec<SoundCandidate> = buckets
+        .iter()
+        .map(|b| SoundCandidate {
+            key: b.key.clone(),
+            kind: b.kind,
+            promise_tier: b.promise_tier.clone(),
+            reason: if b.sound_eligible {
+                reason_for_eligible(&b.promise_tier)
+            } else {
+                reason_for_ineligible(b.violations, &b.top_kinds, &b.promise_tier)
+            },
+            sound_eligible: b.sound_eligible,
+        })
+        .collect();
+    // Eligible first; preserve input order within each group (stable sort).
+    candidates.sort_by(|a, b| match (a.sound_eligible, b.sound_eligible) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => std::cmp::Ordering::Equal,
+    });
+
+    let recommendation = recommend_scoped_sound(scope, &candidates);
+    SoundAggregation {
+        scope,
+        buckets,
+        sound_candidates: candidates,
+        recommendation,
+    }
+}
+
+/// Workspace multi-root aggregation keyed by `root_id`.
+pub fn scoped_sound_by_root(
+    roots: &[crate::model::WorkspaceRootInfo],
+    violations: &[SubsetViolation],
+    languages: &[String],
+) -> SoundAggregation {
+    let keys: Vec<(String, Option<String>, Option<Vec<String>>)> = roots
+        .iter()
+        .map(|r| {
+            (
+                r.id.clone(),
+                Some(r.path.clone()).filter(|p| !p.is_empty()),
+                r.languages.clone(),
+            )
+        })
+        .collect();
+    aggregate_scoped_sound(
+        SoundScopeKind::Root,
+        &keys,
+        violations,
+        |v| {
+            if v.root_id.is_empty() {
+                "default".to_string()
+            } else {
+                v.root_id.clone()
+            }
+        },
+        languages,
+    )
+}
+
+/// Single-root aggregation keyed by top-level path segment.
+///
+/// `keys` are `(top_dir, path, languages)` that must appear even when clean.
+pub fn scoped_sound_by_top_dir(
+    keys: &[(String, Option<String>)],
+    violations: &[SubsetViolation],
+    languages: &[String],
+) -> SoundAggregation {
+    let inputs: Vec<(String, Option<String>, Option<Vec<String>>)> = keys
+        .iter()
+        .map(|(k, p)| (k.clone(), p.clone(), None))
+        .collect();
+    aggregate_scoped_sound(
+        SoundScopeKind::TopDir,
+        &inputs,
+        violations,
+        |v| {
+            let d = top_dir_of_path(&v.path);
+            if d.is_empty() {
+                "(root)".to_string()
+            } else {
+                d
+            }
+        },
+        languages,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -100,7 +100,7 @@ all roots** and still tag each row with `root_id`.
 |---|---|
 | Default query JSON (find/callers/impact/diff/subset/sound) | Every row that can appear in a multi-root DB includes `root_id` (empty legacy rows serialize as `"default"`). Classic single-root path may omit `root_id`. |
 | `find` path display | Rows also carry `root_path` (recorded workspace root path) so agents do not confuse `src/main.ts` in two roots |
-| `workspace status` | Per-root `files`/`symbols`/`references`/`exact_refs`/`heuristic_refs`/`subset_violations` + `promise_tier` + `index_seq` + `missing:true` when the recorded path is gone; payload-level `promise_tier` + `weakest_root` (union sound = weakest root) |
+| `workspace status` | Per-root `files`/`symbols`/`references`/`exact_refs`/`heuristic_refs`/`subset_violations` + `promise_tier` + `index_seq` + `missing:true` when the recorded path is gone; payload-level `promise_tier` + `weakest_root` (union sound = weakest root). **P4:** `sound_candidates[]` (eligible first) + `recommendation` + enriched `by_root[]` (`violations` / `top_kinds` / `promise_tier` / `sound_eligible`). **P5:** `baseline_stale`, `sidecar_exists`, `sidecar_stale` (cheap meta reads; never create sidecar / never refresh baseline) |
 | Partial re-index | `index --workspace-root api --workspace-db ws.db` re-indexes/prunes **that** `root_id` only; sibling roots remain in the store and meta |
 | `graph` / `graph --sound` | Global `--workspace-root` filters the neighborhood; HTML nodes show a `root_id` badge (`data-root-id`) when present |
 | Nested roots | Allowed + warned on index; `workspace status` lists **both** roots. Resolution: each root stores **root-relative** paths under its own `root_id`; overlapping files are indexed twice (once per root) — not a shared identity |
@@ -123,7 +123,8 @@ all roots** and still tag each row with `root_id`.
 | Query with multiple `--workspace-root` | Union of selected roots (rows tagged) |
 | `subset` / `--sound` | Per-root when filtered; **union = weakest root** (any violation → `subset_ok=false`) |
 | `stats` | Includes `by_root[]` when workspace rows exist |
-| `workspace status` | Per-root files/symbols/refs/exact_refs/heuristic_refs/subset_violations + `promise_tier` + `index_seq` + `missing` |
+| `workspace status` | Per-root files/symbols/refs/exact_refs/heuristic_refs/subset_violations + `promise_tier` + `index_seq` + `missing` + **`sound_candidates` / `recommendation`** (scoped --sound, eligible first) + **`baseline_stale` / `sidecar_exists` / `sidecar_stale`** |
+| `subset` / MCP `subset` | Always include `sound_candidates[]` + `recommendation`; workspace → `by_root[]`; single-root → `by_top_dir[]`. `subset --by-root` forces root buckets |
 | Macro sidecar | **Per-root path** `<each-root>/.agentgraph/index.macro.db` (unchanged M1). Workspace main index is single-db; sidecars stay per-root. `--with-macro` + multi-root without root filter → **rejected** |
 | Diff snapshots | Workspace full index writes **per-root** sidecars `<root>/.agentgraph/refs.snapshot.<root_id>.json`; classic single-root keeps `refs.snapshot.json` |
 | Event dispatch edges | Linked **within** a root_id only (no cross-root emit↔on) |
@@ -217,6 +218,18 @@ agentgraph graph <sym> --workspace workspace.json --workspace-root ./packages/ap
 ```
 
 Use **scoped** `--sound` only on roots whose `promise_tier` is not `disabled`.
+Machine-readable candidates come from `workspace status` / `subset`
+`sound_candidates` (eligible first) — see [sound-subset.md](sound-subset.md)
+and [agent-recipes.md](agent-recipes.md):
+
+```text
+agentgraph subset --workspace workspace.json
+agentgraph impact X --sound --workspace-root <eligible> --workspace workspace.json
+```
+
+Honesty: per-root cleanliness is a **trial candidate**, not product soundness
+(private stock corpus evidence lives in
+[eval-stock-boundary.md](eval-stock-boundary.md)).
 
 ---
 

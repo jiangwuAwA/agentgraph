@@ -277,4 +277,51 @@ provider resolution lives outside the indexed program and is **not** claimed.
 Related API-surface productization (Track M4): [graph-diff.md](graph-diff.md)
 (indexed-edge snapshot diff), [graph-html.md](graph-html.md) (`graph --sound`).
 
+## Scoped sound when global is disabled (P4)
+
+Global workspace `--sound` promise = **weakest selected root**. A dirty root
+(unsafe / eval / …) disables the union claim even when sibling crates are
+clean. Agents do **not** need to guess which roots are safe:
+
+`agentgraph subset` / `workspace status` / MCP `subset` always emit:
+
+| Field | Meaning |
+|---|---|
+| `by_root[]` | Workspace: per-`root_id` `violations`, `top_kinds`, `promise_tier`, `sound_eligible` (true only when that root has **0** S violations) |
+| `by_top_dir[]` | Single-root trees: same fields keyed by top-level path segment (`repository/src/…` → `repository`) |
+| `sound_candidates[]` | `{root_id\|path, promise_tier, reason, sound_eligible}` **sorted eligible first** |
+| recommendation | One-liner, e.g. `scoped --sound on repository/event-engine/auth; avoid nn-ranker` |
+
+Stable helpers (CLI / MCP / Agents — do not invent parallel tool names):
+
+- `agentgraph::index::subset::{scoped_sound_by_root, scoped_sound_by_top_dir, aggregate_scoped_sound, top_dir_of_path}`
+- `SoundAggregation::to_payload_json()` → `{by_root\|by_top_dir, sound_candidates, recommendation}`
+- CLI `subset --by-root` forces root buckets (workspace already includes them)
+
+### One-click scoped sound recipe
+
+```text
+agentgraph subset --workspace workspace.json
+# read sound_candidates / recommendation (eligible first)
+agentgraph impact <sym> --sound --workspace-root <eligible-root> --workspace workspace.json
+```
+
+Honesty: scoped candidates are **trial eligibility for that root/path only**.
+They are not product soundness, not ecosystem sound, and do not upgrade the
+union `promise_tier`. Expand/sidecar edges stay outside the claim. Stock
+per-crate cleanliness (private corpus) is operator evidence — see
+[eval-stock-boundary.md](eval-stock-boundary.md) and
+[agent-recipes.md](agent-recipes.md).
+
+### Baseline / sidecar staleness (P5 — related honesty)
+
+`subset` / `workspace status` / `stats` / `macro status` / `diff` also carry:
+
+| Field | Meaning |
+|---|---|
+| `baseline_stale` | Dirty reindex (`watch` / `index_paths`) after the last full-index snapshot. Baseline is **not** auto-refreshed. |
+| `sidecar_exists` / `sidecar_stale` | Cheap meta read of optional macro sidecar. **Never creates** the sidecar file. |
+
+See [graph-diff.md](graph-diff.md) for `baseline_stale` on `diff`.
+
 See [PLAN.md](../PLAN.md) §4 and [eval-l2.md](eval-l2.md).

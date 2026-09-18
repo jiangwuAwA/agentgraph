@@ -52,6 +52,8 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 | `related` | 定义 + 导入方 + 引用（用于收敛阅读范围） |
 | `importers` | 谁 import 了该文件 |
 | `workspace status` | 多根 workspace 索引健康度（每根 files/symbols/refs/exact/heur/violations、`promise_tier`、`index_seq`、`missing`）—— 一行上手：`agentgraph index --workspace-root api --workspace-root web --workspace-db ./ws.db` 后 `workspace status` —— [docs/workspace.md](docs/workspace.md) |
+| `blast-radius` | 高层爆炸半径配方：自动 `window=sound\|default`（仅 `subset_ok` 时用 sound；否则默认 Exact+Heuristic，**不是**盲 `--recall`）+ `recommendation` / 诚实 `note` —— [docs/agent-recipes.md](docs/agent-recipes.md) |
+| `who-calls` | 高层 who-calls 配方：默认分离/折叠 implementor（`--noisy` 合并）；高频名 demote —— [docs/agent-recipes.md](docs/agent-recipes.md) |
 
 `callers` / `impact`（以及 MCP 工具）的 confidence 窗口：
 
@@ -112,7 +114,7 @@ agentgraph watch --interval 5
 agentgraph --root /path/to/repo mcp
 ```
 
-工具：`index`、`find_symbol`、`callers`、`impact`、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）、**`workspace_status`**（多根健康度 —— [docs/workspace.md](docs/workspace.md)）、可选 **`macro_status`** / **`macro_rebuild`**（P2/M1 旁路，默认关闭 —— [docs/macro-sidecar.md](docs/macro-sidecar.md)）。查询工具可选 `workspace_db` / `root_id` 过滤（默认关闭）。
+工具：`index`、`find_symbol`、`callers`、`impact`、**`blast_radius`** / **`who_calls`**（高层 Agent 配方：自动窗口 + implementor 分离 —— [docs/agent-recipes.md](docs/agent-recipes.md)）、`related_files`、`importers`、`enrich`、`stats`、**`subset`**（S 违例报告，门控 `--sound`）、**`graph_diff`**（已索引边集合差；非运行时语义 —— [docs/graph-diff.md](docs/graph-diff.md)）、**`workspace_status`**（多根健康度 —— [docs/workspace.md](docs/workspace.md)）、可选 **`macro_status`** / **`macro_rebuild`**（P2/M1 旁路，默认关闭 —— [docs/macro-sidecar.md](docs/macro-sidecar.md)）。查询工具可选 `workspace_db` / `root_id` 过滤（默认关闭）。
 
 **安全：** 每次调用的 `root` 默认限制在服务器启动时的根目录内；需显式设置 `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1` 才可越界。
 

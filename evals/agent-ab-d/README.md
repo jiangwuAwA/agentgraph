@@ -3,16 +3,18 @@
 Replay + isolation harness for
 [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md) § **P0-5d**.
 
-## Status (S1)
+## Status (S2)
 
-- **Isolated live matrix complete (S2).** `lab_ready=**true**`: `mimo-pro` +
+- **Isolated live matrix complete.** `lab_ready=**true**`: `mimo-pro` +
   `mimo-flash` × arms A/B × N=5 × easy+hard, `independent_session=true`,
-  non-author `model_note`. **Still not** ecosystem sound / not a claim that
-  live A always beats live B on every corpus.
-  live runners with `independent_session=true` fill **N≥5** seeds per cell.
-- This tree currently holds **issue-only brief packs**, task selection, and
-  randomization logs — **not** a complete live lab table.
-- **No product-superiority claim.** Do not cite incomplete cells as lab proof.
+  non-author `model_note`.
+- **Non-claim:** This is **not** ecosystem sound. It is **not** a claim that
+  live arm A always beats live arm B on every corpus.
+- Offline fill (`scripted_isolated_runner`) is protocol parity only —
+  **not** live LLM evidence.
+- Product-superiority claims remain **out of scope**; cite recorded
+  trajectories + honest score table in
+  [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md).
 
 ## Task set (easy≥4 + hard≥4)
 
@@ -60,16 +62,15 @@ Harness **never injects goldens**. Offline stamp uses fixture `task.json`.
 `recall` · `extra-noise` · `cwr` (`chose_correct_workspace_root`) ·
 `mcp_or_cli_calls` · `file_budget` · `read_budget` · `approx_tokens` (null-allowed)
 
-## Planned runners (not yet live)
+## Runner ids (recorded)
 
-| runner_id | status | requirement |
+| runner_id | kind | status |
 |---|---|---|
-| `scripted_isolated_runner` | offline protocol parity only | **not** live LLM |
-| `external_live_runner_1` | not_run (S2) | live, independent_session=true, non-author model |
-| `external_live_runner_2` | not_run (S2) | live, independent_session=true, non-author model |
+| `scripted_isolated_runner` | scripted offline | protocol parity / **not** live LLM |
+| `external_live_runner_1` | live (`xiaomi/mimo-pro`) | **done** N=5 A/B |
+| `external_live_runner_2` | live (`xiaomi/mimo-flash`) | **done** N=5 A/B |
 
-Seeds target: 0, 1, 2, 3, 4 (N=5).
-Prepare runner slots: `scripted_isolated_runner`, `external_live_runner_1`, `external_live_runner_2`.
+Seeds recorded: 0, 1, 2, 3, 4 (N=5).
 
 ## Offline replay
 
@@ -85,6 +86,8 @@ Schema: `agentgraph.eval_agent_ab.trajectory.v1` (alias `agentgraph.eval_agent_a
 
 - Scripted offline runner is **not** a live LLM / multi-model lab.
 - Incomplete matrix ⇒ `lab_ready=false` + gap list. Never invent cells.
-- Author-session models (e.g. host-session fixture author) force `lab_ready=false`.
+- Author-session models (e.g. host-session fixture author) are **not**
+  lab-eligible and force `lab_ready=false`.
 - No private corpus paths.
-- README product link for this slice is **withheld** until `lab_ready=true`.
+- `lab_ready=true` means **complete isolated matrix + isolation protocol**.
+  It does **not** mean ecosystem sound, or that MCP beats grep on every corpus.

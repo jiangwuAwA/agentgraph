@@ -875,12 +875,13 @@ fn p0_5d_committed_lab_ready_gate_is_consistent() {
 
     // README must not oversell ecosystem sound regardless of lab_ready.
     let readme = std::fs::read_to_string(droot.join("README.md")).expect("read README");
-    let low = readme.to_lowercase();
+    let low = readme.to_lowercase().replace('*', "");
     assert!(
-        !(low.contains("ecosystem sound")
-            && !readme.contains("生态 sound")
-            && !low.contains("not ecosystem")),
-        "evals/agent-ab-d/README must keep non-sound honesty"
+        low.contains("not ecosystem sound")
+            || low.contains("not an ecosystem")
+            || low.contains("does not claim ecosystem")
+            || low.contains("非生态"),
+        "evals/agent-ab-d/README must keep explicit non-sound honesty"
     );
 }
 

@@ -1,0 +1,72 @@
+{
+  "id": "rust-unsafe-scoped",
+  "title": "Sound disabled by unsafe sibling — scoped guidance required",
+  "theme": "unsafe-sound-disabled-scoped-guidance",
+  "language": "rust",
+  "issue": "core::export_rows is the symbol under change. The workspace also contains a legacy package with unsafe code that leaves S. Union sound is off — agentgraph must not claim sound, and must recommend scoped sound on the clean core root.",
+  "symbol": "export_rows",
+  "workspace": {
+    "manifest": "workspace.json",
+    "roots": [
+      {
+        "id": "core",
+        "path": "packages/core"
+      },
+      {
+        "id": "legacy",
+        "path": "packages/legacy"
+      }
+    ]
+  },
+  "expected": {
+    "files_that_matter": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "edges": [
+      {
+        "description": "core calls export_rows",
+        "site_file": "packages/core/src/lib.rs",
+        "site_contains": "export_rows"
+      }
+    ],
+    "window": "default",
+    "recommendation_present": true,
+    "recommendation_contains_any": [
+      "scoped",
+      "workspace-root",
+      "sound",
+      "do not claim",
+      "legacy",
+      "core"
+    ],
+    "who_calls": null,
+    "scoped_guidance": {
+      "expect_sound_candidates": true,
+      "expect_window_not_sound": true,
+      "expect_eligible_root": "core",
+      "recommendation_contains_any": [
+        "core",
+        "workspace-root",
+        "scoped",
+        "do not claim"
+      ]
+    }
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph blast-radius export_rows --workspace workspace.json",
+    "agentgraph impact export_rows --sound --workspace-root core --workspace workspace.json",
+    "agentgraph subset --workspace workspace.json"
+  ],
+  "notes": "Public synthetic: clean core + unsafe legacy sibling. Not production sound."
+}

@@ -1,0 +1,49 @@
+{
+  "id": "ts-nest-user-repo",
+  "title": "Change UserRepository contract in a Nest-like DI app",
+  "theme": "clean-ts-nest-di",
+  "language": "typescript",
+  "issue": "Product wants UserRepository.find to return null instead of throwing when a user is missing. Before editing, identify the blast radius: which files must be reviewed, and which files are noise that mention unrelated concerns.",
+  "symbol": "UserRepository",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.module.ts"
+    ],
+    "noise_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "edges": [
+      {
+        "description": "UserService injects UserRepository via ctor",
+        "site_file": "src/user.service.ts",
+        "site_contains": "UserRepository"
+      },
+      {
+        "description": "module providers register UserRepository",
+        "site_file": "src/user.module.ts",
+        "site_contains": "providers"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": null,
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius UserRepository --depth 3",
+    "agentgraph who-calls UserRepository"
+  ],
+  "notes": "Public synthetic Nest-like DI shape — not a production Nest monorepo."
+}

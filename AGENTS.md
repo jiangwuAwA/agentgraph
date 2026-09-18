@@ -74,6 +74,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **Agent recipes (priority-3):** MCP `blast_radius` / `who_calls` + CLI `agentgraph blast-radius` / `agentgraph who-calls` auto-select a confidence window (sound when `subset_ok`, else default — never blind `--recall`) and always return honesty fields (`window`, `promise_tier`, `recommendation`, `note` = not a complete runtime graph). `who_calls` separates implementors by default (`--noisy` merges); `include_macro` only when sidecar is fresh/non-nested. See [docs/agent-recipes.md](docs/agent-recipes.md).
 
+**P0-1 public Agent code-change task evals (shipped):** `fixtures/eval-agent-tasks/` (public mini-repos + `task.json` structure facts) + `scripts/eval_agent_tasks.py` + `tests/agent_task_eval.rs`. Scores blast/who-calls/subset honesty vs a **name-grep** baseline (symbol token in files) — not an LLM baseline; no private corpus. Numbers: [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md).
+
 ## Commits
 
 - Prefer small, test-backed commits.

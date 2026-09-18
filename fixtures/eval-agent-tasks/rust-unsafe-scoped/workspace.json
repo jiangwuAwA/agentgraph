@@ -1,0 +1,12 @@
+{
+  "roots": [
+    {
+      "id": "core",
+      "path": "packages/core"
+    },
+    {
+      "id": "legacy",
+      "path": "packages/legacy"
+    }
+  ]
+}

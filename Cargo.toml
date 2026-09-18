@@ -30,6 +30,7 @@ protobuf = "3.7"
 protobuf-json-mapping = "3.7"
 
 [dev-dependencies]
+serde_json = "1"
 
 [profile.release]
 lto = true

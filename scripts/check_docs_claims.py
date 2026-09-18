@@ -229,6 +229,7 @@ DEFAULT_DOCS = [
     "docs/graph-html.md",
     "docs/graph-diff.md",
     "docs/workspace.md",
+    "docs/onboarding.md",
     "docs/agent-recipes.md",
     "docs/eval-l1.md",
     "docs/eval-l2.md",
@@ -237,6 +238,7 @@ DEFAULT_DOCS = [
     "docs/eval-macro-expand.md",
     "docs/eval-query-p95.md",
     "docs/eval-stock-s-map.md",
+    "docs/eval-agent-tasks.md",
     "docs/product-boundary-migration.md",
     "formal/TODO.md",
 ]
@@ -251,7 +253,9 @@ DEFAULT_FLAG_DOCS = [
     "docs/workspace.md",
     "docs/macro-sidecar.md",
     "docs/sound-subset.md",
+    "docs/onboarding.md",
     "docs/agent-recipes.md",
+    "docs/eval-agent-tasks.md",
 ]
 
 

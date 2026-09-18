@@ -1,0 +1,12 @@
+{
+  "roots": [
+    {
+      "id": "engine",
+      "path": "packages/engine"
+    },
+    {
+      "id": "web",
+      "path": "packages/web"
+    }
+  ]
+}

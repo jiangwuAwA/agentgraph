@@ -1,0 +1,42 @@
+{
+  "id": "py-plugin-registry",
+  "title": "Change PluginRegistry.register — plugins + bootstrap",
+  "theme": "clean-python-registry",
+  "language": "python",
+  "issue": "PluginRegistry.register must validate plugin names. Find the files that actually construct or call the registry.",
+  "symbol": "PluginRegistry",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "app/registry.py",
+      "app/bootstrap.py"
+    ],
+    "noise_files": [
+      "app/docs_strings.py"
+    ],
+    "edges": [
+      {
+        "description": "bootstrap uses PluginRegistry",
+        "site_file": "app/bootstrap.py",
+        "site_contains": "PluginRegistry"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": null,
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius PluginRegistry --depth 3",
+    "agentgraph who-calls PluginRegistry"
+  ],
+  "notes": "Public synthetic Python registry corpus."
+}

@@ -5,8 +5,10 @@
 Scoped `--sound` eligibility is per-root / per-path S gate only — not ecosystem
 sound, not production sound, not a complete runtime graph.
 
-Related: [sound-subset.md](sound-subset.md), [workspace.md](workspace.md),
-[graph-diff.md](graph-diff.md), [eval-stock-boundary.md](eval-stock-boundary.md).
+Related: [onboarding.md](onboarding.md) (5-min install → MCP `blast_radius`),
+[sound-subset.md](sound-subset.md), [workspace.md](workspace.md),
+[graph-diff.md](graph-diff.md), [eval-stock-boundary.md](eval-stock-boundary.md),
+[eval-agent-tasks.md](eval-agent-tasks.md) (public code-change task scores).
 
 ---
 

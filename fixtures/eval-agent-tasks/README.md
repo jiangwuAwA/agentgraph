@@ -1,0 +1,32 @@
+# Public Agent code-change task evals (P0-1)
+
+Reproducible **public** mini-repos + `task.json` structure facts for agent
+code-change tasks (blast radius / avoid wrong-file edits).
+
+**Non-claims**
+
+- Public synthetic fixtures only — **no private stock / proprietary corpus**.
+- Scores measure **structure facts** (expected files, noise files, honesty
+  fields) on these fixtures — **not** production monorepo precision.
+- `window=sound` on fixtures is the **ast_modeled** engineering S gate, not
+  ecosystem sound / production sound / a complete runtime graph.
+- The harness baseline is a **name-grep** file set (symbol token in files),
+  **not** a fabricated LLM baseline.
+
+**Layout**
+
+```text
+fixtures/eval-agent-tasks/<task_id>/
+  task.json     # issue text, symbol, expected structure facts, recommended tools
+  <mini-repo>   # sources only (public domain shape)
+```
+
+**Run**
+
+```bash
+python scripts/eval_agent_tasks.py
+# optional: cargo test --test agent_task_eval
+```
+
+Results: `target/agent_task_eval.json` + table in
+[docs/eval-agent-tasks.md](../../docs/eval-agent-tasks.md).

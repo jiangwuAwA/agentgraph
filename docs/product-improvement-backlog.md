@@ -19,13 +19,15 @@
 | **验收** | `cargo test` 或脚本可跑通 harness；README/recipes 引用数字；相对「无工具 / 仅 LLM」基线表 |
 | **涉及** | `evals/` 或 `fixtures/eval-agent-tasks/`、新 docs、CI 可选 job |
 | **估** | 1–2 周 |
+| **交付 (this slice)** | **done (public first ship):** `fixtures/eval-agent-tasks/`（9 个公开任务）+ `scripts/eval_agent_tasks.py` + `tests/agent_task_eval.rs` + [docs/eval-agent-tasks.md](eval-agent-tasks.md)。基线为 **name-grep**（实现于 harness，非伪造 LLM 数字）；禁止私有 corpus 路径。 |
 
 ### P0-2 接通包 Onboarding Kit（5 分钟 MCP）
 
 | 字段 | 内容 |
 |---|---|
+| **状态** | **done** |
 | **目标** | 新用户/Agent 宿主 5 分钟内：装好 → 索引示例仓 → 调用 `blast_radius` |
-| **交付物** | `docs/onboarding.md`；`examples/mcp-claude.json` 等宿主片段；`scripts/demo_blast_radius.ps1`（或跨平台）；可选 `Dockerfile` / 二进制发布说明 |
+| **交付物** | `docs/onboarding.md`；`examples/mcp-claude.json` / `examples/mcp-generic.json`；`scripts/demo_blast_radius.ps1` + `scripts/demo_blast_radius.sh`；README / agent-recipes / playbook 链接 |
 | **范围** | 一条 happy path + 一条 workspace happy path |
 | **非目标** | 不替代完整 README；不绑死某一 Agent 产品 |
 | **验收** | 按文档冷启动可成功；docs_claims 不红；演示脚本 exit 0 |

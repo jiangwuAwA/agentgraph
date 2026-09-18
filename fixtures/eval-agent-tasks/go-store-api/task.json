@@ -1,0 +1,48 @@
+{
+  "id": "go-store-api",
+  "title": "Change Go Repository.Get — consumers and implementors",
+  "theme": "clean-go",
+  "language": "go",
+  "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+  "symbol": "Get",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "edges": [
+      {
+        "description": "api handlers call Repository.Get",
+        "site_file": "api/handlers.go",
+        "site_contains": "r.Get("
+      },
+      {
+        "description": "MemRepo implements Get; interface assert",
+        "site_file": "store/store.go",
+        "site_contains": "func (m *MemRepo) Get"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": null,
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius Get --depth 3",
+    "agentgraph who-calls Get"
+  ],
+  "notes": "Public synthetic Go multi-package shape. Symbol is the Repository.Get method name (interface itself has no call-site rows; method refs carry qualifier=Repository)."
+}

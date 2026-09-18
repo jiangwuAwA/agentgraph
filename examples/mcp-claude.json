@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentgraph": {
+      "command": "agentgraph",
+      "args": ["--root", "C:/path/to/your/repo", "mcp"],
+      "env": {
+        "AGENTGRAPH_MCP_ALLOW_ANY_ROOT": "0"
+      }
+    }
+  }
+}

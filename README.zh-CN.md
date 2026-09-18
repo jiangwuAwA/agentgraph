@@ -44,15 +44,18 @@ agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
 
 **Agent 请先读：** `window`、`subset_ok`、`recommendation`。全局 window 关闭时，干净的 workspace root 上仍可能做 scoped sound —— 见 [docs/agent-recipes.md](docs/agent-recipes.md)。
 
-**更多：** [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
+**更多：** [docs/onboarding.md](docs/onboarding.md)（5 分钟：安装 → MCP `blast_radius`）· [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
 
 **进阶**（只给链接，不在此堆表）：
 
+- 接通包 / MCP 宿主片段 —— [docs/onboarding.md](docs/onboarding.md) · [examples/mcp-claude.json](examples/mcp-claude.json)
 - flags / 窗口 / 配方全文 —— 下文 [查询](#查询) · [docs/agent-recipes.md](docs/agent-recipes.md)
 - Workspace 多根 —— [docs/workspace.md](docs/workspace.md)
 - 宏旁路（默认 OFF）—— [docs/macro-sidecar.md](docs/macro-sidecar.md)
 - Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
 - 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)
+- 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
+- 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
 
 ## 快速开始
 
@@ -102,7 +105,7 @@ TypeScript、TSX、JavaScript、JSX、Python、Go、Rust。
 
 **怕漏时：** 用 `--sound`（`subset_ok`）或 `--recall`。干净的图不等于完整的图。
 
-所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。
+所有非 Exact 边都带 `evidence`（规则 id + 源码片段）。SCIP 导出默认 Exact+Heuristic（不含 DynamicCandidate）。评测数字见 [docs/eval-l1.md](docs/eval-l1.md)、[docs/eval-l2.md](docs/eval-l2.md)。公开 Agent 改码任务评测（爆炸半径 / 误改文件 vs name-grep 基线）：[docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)。
 
 **可选宏旁路（P2/M1，默认关闭，非 sound）：** `index --macro-expanded-root` 把**已有**的 expand 影子树写入 sidecar；`callers`/`impact`/`graph --with-macro` 联合查询时映射回源码路径并默认去重（`--no-macro-dedup` 为调试开关；`--exact-only --with-macro` 忽略 sidecar）。`macro status` 暴露 `stale`/`path_map_present`/`dedup_stats`；`macro rebuild` 幂等重建（不调用 `cargo expand`）。`origin=macro_expanded`；与 `--sound` 互斥。详见 [docs/macro-sidecar.md](docs/macro-sidecar.md)。
 
@@ -228,6 +231,8 @@ tree-sitter（TS / TSX / JS / JSX / Python / Go / Rust）
 ```bash
 cargo test
 cargo test --test e2e_cli          # 真实二进制 E2E（CLI + MCP + scip）
+cargo test --test agent_task_eval  # P0-1 公开 Agent 改码任务评测 harness
+python scripts/eval_agent_tasks.py # 评分 → target/agent_task_eval.json
 powershell -File scripts/e2e.ps1   # 本地完整门禁 + fixture 冒烟
 ```
 

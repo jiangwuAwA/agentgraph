@@ -1,0 +1,44 @@
+{
+  "id": "noisy-name-fmt",
+  "title": "Noisy name `fmt` — who_calls must separate implementors",
+  "theme": "noisy-name-who-calls-separation",
+  "language": "rust",
+  "issue": "Someone proposes renaming fmt across the crate. A naive name grep or merged callers list floods with implementors. Use who_calls to separate real call sites from implementors; high-freq demotion applies.",
+  "symbol": "fmt",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "src/render.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "edges": [
+      {
+        "description": "trait method + many implementors",
+        "site_file": "src/render.rs",
+        "site_contains": "fn fmt"
+      }
+    ],
+    "window": "any",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": {
+      "high_freq_name": true,
+      "expect_implementors_separated": true,
+      "min_implementor_count": 2
+    },
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "who-calls",
+    "blast-radius"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph who-calls fmt --limit 50",
+    "agentgraph blast-radius fmt --depth 2"
+  ],
+  "notes": "Public synthetic implementor-flood corpus. Store keeps edges; who_calls presents callers vs implementors separately."
+}

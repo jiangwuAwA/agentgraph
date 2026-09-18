@@ -44,15 +44,17 @@ agentgraph graph <sym> --depth 2    # MCP: graph → offline HTML + honesty fiel
 
 **Agents:** read `window`, `subset_ok`, and `recommendation` before acting. Scoped sound may be available on a clean workspace root even when the global window is off — see [docs/agent-recipes.md](docs/agent-recipes.md).
 
-**More:** [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
+**More:** [docs/onboarding.md](docs/onboarding.md) (5-min install → MCP `blast_radius`) · [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
 
 **Advanced** (links, not an inline dump):
 
+- Onboarding kit / MCP host snippets — [docs/onboarding.md](docs/onboarding.md) · [examples/mcp-claude.json](examples/mcp-claude.json)
 - Flags, windows, recipes — [Queries](#queries) below · [docs/agent-recipes.md](docs/agent-recipes.md)
 - Workspace multi-root — [docs/workspace.md](docs/workspace.md)
 - Macro sidecar (default OFF) — [docs/macro-sidecar.md](docs/macro-sidecar.md)
 - Sound subset / S gate — [docs/sound-subset.md](docs/sound-subset.md)
 - Noise / implementors — [docs/noise-governance.md](docs/noise-governance.md)
+- Public Agent code-change task evals — [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
 
 ## Quick start
 
@@ -135,7 +137,7 @@ Confidence windows on `callers` / `impact` (and MCP tools):
 
 **怕漏（missed edges）时：** 优先 `--sound`（`subset_ok` 时）或 `--recall`。干净的图 ≠ 完整的图。
 
-Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md), [docs/eval-l2.md](docs/eval-l2.md).
+Every non-Exact edge carries `evidence` (`rule_id` + source snippet). SCIP export defaults to Exact+Heuristic (DynamicCandidate omitted). Numbers: [docs/eval-l1.md](docs/eval-l1.md), [docs/eval-l2.md](docs/eval-l2.md). Public agent code-change task evals (blast radius / wrong-file noise vs name-grep baseline): [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md).
 
 ### Index quality
 
@@ -187,7 +189,7 @@ Tools: `index`, `find_symbol`, `callers`, `impact`, **`blast_radius`** / **`who_
 
 **Security:** per-call `root` is jailed under the server’s initial root unless `AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1`.
 
-Example client config:
+Example client config (also committed as [examples/mcp-claude.json](examples/mcp-claude.json) / [examples/mcp-generic.json](examples/mcp-generic.json)):
 
 ```json
 {
@@ -199,6 +201,8 @@ Example client config:
   }
 }
 ```
+
+5-minute cold start: [docs/onboarding.md](docs/onboarding.md) · demo `scripts/demo_blast_radius.ps1` / `.sh`.
 
 ## Install
 
@@ -259,6 +263,8 @@ Call resolution is **name-based** with optional type `qualifier` — pragmatic, 
 ```bash
 cargo test
 cargo test --test e2e_cli          # real binary E2E (CLI + MCP + scip)
+cargo test --test agent_task_eval  # P0-1 public agent-task eval harness
+python scripts/eval_agent_tasks.py # scores → target/agent_task_eval.json
 powershell -File scripts/e2e.ps1   # full local gate + fixture smoke
 ```
 

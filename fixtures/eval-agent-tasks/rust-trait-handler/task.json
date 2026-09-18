@@ -1,0 +1,51 @@
+{
+  "id": "rust-trait-handler",
+  "title": "Change Handler::render trait method — impls + dyn call sites",
+  "theme": "rust-trait-impl",
+  "language": "rust",
+  "issue": "Handler::render signature must change. Find implementors and dyn dispatch call sites that must be updated.",
+  "symbol": "render",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "edges": [
+      {
+        "description": "trait method + impls",
+        "site_file": "src/handlers.rs",
+        "site_contains": "fn render"
+      },
+      {
+        "description": "dyn dispatch call site",
+        "site_file": "src/lib.rs",
+        "site_contains": "render"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": {
+      "high_freq_name": false,
+      "expect_implementors_separated": true,
+      "min_implementor_count": 1
+    },
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius render --depth 3",
+    "agentgraph who-calls render"
+  ],
+  "notes": "Public synthetic Rust dyn-trait corpus (not a private monorepo)."
+}

@@ -1,0 +1,55 @@
+{
+  "id": "ts-nest-order-service",
+  "title": "Change OrderService.createOrder — find real dependents vs noise",
+  "theme": "clean-ts-nest-di",
+  "language": "typescript",
+  "issue": "Issue: OrderService.createOrder must change return type from string to an OrderResult object. Find which files depend on or register OrderService; ignore files that merely mention order-like words. Callees (PaymentService) are adjacent — open the definition or query PaymentService separately; blast-radius dependents do not list callees.",
+  "symbol": "OrderService",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "src/order.service.ts",
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "noise_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "edges": [
+      {
+        "description": "controller injects OrderService",
+        "site_file": "src/order.controller.ts",
+        "site_contains": "OrderService"
+      },
+      {
+        "description": "module providers wire OrderService",
+        "site_file": "src/order.module.ts",
+        "site_contains": "OrderService"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": null,
+    "scoped_guidance": null,
+    "adjacent_callee_files": [
+      "src/payment.service.ts"
+    ]
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "related",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius OrderService --depth 3",
+    "agentgraph who-calls OrderService",
+    "agentgraph related OrderService",
+    "agentgraph find PaymentService"
+  ],
+  "notes": "Public synthetic Nest-like app. files_that_matter = definition + dependents. PaymentService is a callee (adjacent), not a blast-radius dependent."
+}

@@ -1,0 +1,49 @@
+{
+  "id": "py-fastapi-invoice",
+  "title": "Change InvoiceService.total in a FastAPI-like app",
+  "theme": "clean-python",
+  "language": "python",
+  "issue": "Bug: InvoiceService.total miscalculates tax. Identify blast radius before fixing — which API/deps/repository files must be reviewed.",
+  "symbol": "InvoiceService",
+  "workspace": null,
+  "expected": {
+    "files_that_matter": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "noise_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "edges": [
+      {
+        "description": "API handler uses InvoiceService",
+        "site_file": "app/api/invoices.py",
+        "site_contains": "InvoiceService"
+      },
+      {
+        "description": "deps factory constructs InvoiceService",
+        "site_file": "app/deps.py",
+        "site_contains": "InvoiceService"
+      }
+    ],
+    "window": "sound",
+    "recommendation_present": true,
+    "recommendation_contains_any": [],
+    "who_calls": null,
+    "scoped_guidance": null
+  },
+  "recommended_tools": [
+    "index",
+    "blast-radius",
+    "who-calls",
+    "subset"
+  ],
+  "recommended_commands": [
+    "agentgraph index",
+    "agentgraph blast-radius InvoiceService --depth 3",
+    "agentgraph who-calls InvoiceService"
+  ],
+  "notes": "Public synthetic FastAPI-like layout."
+}

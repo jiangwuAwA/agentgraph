@@ -1,0 +1,17 @@
+{
+  "name": "agentgraph",
+  "transport": "stdio",
+  "command": "agentgraph",
+  "args": ["--root", "${WORKSPACE}", "mcp"],
+  "env": {
+    "AGENTGRAPH_MCP_ALLOW_ANY_ROOT": "0"
+  },
+  "notes": {
+    "protocol": "MCP over stdio — newline-delimited JSON-RPC 2.0 (protocolVersion 2024-11-05)",
+    "entry": "agentgraph --root <repo> mcp",
+    "first_tool_call": "tools/call name=index (before queries; empty index fails loud)",
+    "happy_path_tools": ["index", "blast_radius", "who_calls", "graph"],
+    "optional_workspace_args": "query tools accept workspace_db + root_id for multi-root stores",
+    "root_jail": "per-call root is jailed under the server --root unless AGENTGRAPH_MCP_ALLOW_ANY_ROOT=1"
+  }
+}

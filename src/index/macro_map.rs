@@ -199,39 +199,87 @@ fn crate_align(rel: &str, layout: &CrateLayout) -> Option<String> {
     None
 }
 
-fn apply_pairs(rel: &str, layout: &CrateLayout) -> Option<String> {
-    // Exact pairs first.
+fn apply_pairs(rel: &str, layout: &CrateLayout, source_root: &Path) -> Option<String> {
+    // Exact operator pairs: trusted override (even if the source leaf is missing).
     for p in layout.pairs.iter().filter(|p| !p.prefix) {
         if rel == p.expanded {
             return Some(p.source.clone());
         }
     }
     // Prefix pairs, longest expanded prefix first.
+    // R30: only accept when the mapped source path exists — no invented leaves.
     let mut prefixes: Vec<&PathMapPair> = layout.pairs.iter().filter(|p| p.prefix).collect();
     prefixes.sort_by_key(|p| std::cmp::Reverse(p.expanded.len()));
     for p in prefixes {
         let exp = p.expanded.trim_end_matches('/');
         if rel == exp {
-            return Some(p.source.trim_end_matches('/').to_string());
+            let mapped = p.source.trim_end_matches('/').to_string();
+            if path_under_exists(source_root, &mapped) {
+                return Some(mapped);
+            }
+            continue;
         }
         let with_slash = format!("{exp}/");
         if let Some(rest) = rel.strip_prefix(with_slash.as_str()) {
             let src = p.source.trim_end_matches('/');
-            return Some(format!("{src}/{rest}"));
+            let mapped = format!("{src}/{rest}");
+            if path_under_exists(source_root, &mapped) {
+                return Some(mapped);
+            }
         }
     }
     None
 }
 
+/// Alternate crate-align candidates for an expanded relative path.
+///
+/// Pure lexical guesses — callers must accept only candidates that **exist**
+/// under `source_root` (docs/macro-sidecar.md: no invented paths).
+fn crate_align_candidates(rel: &str, layout: &CrateLayout) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let Some(primary) = crate_align(rel, layout) else {
+        return out;
+    };
+    out.push(primary.clone());
+    let comps = components(rel);
+    // Flat non-workspace layouts: also try `<crate>/src/...` and `<crate>/...`
+    // when the primary workspace-template path may not exist on disk.
+    if comps.len() >= 2 && comps[0] != "crates" {
+        let crate_name = comps[0];
+        if !matches!(crate_name, "src" | "tests" | "target" | "docs" | "fixtures") {
+            let rest = &comps[1..];
+            if !rest.is_empty() && rest[0] == "src" {
+                let flat = comps.join("/");
+                if flat != primary && !out.contains(&flat) {
+                    out.push(flat);
+                }
+            } else if !rest.is_empty() && rest.join("/").ends_with(".rs") {
+                let joined = rest.join("/");
+                for alt in [
+                    format!("{crate_name}/src/{joined}"),
+                    format!("{crate_name}/{joined}"),
+                ] {
+                    if alt != primary && !out.contains(&alt) {
+                        out.push(alt);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Map an expanded shadow-tree relative path onto a source-tree relative path.
 ///
 /// Order:
-/// 1. Explicit pairs from `crate_layout.pairs` (sidecar meta / operator)
+/// 1. Explicit pairs from `crate_layout.pairs` (exact operator pairs trusted;
+///    prefix pairs only when the mapped source leaf exists)
 /// 2. Absolute path under `expanded_root` → strip that prefix, then remap
 /// 3. Identity when the path already exists under `source_root`
 /// 4. Strip known expand-dir leading components
 /// 5. `../` lexical resolution against `expanded_root` then against roots
-/// 6. Rust crate-root alignment heuristics
+/// 6. Rust crate-root alignment candidates — accepted only when the candidate
+///    path exists under `source_root` (**no invented paths**)
 ///
 /// Returns `None` when no honest mapping can be produced (caller keeps
 /// `origin=macro_expanded`, `mapped=false`).
@@ -296,8 +344,8 @@ pub fn map_expanded_path(
         }
     }
 
-    // 1. Explicit pairs (exact + prefix).
-    if let Some(mapped) = apply_pairs(&rel, crate_layout) {
+    // 1. Explicit pairs (exact + prefix; prefix requires the leaf to exist).
+    if let Some(mapped) = apply_pairs(&rel, crate_layout, source_root) {
         return Some(mapped);
     }
 
@@ -309,7 +357,7 @@ pub fn map_expanded_path(
     // 4. Strip expand-dir prefixes.
     let stripped = strip_expand_dirs(&rel, crate_layout);
     if stripped != rel {
-        if let Some(mapped) = apply_pairs(&stripped, crate_layout) {
+        if let Some(mapped) = apply_pairs(&stripped, crate_layout, source_root) {
             return Some(mapped);
         }
         if path_under_exists(source_root, &stripped) {
@@ -324,39 +372,19 @@ pub fn map_expanded_path(
             if path_under_exists(source_root, &lex) {
                 return Some(lex.clone());
             }
-            if let Some(mapped) = apply_pairs(&lex, crate_layout) {
+            if let Some(mapped) = apply_pairs(&lex, crate_layout, source_root) {
                 return Some(mapped);
             }
             rel = lex;
         }
     }
 
-    // 6. Crate-root alignment — only accept when the source tree actually has
-    // the target crate (or the mapped file). Prevents inventing
-    // `crates/<unknown>/src/...` for unmappable shadow-only paths.
-    if let Some(mapped) = crate_align(&rel, crate_layout) {
-        if path_under_exists(source_root, &mapped) {
-            return Some(mapped);
-        }
-        let comps = components(&mapped);
-        if comps.len() >= 2 && comps[0] == "crates" {
-            let crate_dir = source_root.join("crates").join(comps[1]);
-            if crate_dir.is_dir() {
-                return Some(mapped);
-            }
-        }
-        // First-component crate dir already present under source root
-        // (non-workspace layout).
-        let rel_comps = components(&rel);
-        if let Some(first) = rel_comps.first() {
-            if source_root.join(first).is_dir() && !matches!(*first, "src" | "tests") {
-                return Some(mapped);
-            }
-        }
-        return None;
-    }
-
-    None
+    // 6. Crate-root alignment — accept **only** when a candidate path exists
+    // under source_root. Never invent via crate-dir-only / first-component
+    // directory checks (docs/macro-sidecar.md: no invented paths).
+    crate_align_candidates(&rel, crate_layout)
+        .into_iter()
+        .find(|mapped| path_under_exists(source_root, mapped))
 }
 
 fn parser_rel(path: &Path, root: &Path) -> Option<String> {
@@ -812,6 +840,18 @@ mod tests {
         let exp = tmp.join("exp");
         std::fs::create_dir_all(src.join("crates/event-engine/src")).unwrap();
         std::fs::create_dir_all(exp.join("event-engine")).unwrap();
+        // Crate dir exists but leaf file is missing → must NOT invent.
+        let missing = map_expanded_path("event-engine/lib.rs", &exp, &src, &CrateLayout::default());
+        assert_eq!(
+            missing, None,
+            "no invented paths when source leaf is absent"
+        );
+        // Leaf present → map.
+        std::fs::write(
+            src.join("crates/event-engine/src/lib.rs"),
+            "pub fn x() {}\n",
+        )
+        .unwrap();
         let mapped = map_expanded_path("event-engine/lib.rs", &exp, &src, &CrateLayout::default());
         assert_eq!(mapped.as_deref(), Some("crates/event-engine/src/lib.rs"));
         // Unknown crate: no invent.

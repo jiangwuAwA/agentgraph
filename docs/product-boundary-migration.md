@@ -516,4 +516,44 @@ macro status
 
 ---
 
+## 附录 E — M4 落地核验（2026-09-18，二次）
+
+**抽检测试（全绿）：** `graph_diff`(7)、`s_recert_watch`(3)、`graph_html`(19)、`e2e_cli`(15)、`docs_claims`(10)、`l1_cli`(9)、`l1_eval`/`l1_eval_real`、`query_p95`。
+
+### M4 对照清单
+
+| 项 | 状态 | 证据 |
+|---|---|---|
+| 时序边 diff | **已交付** | `src/index/diff.rs`；CLI `agentgraph diff [--exact-only] [--limit] [--snapshot] [--write-snapshot]`；MCP `graph_diff`；`meta.index_seq` + `refs.snapshot[.prev].json`；无基线 fail-loud；`docs/graph-diff.md`；README en/zh |
+| watch 后 S 重认证 | **已交付** | `Store::refresh_subset_for_paths` + `index_paths` 钩子；`tests/s_recert_watch.rs`（脏文件违例 → `promise_tier=disabled` → 修复清除 → 删除 prune） |
+| HTML L2 | **已交付** | CLI `graph --sound`；`subset_ok=false` 仍写页 + exit 非 0 + disabled 标记；与 `--with-macro`/`--exact-only` 互斥 fail-closed；`docs/graph-html.md` |
+| 语义诚实 | **已交付** | diff 文案固定 “indexed edges only; not a runtime call-graph diff” |
+| 多根 workspace | **未交付（backlog）** | 无 `index --workspace` / `workspace_index.rs`；`docs/graph-diff.md` §Workspace multi-root 已写明将来推荐单库 + `root_id` |
+
+### 相对清单的 M4 残差
+
+| ID | 缺漏 | 严重度 | 说明 |
+|---|---|---|---|
+| M4-W | `index --workspace` 多根 monorepo | 中（功能缺口） | 目标表四行之一；实现有意延后且已文档化，**不能**说「M4 全部做完了」 |
+| M4-P | `tests/query_p95.rs` / `docs/eval-query-p95.md` 无 diff / S-recert 延迟预算 | 低 | 清单 M4.5/M4.11 要求；查询主路径 p95 仍有效 |
+| M4-M | MCP 无 `graph`（HTML/sound）tool | 低 | 清单 M4.6 写了 `graph_diff` + 可选 `graph`；Agent 仍可走 CLI `graph --sound` |
+| M4-S | 形态非 `diff --since <time>` | 无（有意） | 采用双 sidecar 快照，优于时间戳语义；与清单「或 graph-diff」一致 |
+
+### 与附录 D（G1–G12）交叉结论
+
+| 残差 | 复核 |
+|---|---|
+| G1–G9 | **已关闭**（repo 内 close-out 标注 + 我方二次抽检：linkme fixture、eval-l1-real M3 包、l1_cli/store_impact、macro_dedup e2e crates 金标、eval-goldens 扩容、README `ast_modeled`、stock-boundary M1 句、graph-html、PLAN Track 命名） |
+| G10 `--macro-default` | 仍 **intentional OFF**（与边界讨论一致） |
+| G11 expand 脚本接 path-map | 仍 optional 未做 |
+| G12 验收勾选 | M4 节已勾；M1–M3 节仍以附录为准 |
+
+### 总评
+
+- **M4 核心三件（diff / S 重认证 / HTML L2）产品路径完整**，测试与文档齐，可称 API 面已前移。  
+- **不能**在无保留意义上写「M4 全部完成」：**workspace 多根**明确 backlog；p95 预算与 MCP HTML graph 为次要缺口。  
+- 此前你点名的若干问题（M2 README 诚实句、M3 fixture/real eval、CLI/impact 测试、M1 e2e 金标、PLAN 命名等）**均已闭环**。
+
+---
+
 *文档所有权：与 PLAN.md 相同——仓库维护者。变更本清单时，同步核对 README 是否超售。*

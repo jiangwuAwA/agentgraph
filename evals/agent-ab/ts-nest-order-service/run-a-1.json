@@ -1,0 +1,208 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "A",
+  "policy_label": "Agent-like tool policy + agentgraph MCP/CLI recipes (scripted)",
+  "kind": "scripted_tool_policy",
+  "task_id": "ts-nest-order-service",
+  "seed": 1,
+  "run_id": "a-1",
+  "fixture": "fixtures/eval-agent-tasks/ts-nest-order-service",
+  "symbol": "OrderService",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "ts-nest-order-service",
+    "title": "Change OrderService.createOrder — find real dependents vs noise",
+    "language": "typescript",
+    "issue": "Issue: OrderService.createOrder must change return type from string to an OrderResult object. Find which files depend on or register OrderService; ignore files that merely mention order-like words. Callees (PaymentService) are adjacent — open the definition or query PaymentService separately; blast-radius dependents do not list callees.",
+    "expected_files": [
+      "src/order.service.ts",
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "noise_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "blast-radius",
+        "OrderService",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "find",
+        "OrderService"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "src/order.service.ts"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "related",
+        "OrderService",
+        "--limit",
+        "20"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 3
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "who-calls",
+        "OrderService",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": false,
+        "implementor_count": 0,
+        "callers_files": [
+          "src/order.controller.ts",
+          "src/order.module.ts"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "subset"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "src/order.controller.ts",
+    "src/order.module.ts",
+    "src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/order.service.ts",
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/order-fmt-util.ts",
+      "src/legacy-report.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/order.controller.ts",
+      "src/order.module.ts",
+      "src/order.service.ts"
+    ],
+    "file_set_size": 3
+  },
+  "extras": {
+    "window": "sound",
+    "subset_ok": true,
+    "promise_tier": "ast_modeled",
+    "note_honest": true,
+    "recommendation_present": true,
+    "high_freq_name": false,
+    "blast_files": [
+      "src/order.controller.ts",
+      "src/order.module.ts",
+      "src/order.service.ts"
+    ],
+    "definition_files": [
+      "src/order.service.ts"
+    ],
+    "related_files": [
+      "src/order.controller.ts",
+      "src/order.module.ts",
+      "src/order.service.ts"
+    ],
+    "who_files": [
+      "src/order.controller.ts",
+      "src/order.module.ts"
+    ],
+    "file_set_method": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "policy": "index → blast-radius → who-calls → find → related → subset → assemble structure-bounded file set"
+  },
+  "notes": [
+    "A is a scripted recipe policy using agentgraph CLI (same payload surface as MCP blast_radius/who_calls); not a live LLM agent."
+  ],
+  "errors": []
+}

@@ -134,8 +134,9 @@ Binary used for the numbers below: debug build with `blast-radius` / `who-calls`
 - We do **not** claim an LLM / “no-tool agent” baseline in this slice.
 - Scores are **structure-fact file-set** comparisons (blast dependents vs token
   union), **not** “Agent with MCP vs Agent without MCP” product proof.
-  A real Agent-vs-Agent control remains a **future P0** item
-  (`docs/product-improvement-backlog.md`).
+  **P0-5** adds **scripted** tool-policy A/B/C + replay on the same public
+  tasks — still **not** live LLM agents
+  ([eval-agent-baseline.md](eval-agent-baseline.md)). Live P0-5b remains future work.
 - A weaker/noisier name set is exactly the failure mode the tasks label
   (`fmt` substring, docs prose, sibling package comments).
 
@@ -192,4 +193,6 @@ files. See [agent-recipes.md](agent-recipes.md).
 Related: [agent-recipes.md](agent-recipes.md), [sound-subset.md](sound-subset.md),
 [noise-governance.md](noise-governance.md), [workspace.md](workspace.md),
 [agent-goldens.md](agent-goldens.md) (P1-3 recipe/window/honesty release gate),
-[eval-query-p95.md](eval-query-p95.md) (workspace perf budgets).
+[eval-query-p95.md](eval-query-p95.md) (workspace perf budgets),
+[eval-agent-baseline.md](eval-agent-baseline.md) (**P0-5** scripted tool-policy
+A/B/C + offline trajectory replay — still **not** live LLM agents).

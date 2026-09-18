@@ -60,6 +60,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
 - Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
 - 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)
 - 公开 Agent 改码任务评测 —— [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md)
+- 脚本化 tool-policy A/B/C + 回放（P0-5；**非** live LLM）—— [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md)
 - CI 爆炸半径注释 **demo**（非 required）—— [docs/ci-blast-radius-demo.md](docs/ci-blast-radius-demo.md)
 
 ## 快速开始

@@ -1,0 +1,88 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "noisy-name-fmt",
+  "seed": 0,
+  "run_id": "c-0",
+  "fixture": "fixtures/eval-agent-tasks/noisy-name-fmt",
+  "symbol": "fmt",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "noisy-name-fmt",
+    "title": "Noisy name `fmt` — who_calls must separate implementors",
+    "language": "rust",
+    "issue": "Someone proposes renaming fmt across the crate. A naive name grep or merged callers list floods with implementors. Use who_calls to separate real call sites from implementors; high-freq demotion applies.",
+    "expected_files": [
+      "src/render.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "fmt"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 2,
+        "files": [
+          "src/metrics.rs",
+          "src/render.rs"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "src/metrics.rs",
+    "src/render.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/render.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "src/metrics.rs"
+    ],
+    "extra_noise_count": 1,
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit_count": 1,
+    "file_set": [
+      "src/metrics.rs",
+      "src/render.rs"
+    ],
+    "file_set_size": 2
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

@@ -58,6 +58,24 @@
 | **涉及** | `src/query/recipes`、`src/cli.rs`、`src/mcp/server.rs`、`docs/agent-recipes.md` |
 | **估** | 2–4 天 |
 
+### P0-5 真实 Agent 对照评测（Agent±MCP）
+
+| 字段 | 内容 |
+|---|---|
+| **状态** | **done (scripted slice S1+S2):** 协议 + 回放 + 脚本化 policy A/B/C 跑批。**非 live LLM**；live P0-5b 仍 open（见下） |
+| **目标** | 在公开任务集上回答产品问题：**挂上 agentgraph MCP 的 Agent，是否比不挂更准、误改更少** — 不再仅用 name-grep 代替 Agent 行为 |
+| **背景** | P0-1 已交付 structure-fact 打分 vs **name-grep**（确定性 token 基线）。文档已诚实声明这不是 LLM/Agent 产品证明。P0-5 补齐该对照 |
+| **交付物** | ① `evals/agent-baseline/`（或 `fixtures/eval-agent-tasks/` 扩展）：同一套公开 mini-repo + 任务 JSON；② harness 协议：**A 组** Agent 仅允许 grep/read；**B 组** Agent 允许 MCP `blast_radius`/`who_calls`/`graph`（或 CLI recipes）；③ 评分：期望文件/符号命中、**噪声文件**、错误改码范围（若有补丁）；④ `docs/eval-agent-baseline.md`：任务级与汇总表、复现命令、模型/温度/重复次数；⑤ 可选：把汇总指标挂到 README / eval-agent-tasks 交叉链接 |
+| **范围** | 优先复用 P0-1 的 9 个公开任务（至少跑通 **≥6** 个）；固定 prompt 模板与「禁止超售」指令；每任务 ≥N 次重复（建议 N≥3）报 mean；记录失败模式 |
+| **基线说明** | **B−A** 为主要产品指标；name-grep 保留为 **确定性下界/对照**，不删 P0-1 表 |
+| **非目标** | 不伪造未跑通的 LLM 数字；不提交私有 stock；不把单次幸运 run 写成结论；不把 `window=sound` 写成生态 sound |
+| **约束** | Agent 运行环境需网络/API 的部分：**可选 CI / 操作员轨** — 主仓 harness 必须能在 **无 LLM** 时仍解析「录制好的 tool 轨迹」做回放打分（若先交付录制协议） |
+| **验收** | ① 文档含 A/B 定义与非声称；② 至少一份可复现汇总表（任务 × A/B 指标）；③ harness/脚本可本地跑；④ 与 eval-agent-tasks 的关系写清（structure facts vs Agent 行为）；⑤ docs_claims / 相关 `cargo test` 绿；⑥ backlog 本卡状态改为 done |
+| **涉及** | `docs/eval-agent-baseline.md`、`docs/eval-agent-tasks.md`（交叉链接）、`scripts/eval_agent_baseline.py`（或等价）、`tests/agent_baseline.rs`（可选：协议/回放锁）、`fixtures/eval-agent-tasks/**`（只读复用优先）、README 链接一句 |
+| **估** | 1–2 周（含首次 Agent 跑批；回放协议可先于 live LLM） |
+| **建议切片** | **S1** 协议 + 录制/回放 JSON 格式 + 无网打分；**S2** 操作员 live A/B 跑批写入 docs；**S3**（可选）CI 手动 workflow_dispatch 产出 artifact |
+| **交付 (this slice)** | **done (scripted S1 + policy S2-sim):** [eval-agent-baseline.md](eval-agent-baseline.md) + `scripts/eval_agent_ab.py` + `evals/agent-ab/**`（≥9 tasks × ≥3 A/B/C runs，公开可回放）+ `tests/agent_ab_eval.rs`。**标签（强制）：** **scripted tool-policy agents**（确定性）— **不是** live LLM；operator 标签 **A=MCP/CLI recipes，B=read/grep，C=name-grep**（backlog 原文 A/B 对调时以 operator brief 为准，比较内容不变）。数字（structure-fact）：A recall 1.00 / noise **0.00**；B recall 1.00 / noise **1.56**；C recall 1.00 / noise **0.78**（9×3 runs）。Offline replay：`python scripts/eval_agent_ab.py score --traj-dir evals/agent-ab`。**S3 CI workflow 本切片跳过。** **P0-5b live LLM 跑批仍 open**（模型/温度/N 次/失败模式 — 禁止用脚本化数字冒充）。 |
+
 ---
 
 ## P1 — 巩固 monorepo 与信任
@@ -127,13 +145,14 @@
 | ID | 复核 |
 |---|---|
 | P0-1…P0-4 | **shipped** — 代码/文档/测试齐；`agent_task_eval`/`agent_goldens`/`agent_recipes`/`docs_claims`/`e2e_cli`/`noise_roles` 全绿 |
+| P0-5 | **shipped (scripted S1+S2-sim)** — `eval_agent_ab` + `evals/agent-ab` 回放 + [eval-agent-baseline.md](eval-agent-baseline.md)；**非 live LLM**；P0-5b live 仍 open |
 | P1-1…P1-4 | **shipped** — workspace watch、MCP stale 字段、goldens、perf_workspace 文档+smoke |
 | P2-1, P2-2, P2-4 | **shipped** — macro_default（全局 OFF）、CI demo（非 required）、README 定位 |
 | P2-3 | **open（eval-gated）** — 符合「无 eval 数字不做」 |
 
 **残差（低优先）：**
 
-1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明；对外仍缺「挂 MCP 的 Agent vs 不挂」对照。→ **建议下一轮 P0（P0-5）**：公开任务上的真实 Agent 对照。
+1. P0-1 基线是 **name-grep**，不是真实 LLM/Agent 基线 — 文档已诚实声明；对外仍缺「挂 MCP 的 Agent vs 不挂」对照。→ **P0-5 scripted slice shipped**（tool-policy A/B/C + replay，非 live LLM）。本 residual 的 **live LLM** 部分关闭待 **P0-5b**。
 2. ~~`fixtures/**/.agentgraph/index.db` 二进制索引~~ — **done**：根 `.gitignore` 增加 `**/.agentgraph/`；本地 fixture 索引目录已删除（勿再提交）。
 3. Session 任务面板 ID（T7–T18）与文档 P0-x 编号不一致 — **以本文档为准**。
 4. Workspace **union callers** CLI 含 spawn 时 p95 可到秒级（文档已标非 SLO）— Agent 侧**优先 root filter 或 MCP**；已写入 eval-agent-tasks / recipes。
@@ -143,18 +162,17 @@
 ## 建议执行顺序
 
 ```text
-P0-3 README 主路径（快）
-  → P0-4 recommendation 强化（产品行为）
-  → P0-2 Onboarding Kit
-  → P0-1 Agent 任务评测（可并行设计任务集）
-  → P1-2 stale 进 MCP → P1-3 golden suites
-  → P1-1 workspace watch → P1-4 perf 文档
-  → P2-*
+（已 shipped）P0-1…P0-4, P1-1…P1-4, P2-1/2/4
+  → P0-5 scripted tool-policy A/B/C + replay — shipped this slice
+    （[eval-agent-baseline.md](eval-agent-baseline.md)；live LLM = P0-5b 仍 open）
+  → P2-3 L1 规则（eval-gated）
 ```
 
 ## 与 session 任务面板的映射
 
-session `task` 工具中已登记同 ID（`P0-1`…）；完成标准以本表「验收」为准。
+- **权威编号与验收标准：以本文档 P0-x / P1-x / P2-x 为准。**
+- Session 面板 ID（如 T7–T18）仅作会话跟踪，**与文档编号不一致时忽略面板 ID**。
+- 面板摘要应尽量写入文档编号（例：`P0-5 …`），便于对照。
 
 ---
 

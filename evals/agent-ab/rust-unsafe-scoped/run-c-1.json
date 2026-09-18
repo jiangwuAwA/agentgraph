@@ -1,0 +1,86 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "rust-unsafe-scoped",
+  "seed": 1,
+  "run_id": "c-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-unsafe-scoped",
+  "symbol": "export_rows",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "rust-unsafe-scoped",
+    "title": "Sound disabled by unsafe sibling — scoped guidance required",
+    "language": "rust",
+    "issue": "core::export_rows is the symbol under change. The workspace also contains a legacy package with unsafe code that leaves S. Union sound is off — agentgraph must not claim sound, and must recommend scoped sound on the clean core root.",
+    "expected_files": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "export_rows"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 2,
+        "files": [
+          "packages/core/src/export.rs",
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "packages/core/src/export.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "file_set_size": 2
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

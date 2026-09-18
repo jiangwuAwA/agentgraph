@@ -30,3 +30,8 @@ python scripts/eval_agent_tasks.py
 
 Results: `target/agent_task_eval.json` + table in
 [docs/eval-agent-tasks.md](../../docs/eval-agent-tasks.md).
+
+**P0-5 (scripted tool-policy A/B/C):** same fixtures reused read-only —
+see [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md) and
+replay trajectories under [`evals/agent-ab/`](../../evals/agent-ab/)
+(**not** live LLM agents).

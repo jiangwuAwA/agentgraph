@@ -1,0 +1,94 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "py-fastapi-invoice",
+  "seed": 1,
+  "run_id": "c-1",
+  "fixture": "fixtures/eval-agent-tasks/py-fastapi-invoice",
+  "symbol": "InvoiceService",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "py-fastapi-invoice",
+    "title": "Change InvoiceService.total in a FastAPI-like app",
+    "language": "python",
+    "issue": "Bug: InvoiceService.total miscalculates tax. Identify blast radius before fixing — which API/deps/repository files must be reviewed.",
+    "expected_files": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "noise_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "InvoiceService"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 3,
+        "files": [
+          "app/api/invoices.py",
+          "app/deps.py",
+          "app/invoice_service.py"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "app/api/invoices.py",
+    "app/deps.py",
+    "app/invoice_service.py"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "app/api/invoices.py",
+      "app/deps.py",
+      "app/invoice_service.py"
+    ],
+    "file_set_size": 3
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

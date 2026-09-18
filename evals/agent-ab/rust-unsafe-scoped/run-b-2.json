@@ -1,0 +1,232 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "B",
+  "policy_label": "Agent-like read/grep policy — no agentgraph (scripted)",
+  "kind": "scripted_read_grep_policy",
+  "task_id": "rust-unsafe-scoped",
+  "seed": 2,
+  "run_id": "b-2",
+  "fixture": "fixtures/eval-agent-tasks/rust-unsafe-scoped",
+  "symbol": "export_rows",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "rust-unsafe-scoped",
+    "title": "Sound disabled by unsafe sibling — scoped guidance required",
+    "language": "rust",
+    "issue": "core::export_rows is the symbol under change. The workspace also contains a legacy package with unsafe code that leaves S. Union sound is off — agentgraph must not claim sound, and must recommend scoped sound on the clean core root.",
+    "expected_files": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 3
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "export_rows"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 2,
+        "hits": [
+          "packages/core/src/export.rs",
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "packages/core/src/export.rs",
+        "packages/core/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/core/src/export.rs"
+        ],
+        "read_count": 2
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/core/src",
+        "packages/core/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/core/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/core/src/lib.rs"
+        ],
+        "cap": 6,
+        "seed": 2
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "grep_token",
+      "args": [
+        "String"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "String",
+        "hits": [
+          "packages/core/src/export.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "Vec"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "Vec",
+        "hits": [
+          "packages/core/src/export.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 7,
+      "tool": "grep_token",
+      "args": [
+        "pub"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "pub",
+        "hits": [
+          "packages/core/src/export.rs",
+          "packages/core/src/lib.rs",
+          "packages/legacy/src/lib.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 8,
+      "tool": "grep_token",
+      "args": [
+        "usize"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "usize",
+        "hits": [
+          "packages/core/src/export.rs",
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "packages/core/src/export.rs",
+    "packages/core/src/lib.rs",
+    "packages/legacy/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/lib.rs",
+      "packages/core/src/export.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "extra_noise_count": 1,
+    "forbidden_files": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_hit": [
+      "packages/legacy/src/lib.rs"
+    ],
+    "forbidden_hit_count": 1,
+    "file_set": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs",
+      "packages/legacy/src/lib.rs"
+    ],
+    "file_set_size": 3
+  },
+  "extras": {
+    "policy": "walk → grep symbol token → bounded definition reads → same-dir sibling expansion → secondary identifier greps",
+    "heuristics": {
+      "include": "files containing the symbol token",
+      "plus": "source files in the same directory as definition hits",
+      "caps": {
+        "same_dir": 6,
+        "secondary_tokens": 8,
+        "reads": 12,
+        "secondary_hits_per_token": 8
+      },
+      "seed_role": "tie-break only when capping same-dir siblings / secondary tokens"
+    },
+    "grep_hits": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "definition_files": [
+      "packages/core/src/export.rs"
+    ],
+    "same_dir_files": [
+      "packages/core/src/lib.rs"
+    ],
+    "secondary_tokens": [
+      "String",
+      "Vec",
+      "pub",
+      "usize"
+    ],
+    "secondary_files": [
+      "packages/core/src/export.rs",
+      "packages/core/src/lib.rs",
+      "packages/legacy/src/lib.rs"
+    ],
+    "file_set_method": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  },
+  "notes": [
+    "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate"
+  ],
+  "errors": []
+}

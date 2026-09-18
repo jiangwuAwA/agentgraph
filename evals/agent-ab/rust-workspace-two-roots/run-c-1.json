@@ -1,0 +1,101 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "rust-workspace-two-roots",
+  "seed": 1,
+  "run_id": "c-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-workspace-two-roots",
+  "symbol": "compute",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "rust-workspace-two-roots",
+    "title": "Workspace change to engine::compute — stay in-engine",
+    "language": "rust",
+    "issue": "engine::compute must change its algorithm. Using the multi-root workspace index, find files that matter and avoid editing the web package unless it truly depends on compute.",
+    "expected_files": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "compute"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 4,
+        "files": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "packages/engine/src/compute.rs",
+    "packages/engine/src/lib.rs",
+    "packages/web/src/lib.rs",
+    "packages/web/src/pages.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "extra_noise_count": 2,
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit_count": 2,
+    "file_set": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "file_set_size": 4
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

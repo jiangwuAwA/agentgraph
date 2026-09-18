@@ -1,0 +1,205 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "A",
+  "policy_label": "Agent-like tool policy + agentgraph MCP/CLI recipes (scripted)",
+  "kind": "scripted_tool_policy",
+  "task_id": "rust-workspace-two-roots",
+  "seed": 1,
+  "run_id": "a-1",
+  "fixture": "fixtures/eval-agent-tasks/rust-workspace-two-roots",
+  "symbol": "compute",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "rust-workspace-two-roots",
+    "title": "Workspace change to engine::compute — stay in-engine",
+    "language": "rust",
+    "issue": "engine::compute must change its algorithm. Using the multi-root workspace index, find files that matter and avoid editing the web package unless it truly depends on compute.",
+    "expected_files": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "index",
+        "--workspace",
+        "<fixture-root>",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "blast-radius",
+        "compute",
+        "--depth",
+        "3",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "find",
+        "compute",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "related",
+        "compute",
+        "--limit",
+        "20",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 2
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "who-calls",
+        "compute",
+        "--limit",
+        "50",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": false,
+        "implementor_count": 0,
+        "callers_files": [
+          "src/lib.rs"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "subset",
+        "--workspace",
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "packages/engine/src/compute.rs",
+    "packages/engine/src/lib.rs",
+    "src/compute.rs",
+    "src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs",
+      "src/compute.rs",
+      "src/lib.rs"
+    ],
+    "file_set_size": 4
+  },
+  "extras": {
+    "window": "sound",
+    "subset_ok": true,
+    "promise_tier": "ast_modeled",
+    "note_honest": true,
+    "recommendation_present": true,
+    "high_freq_name": false,
+    "blast_files": [
+      "packages/engine/src/lib.rs"
+    ],
+    "definition_files": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs"
+    ],
+    "related_files": [
+      "src/compute.rs",
+      "src/lib.rs"
+    ],
+    "who_files": [
+      "src/lib.rs"
+    ],
+    "file_set_method": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "policy": "index → blast-radius → who-calls → find → related → subset → assemble structure-bounded file set"
+  },
+  "notes": [
+    "A is a scripted recipe policy using agentgraph CLI (same payload surface as MCP blast_radius/who_calls); not a live LLM agent."
+  ],
+  "errors": []
+}

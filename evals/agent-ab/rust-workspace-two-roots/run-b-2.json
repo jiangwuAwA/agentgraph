@@ -1,0 +1,215 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "B",
+  "policy_label": "Agent-like read/grep policy — no agentgraph (scripted)",
+  "kind": "scripted_read_grep_policy",
+  "task_id": "rust-workspace-two-roots",
+  "seed": 2,
+  "run_id": "b-2",
+  "fixture": "fixtures/eval-agent-tasks/rust-workspace-two-roots",
+  "symbol": "compute",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "rust-workspace-two-roots",
+    "title": "Workspace change to engine::compute — stay in-engine",
+    "language": "rust",
+    "issue": "engine::compute must change its algorithm. Using the multi-root workspace index, find files that matter and avoid editing the web package unless it truly depends on compute.",
+    "expected_files": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 4
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "compute"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 4,
+        "hits": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "packages/engine/src/compute.rs",
+        "packages/engine/src/lib.rs",
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "packages/engine/src/compute.rs"
+        ],
+        "read_count": 4
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "packages/engine/src",
+        "packages/engine/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "packages/engine/src",
+        "siblings_total": 1,
+        "included": [
+          "packages/engine/src/lib.rs"
+        ],
+        "cap": 6,
+        "seed": 2
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "grep_token",
+      "args": [
+        "i32"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "i32",
+        "hits": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "pub"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "pub",
+        "hits": [
+          "packages/engine/src/compute.rs",
+          "packages/engine/src/lib.rs",
+          "packages/web/src/lib.rs",
+          "packages/web/src/pages.rs"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "packages/engine/src/compute.rs",
+    "packages/engine/src/lib.rs",
+    "packages/web/src/lib.rs",
+    "packages/web/src/pages.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/engine/src/lib.rs",
+      "packages/engine/src/compute.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "extra_noise_count": 2,
+    "forbidden_files": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit_count": 2,
+    "file_set": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "file_set_size": 4
+  },
+  "extras": {
+    "policy": "walk → grep symbol token → bounded definition reads → same-dir sibling expansion → secondary identifier greps",
+    "heuristics": {
+      "include": "files containing the symbol token",
+      "plus": "source files in the same directory as definition hits",
+      "caps": {
+        "same_dir": 6,
+        "secondary_tokens": 8,
+        "reads": 12,
+        "secondary_hits_per_token": 8
+      },
+      "seed_role": "tie-break only when capping same-dir siblings / secondary tokens"
+    },
+    "grep_hits": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "definition_files": [
+      "packages/engine/src/compute.rs"
+    ],
+    "same_dir_files": [
+      "packages/engine/src/lib.rs"
+    ],
+    "secondary_tokens": [
+      "i32",
+      "pub"
+    ],
+    "secondary_files": [
+      "packages/engine/src/compute.rs",
+      "packages/engine/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "file_set_method": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  },
+  "notes": [
+    "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate"
+  ],
+  "errors": []
+}

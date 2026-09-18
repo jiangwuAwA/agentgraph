@@ -1,0 +1,89 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "go-store-api",
+  "seed": 0,
+  "run_id": "c-0",
+  "fixture": "fixtures/eval-agent-tasks/go-store-api",
+  "symbol": "Get",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "go-store-api",
+    "title": "Change Go Repository.Get — consumers and implementors",
+    "language": "go",
+    "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+    "expected_files": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "Get"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 2,
+        "files": [
+          "api/handlers.go",
+          "store/store.go"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "api/handlers.go",
+      "store/store.go"
+    ],
+    "file_set_size": 2
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

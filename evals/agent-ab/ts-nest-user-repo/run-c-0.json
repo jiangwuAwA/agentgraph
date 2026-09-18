@@ -1,0 +1,101 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "C",
+  "policy_label": "name-grep control (P0-1 deterministic baseline)",
+  "kind": "name_grep_control",
+  "task_id": "ts-nest-user-repo",
+  "seed": 0,
+  "run_id": "c-0",
+  "fixture": "fixtures/eval-agent-tasks/ts-nest-user-repo",
+  "symbol": "UserRepository",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "ts-nest-user-repo",
+    "title": "Change UserRepository contract in a Nest-like DI app",
+    "language": "typescript",
+    "issue": "Product wants UserRepository.find to return null instead of throwing when a user is missing. Before editing, identify the blast radius: which files must be reviewed, and which files are noise that mention unrelated concerns.",
+    "expected_files": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.module.ts"
+    ],
+    "noise_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "name_grep",
+      "args": [
+        "UserRepository"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 4,
+        "files": [
+          "src/unrelated.ts",
+          "src/user.module.ts",
+          "src/user.repository.ts",
+          "src/user.service.ts"
+        ]
+      },
+      "note": "P0-1 deterministic name-grep control (symbol token in source files)"
+    }
+  ],
+  "file_set": [
+    "src/unrelated.ts",
+    "src/user.module.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/user.repository.ts",
+      "src/user.service.ts",
+      "src/user.module.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "src/unrelated.ts"
+    ],
+    "extra_noise_count": 1,
+    "forbidden_files": [
+      "src/unrelated.ts",
+      "src/health.ts"
+    ],
+    "forbidden_hit": [
+      "src/unrelated.ts"
+    ],
+    "forbidden_hit_count": 1,
+    "file_set": [
+      "src/unrelated.ts",
+      "src/user.module.ts",
+      "src/user.repository.ts",
+      "src/user.service.ts"
+    ],
+    "file_set_size": 4
+  },
+  "extras": {
+    "policy": "name-grep (symbol token in source files)",
+    "method": "name-grep (symbol token in source files)",
+    "file_set_method": "name-grep symbol token",
+    "seed_role": "metadata only — C is seed-invariant"
+  },
+  "notes": [
+    "C retained from P0-1; deterministic token control, not an LLM."
+  ],
+  "errors": []
+}

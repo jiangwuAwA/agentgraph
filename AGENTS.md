@@ -76,6 +76,8 @@ Phased analysis plan (L0 index → L1 dynamic candidates → L2 sound subset →
 
 **P0-1 public Agent code-change task evals (shipped):** `fixtures/eval-agent-tasks/` (public mini-repos + `task.json` structure facts) + `scripts/eval_agent_tasks.py` + `tests/agent_task_eval.rs`. Scores blast/who-calls/subset honesty vs a **name-grep** baseline (symbol token in files) — not an LLM baseline; no private corpus. Numbers: [docs/eval-agent-tasks.md](docs/eval-agent-tasks.md).
 
+**P0-5 scripted tool-policy A/B/C evals (shipped this slice):** `scripts/eval_agent_ab.py` + `evals/agent-ab/**` replay trajectories + `tests/agent_ab_eval.rs` + [docs/eval-agent-baseline.md](docs/eval-agent-baseline.md). **A** = agentgraph MCP/CLI recipe policy (scripted); **B** = read/grep policy (no agentgraph); **C** = name-grep control. **Not live LLM agents** — future P0-5b is separate. Offline replay via `scripts/eval_agent_ab.py` `score` subcommand over `evals/agent-ab/`. No private corpus.
+
 ## Commits
 
 - Prefer small, test-backed commits.

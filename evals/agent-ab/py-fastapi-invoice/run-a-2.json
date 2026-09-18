@@ -1,0 +1,208 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "A",
+  "policy_label": "Agent-like tool policy + agentgraph MCP/CLI recipes (scripted)",
+  "kind": "scripted_tool_policy",
+  "task_id": "py-fastapi-invoice",
+  "seed": 2,
+  "run_id": "a-2",
+  "fixture": "fixtures/eval-agent-tasks/py-fastapi-invoice",
+  "symbol": "InvoiceService",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "py-fastapi-invoice",
+    "title": "Change InvoiceService.total in a FastAPI-like app",
+    "language": "python",
+    "issue": "Bug: InvoiceService.total miscalculates tax. Identify blast radius before fixing — which API/deps/repository files must be reviewed.",
+    "expected_files": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "noise_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "blast-radius",
+        "InvoiceService",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "find",
+        "InvoiceService"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "app/invoice_service.py"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "related",
+        "InvoiceService",
+        "--limit",
+        "20"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 3
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "who-calls",
+        "InvoiceService",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": false,
+        "implementor_count": 0,
+        "callers_files": [
+          "app/api/invoices.py",
+          "app/deps.py"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "subset"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "app/api/invoices.py",
+    "app/deps.py",
+    "app/invoice_service.py"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "app/invoice_service.py",
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "app/util_log.py",
+      "app/metrics_names.py"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "app/api/invoices.py",
+      "app/deps.py",
+      "app/invoice_service.py"
+    ],
+    "file_set_size": 3
+  },
+  "extras": {
+    "window": "sound",
+    "subset_ok": true,
+    "promise_tier": "ast_modeled",
+    "note_honest": true,
+    "recommendation_present": true,
+    "high_freq_name": false,
+    "blast_files": [
+      "app/api/invoices.py",
+      "app/deps.py",
+      "app/invoice_service.py"
+    ],
+    "definition_files": [
+      "app/invoice_service.py"
+    ],
+    "related_files": [
+      "app/api/invoices.py",
+      "app/deps.py",
+      "app/invoice_service.py"
+    ],
+    "who_files": [
+      "app/api/invoices.py",
+      "app/deps.py"
+    ],
+    "file_set_method": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "policy": "index → blast-radius → who-calls → find → related → subset → assemble structure-bounded file set"
+  },
+  "notes": [
+    "A is a scripted recipe policy using agentgraph CLI (same payload surface as MCP blast_radius/who_calls); not a live LLM agent."
+  ],
+  "errors": []
+}

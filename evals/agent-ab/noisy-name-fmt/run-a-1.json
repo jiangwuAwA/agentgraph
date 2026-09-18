@@ -1,0 +1,191 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "A",
+  "policy_label": "Agent-like tool policy + agentgraph MCP/CLI recipes (scripted)",
+  "kind": "scripted_tool_policy",
+  "task_id": "noisy-name-fmt",
+  "seed": 1,
+  "run_id": "a-1",
+  "fixture": "fixtures/eval-agent-tasks/noisy-name-fmt",
+  "symbol": "fmt",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "noisy-name-fmt",
+    "title": "Noisy name `fmt` — who_calls must separate implementors",
+    "language": "rust",
+    "issue": "Someone proposes renaming fmt across the crate. A naive name grep or merged callers list floods with implementors. Use who_calls to separate real call sites from implementors; high-freq demotion applies.",
+    "expected_files": [
+      "src/render.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "index",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "index",
+        "--force"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0
+      },
+      "note": "fixture index (required before recipes)"
+    },
+    {
+      "seq": 2,
+      "tool": "blast-radius",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "blast-radius",
+        "fmt",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "dependents recipe (agent-facing window + honesty fields)"
+    },
+    {
+      "seq": 3,
+      "tool": "find",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "find",
+        "fmt"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "definition_files": [
+          "src/render.rs"
+        ]
+      },
+      "note": "open definition file(s)"
+    },
+    {
+      "seq": 4,
+      "tool": "related",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "related",
+        "fmt",
+        "--limit",
+        "20"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "related_file_count": 1
+      },
+      "note": "importers/references (scope retrieval; callees/siblings)"
+    },
+    {
+      "seq": 5,
+      "tool": "who-calls",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "who-calls",
+        "fmt",
+        "--limit",
+        "50"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "high_freq_name": true,
+        "implementor_count": 72,
+        "callers_files": [
+          "src/render.rs"
+        ]
+      },
+      "note": "callers vs implementors; high-freq demotion — implementor paths excluded from file set when high_freq_name"
+    },
+    {
+      "seq": 6,
+      "tool": "subset",
+      "args": [
+        "--root",
+        "<fixture-root>",
+        "subset"
+      ],
+      "ok": true,
+      "summary": {
+        "exit_code": 0,
+        "subset_ok": null,
+        "in_subset": true
+      },
+      "note": "honesty companion (window / scoped sound candidates)"
+    }
+  ],
+  "file_set": [
+    "src/render.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/render.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/render.rs"
+    ],
+    "file_set_size": 1
+  },
+  "extras": {
+    "window": "sound",
+    "subset_ok": true,
+    "promise_tier": "ast_modeled",
+    "note_honest": true,
+    "recommendation_present": true,
+    "high_freq_name": true,
+    "blast_files": [
+      "src/render.rs"
+    ],
+    "definition_files": [
+      "src/render.rs"
+    ],
+    "related_files": [
+      "src/render.rs"
+    ],
+    "who_files": [
+      "src/render.rs"
+    ],
+    "file_set_method": "blast_nodes ∪ node.resolved ∪ find(definition) ∪ related ∪ who-calls non-flood paths",
+    "policy": "index → blast-radius → who-calls → find → related → subset → assemble structure-bounded file set"
+  },
+  "notes": [
+    "A is a scripted recipe policy using agentgraph CLI (same payload surface as MCP blast_radius/who_calls); not a live LLM agent."
+  ],
+  "errors": []
+}

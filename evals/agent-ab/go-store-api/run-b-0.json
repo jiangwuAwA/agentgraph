@@ -1,0 +1,221 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "policy": "B",
+  "policy_label": "Agent-like read/grep policy — no agentgraph (scripted)",
+  "kind": "scripted_read_grep_policy",
+  "task_id": "go-store-api",
+  "seed": 0,
+  "run_id": "b-0",
+  "fixture": "fixtures/eval-agent-tasks/go-store-api",
+  "symbol": "Get",
+  "honesty": {
+    "live_llm_agent": false,
+    "scripted_tool_policy_agent": true,
+    "note": "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate",
+    "private_corpus": false
+  },
+  "task": {
+    "id": "go-store-api",
+    "title": "Change Go Repository.Get — consumers and implementors",
+    "language": "go",
+    "issue": "API change: Repository.Get must accept a context. Find implementors (MemRepo/RedisCache Get) and call sites (api handlers) that must be updated; ignore package noise that does not use these methods.",
+    "expected_files": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "noise_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "walk_sources",
+      "args": [
+        "<fixture-root>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_file_count": 4
+      },
+      "note": "enumerate source files under the mini-repo (no agentgraph)"
+    },
+    {
+      "seq": 2,
+      "tool": "grep_symbol",
+      "args": [
+        "Get"
+      ],
+      "ok": true,
+      "summary": {
+        "hit_count": 2,
+        "hits": [
+          "api/handlers.go",
+          "store/store.go"
+        ]
+      },
+      "note": "token search for the issue symbol across source files"
+    },
+    {
+      "seq": 3,
+      "tool": "read_files",
+      "args": [
+        "store/store.go",
+        "api/handlers.go"
+      ],
+      "ok": true,
+      "summary": {
+        "definition_files": [
+          "store/store.go"
+        ],
+        "read_count": 2
+      },
+      "note": "bounded reads (cap 12); detect definition-like lines"
+    },
+    {
+      "seq": 4,
+      "tool": "expand_same_dir",
+      "args": [
+        "store"
+      ],
+      "ok": true,
+      "summary": {
+        "dir": "store",
+        "siblings_total": 0,
+        "included": [],
+        "cap": 6,
+        "seed": 0
+      },
+      "note": "include sibling source files in the definition directory (cap 6; seed breaks ties)"
+    },
+    {
+      "seq": 5,
+      "tool": "grep_token",
+      "args": [
+        "MemRepo"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "MemRepo",
+        "hits": [
+          "store/store.go"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 6,
+      "tool": "grep_token",
+      "args": [
+        "func"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "func",
+        "hits": [
+          "api/handlers.go",
+          "cmd/main.go",
+          "internal/metrics.go",
+          "store/store.go"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    },
+    {
+      "seq": 7,
+      "tool": "grep_token",
+      "args": [
+        "string"
+      ],
+      "ok": true,
+      "summary": {
+        "token": "string",
+        "hits": [
+          "api/handlers.go",
+          "internal/metrics.go",
+          "store/store.go"
+        ]
+      },
+      "note": "secondary identifier search from definition lines"
+    }
+  ],
+  "file_set": [
+    "api/handlers.go",
+    "cmd/main.go",
+    "internal/metrics.go",
+    "store/store.go"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "store/store.go",
+      "api/handlers.go"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [
+      "cmd/main.go",
+      "internal/metrics.go"
+    ],
+    "extra_noise_count": 2,
+    "forbidden_files": [
+      "internal/metrics.go",
+      "cmd/main.go"
+    ],
+    "forbidden_hit": [
+      "cmd/main.go",
+      "internal/metrics.go"
+    ],
+    "forbidden_hit_count": 2,
+    "file_set": [
+      "api/handlers.go",
+      "cmd/main.go",
+      "internal/metrics.go",
+      "store/store.go"
+    ],
+    "file_set_size": 4
+  },
+  "extras": {
+    "policy": "walk → grep symbol token → bounded definition reads → same-dir sibling expansion → secondary identifier greps",
+    "heuristics": {
+      "include": "files containing the symbol token",
+      "plus": "source files in the same directory as definition hits",
+      "caps": {
+        "same_dir": 6,
+        "secondary_tokens": 8,
+        "reads": 12,
+        "secondary_hits_per_token": 8
+      },
+      "seed_role": "tie-break only when capping same-dir siblings / secondary tokens"
+    },
+    "grep_hits": [
+      "api/handlers.go",
+      "store/store.go"
+    ],
+    "definition_files": [
+      "store/store.go"
+    ],
+    "same_dir_files": [],
+    "secondary_tokens": [
+      "MemRepo",
+      "func",
+      "string"
+    ],
+    "secondary_files": [
+      "api/handlers.go",
+      "cmd/main.go",
+      "internal/metrics.go",
+      "store/store.go"
+    ],
+    "file_set_method": "symbol-token hits ∪ definition files ∪ same-dir siblings ∪ secondary-token hits (no agentgraph tools)"
+  },
+  "notes": [
+    "scripted deterministic tool-policy agent — not a live LLM agent experiment; future live P0-5b is separate"
+  ],
+  "errors": []
+}

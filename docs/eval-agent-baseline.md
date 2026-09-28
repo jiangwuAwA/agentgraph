@@ -519,6 +519,20 @@ workspace-root choice). `approx_tokens` **null** in all recorded runs.
 - **Host-session contamination disclosed:** fixture authorship + live decisions
   share a session; `independent_session=false` for `host_session_llm`.
 - **N=3 recorded** (target protocol N≥5) — incomplete vs lab target, labeled.
+
+### H4 denser hard slice + live N (honest)
+
+- **Fixture (shipped):** `fixtures/eval-agent-tasks-hard/ts-dense-alias-noise` —
+  8 same-name `execute` decoys, cross-root `@demo/core/*` alias import, legacy
+  same-class collision, help prose noise. Offline smoke:
+  `tests/h4_dense_alias_fixture.rs`.
+- **Live N≥8 / cell:** **blocked** in this cut — no isolated host LLM runner
+  capacity to execute N≥8 live cells without fabricating sessions. Existing
+  recorded trajectories stay at **N=3** (P0-5c) / **N=5** (P0-5d lab matrix).
+  Historical scores are **not rewritten**.
+- **Noise:** if live A/B noise remains unseparated, keep **null / 未分离**;
+  primary signals stay **recall + cwr**. **Do not** backfill a live noise advantage.
+
 - **Hard fixtures are still public synthetic** mini-repos — scores do not
   transfer to production monorepo precision.
 - **Arm isolation is tool-policy isolation** (A recipes vs B grep/read), not

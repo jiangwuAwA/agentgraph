@@ -707,6 +707,7 @@ impl Store {
                 }
             }
         }
+        crate::index::store::mark_external_package_rows(&mut out, &aliases);
         Ok(out)
     }
 
@@ -2850,6 +2851,31 @@ fn quote_ident(name: &str) -> String {
     }
 }
 
+/// H2: mark package-like imports that are **not** workspace aliases as external.
+/// Never invents file edges — `resolved` stays as stored (usually null).
+pub fn mark_external_package_rows(
+    rows: &mut [ReferenceRecord],
+    aliases: &super::workspace::PackageAliasMap,
+) {
+    for r in rows.iter_mut() {
+        if r.external_dependency {
+            continue;
+        }
+        let Some(module) = r.module.as_deref() else {
+            continue;
+        };
+        if module.is_empty() || module.starts_with('.') || module.starts_with('/') {
+            continue;
+        }
+        if r.resolved.is_some() {
+            continue;
+        }
+        if crate::index::resolve::resolve_package_import(module, aliases).is_none() {
+            r.external_dependency = true;
+        }
+    }
+}
+
 fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
     let confidence_s: String = r.get(8)?;
     let evidence_s: Option<String> = r.get(9)?;
@@ -2867,5 +2893,6 @@ fn map_ref(r: &rusqlite::Row<'_>) -> rusqlite::Result<ReferenceRecord> {
         confidence: Confidence::parse(&confidence_s),
         evidence,
         root_id: root_id.unwrap_or_default(),
+        external_dependency: false,
     })
 }

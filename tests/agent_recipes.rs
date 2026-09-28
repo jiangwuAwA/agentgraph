@@ -137,6 +137,7 @@ fn ref_row(rule: Option<&str>, path: &str, line: usize, conf: Confidence) -> Ref
             snippet: String::new(),
         }),
         root_id: String::new(),
+        external_dependency: false,
     }
 }
 

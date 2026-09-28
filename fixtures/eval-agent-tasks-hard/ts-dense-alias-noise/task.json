@@ -1,0 +1,74 @@
+{
+  "id": "ts-dense-alias-noise",
+  "title": "Dense same-name + cross-root alias — pick true OrderHandler",
+  "theme": "ts-dense-samename-alias",
+  "language": "typescript",
+  "issue": "OrderHandler.execute contract must change in the core package. Many decoy execute() methods exist; legacy has a same-named class. App consumes core via package name. Choose true dependents; do not treat name collisions or help prose as dependents.",
+  "symbol": "OrderHandler",
+  "workspace": {
+    "manifest": "workspace.json",
+    "roots": [
+      { "id": "core", "path": "packages/core" },
+      { "id": "app", "path": "packages/app" },
+      { "id": "legacy", "path": "packages/legacy" },
+      { "id": "cli", "path": "packages/cli" }
+    ]
+  },
+  "expected": {
+    "files_that_matter": [
+      "packages/core/src/orderHandler.ts",
+      "packages/app/src/useOrder.ts"
+    ],
+    "noise_files": [
+      "packages/core/src/noise/noise0.ts",
+      "packages/core/src/noise/noise1.ts",
+      "packages/core/src/noise/noise2.ts",
+      "packages/core/src/noise/noise3.ts",
+      "packages/core/src/noise/noise4.ts",
+      "packages/core/src/noise/noise5.ts",
+      "packages/core/src/noise/noise6.ts",
+      "packages/core/src/noise/noise7.ts",
+      "packages/core/src/noise/bundle.ts",
+      "packages/app/src/other.ts",
+      "packages/legacy/src/utils/orderHandler.ts",
+      "packages/legacy/src/index.ts",
+      "packages/cli/src/help.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/help.ts",
+      "packages/legacy/src/utils/orderHandler.ts"
+    ],
+    "edges": [
+      {
+        "description": "core defines OrderHandler",
+        "site_file": "packages/core/src/orderHandler.ts",
+        "site_contains": "class OrderHandler"
+      },
+      {
+        "description": "app constructs OrderHandler from core",
+        "site_file": "packages/app/src/useOrder.ts",
+        "site_contains": "OrderHandler"
+      }
+    ],
+    "window": "any",
+    "recommendation_present": true,
+    "who_calls": null,
+    "scoped_guidance": {
+      "expect_sound_candidates": true,
+      "expect_window_not_sound": false,
+      "companion_subset_sound_candidates": true,
+      "recommendation_contains_any": ["core", "app", "workspace-root"]
+    },
+    "multi_root": true,
+    "correct_workspace_roots": ["core", "app"],
+    "notes_extra": "H4 denser stress: 8 decoy execute() methods, same class name in legacy, package-name alias import."
+  },
+  "recommended_tools": ["index", "blast-radius", "who-calls", "find", "subset"],
+  "recommended_commands": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph blast-radius OrderHandler --workspace workspace.json",
+    "agentgraph who-calls OrderHandler --workspace workspace.json",
+    "agentgraph find OrderHandler --workspace workspace.json --workspace-root packages/core"
+  ],
+  "notes": "Public synthetic dense-name / cross-root alias fixture (H4). Not a production monorepo."
+}

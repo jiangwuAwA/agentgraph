@@ -26,5 +26,6 @@ fixtures/eval-agent-tasks-hard/<task_id>/
 | `rust-real-noise-dense` | dense implementors / fmt-like flood + clone noise | no | single crate |
 | `rust-sound-scoped-clean` | sound-disabled dirty sibling + clean scoped root | yes | union not sound; scoped `clean` |
 | `ts-multi-root-client` | multi-root TS; wrong-root temptation + docs/help noise | yes | clean roots |
+| `ts-dense-alias-noise` | **H4** denser same-name `execute` decoys + cross-root package alias + legacy name collision | yes | clean core/app; legacy/cli noise |
 
 See [docs/eval-agent-baseline.md](../../docs/eval-agent-baseline.md) **P0-5c**.

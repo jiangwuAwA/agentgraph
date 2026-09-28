@@ -152,3 +152,16 @@ is a dependency list. See [sound-subset.md](sound-subset.md) § Nest.
 3. Run `cargo test --test l1_eval -- --nocapture` and paste the table here.
 
 Do **not** market L1 as sound or “zero missed dynamic calls” — see [PLAN.md](../PLAN.md) §0.2.
+
+
+## H5 P2-3 eval gate (H5 cut)
+
+Candidate new L1 shapes measured on public goldens **before** adding rules
+(`tests/p23_eval_gate.rs`):
+
+| Candidate | Result |
+|---|---|
+| package `exports`/`import` dependency edges | **already covered** by package map + `importers` (no new rule) |
+| extra Go interface method-set rule | **no additional lift** on public corpus (existing `go.di.interface_impl_v2` + Exact call sites suffice) |
+
+**Eval does not support expanding L1 rules** in this cut. Do not claim new L1 recall lift.

@@ -797,6 +797,7 @@ fn unit_recipe_builders_lock_stable_keys_and_note() {
                 snippet: String::new(),
             }),
             root_id: String::new(),
+            external_dependency: false,
         }
     }
     let hits = vec![row(Some("rs.di.impl_trait")), row(None)];

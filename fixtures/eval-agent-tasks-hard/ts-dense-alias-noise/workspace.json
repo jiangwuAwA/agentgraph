@@ -1,0 +1,8 @@
+{
+  "roots": [
+    { "id": "core", "path": "packages/core" },
+    { "id": "app", "path": "packages/app" },
+    { "id": "legacy", "path": "packages/legacy" },
+    { "id": "cli", "path": "packages/cli" }
+  ]
+}

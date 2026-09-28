@@ -357,6 +357,10 @@ pub struct ReferenceRecord {
     /// Workspace multi-root id. Empty for classic single-root stores.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub root_id: String,
+    /// H2: package-like import that is **not** a workspace package alias
+    /// (`node_modules` / external npm) — module name only, no file edge.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external_dependency: bool,
 }
 
 impl ReferenceRecord {

@@ -95,6 +95,88 @@ fn read_package_json_name(root: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// First string among H1 condition order: `import` > `default` > `require` > `types`.
+fn pick_export_condition_string(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::String(s) => {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for key in ["import", "default", "require", "types"] {
+                if let Some(x) = map.get(key) {
+                    if let Some(s) = pick_export_condition_string(x) {
+                        return Some(s);
+                    }
+                }
+            }
+            None
+        }
+        serde_json::Value::Array(a) => a.iter().find_map(pick_export_condition_string),
+        _ => None,
+    }
+}
+
+/// Parse `exports` subset from package.json (H1: `.` / `./sub` only).
+fn read_package_json_exports(root: &Path) -> Vec<(String, String)> {
+    let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(ex) = v.get("exports") else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, String)> = Vec::new();
+    match ex {
+        serde_json::Value::String(s) => {
+            let s = s.trim();
+            if !s.is_empty() {
+                out.push((String::new(), s.to_string()));
+            }
+        }
+        serde_json::Value::Object(map) => {
+            let is_subpath_map = map.keys().any(|k| k.starts_with("./") || k == ".");
+            if !is_subpath_map {
+                if let Some(target) = pick_export_condition_string(ex) {
+                    out.push((String::new(), target));
+                }
+                return out;
+            }
+            for (key, val) in map {
+                if key.contains('*') {
+                    continue;
+                }
+                let sub = if key == "." {
+                    String::new()
+                } else if let Some(s) = key.strip_prefix("./") {
+                    if s.is_empty() || s == "package.json" {
+                        continue;
+                    }
+                    s.trim_end_matches('/').to_string()
+                } else {
+                    continue;
+                };
+                if let Some(target) = pick_export_condition_string(val) {
+                    out.push((sub, target));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn export_target_to_entry(target: &str) -> String {
+    let t = target.replace('\\', "/");
+    strip_dot_slash(t.trim()).to_string()
+}
+
 /// Common barrel/entry candidates under a package root (root-relative).
 pub fn discover_barrel_entry(root: &Path) -> Option<String> {
     const CANDIDATES: &[&str] = &[
@@ -376,16 +458,45 @@ pub fn discover_package_aliases(
 ) -> PackageAliasMap {
     let mut map: PackageAliasMap = PackageAliasMap::new();
 
-    // 1) package.json name per root (lowest explicit priority).
+    // 1) package.json name + exports subset (lowest explicit priority).
     for r in roots {
-        if let Some(name) = read_package_json_name(&r.path) {
+        let Some(name) = read_package_json_name(&r.path) else {
+            continue;
+        };
+        let root_path = norm_path_str(&r.path);
+        let exports = read_package_json_exports(&r.path);
+        if exports.is_empty() {
             map.entry(name).or_insert_with(|| PackageAliasEntry {
                 root_id: r.id.clone(),
                 entry: None,
-                root_path: Some(norm_path_str(&r.path)),
+                root_path: Some(root_path),
                 source: "package.json".to_string(),
             });
+            continue;
         }
+        for (sub, target) in exports {
+            let entry_path = export_target_to_entry(&target);
+            let key = if sub.is_empty() {
+                name.clone()
+            } else {
+                format!("{name}/{sub}")
+            };
+            map.insert(
+                key,
+                PackageAliasEntry {
+                    root_id: r.id.clone(),
+                    entry: Some(entry_path),
+                    root_path: Some(root_path.clone()),
+                    source: "package.json_exports".to_string(),
+                },
+            );
+        }
+        map.entry(name).or_insert_with(|| PackageAliasEntry {
+            root_id: r.id.clone(),
+            entry: None,
+            root_path: Some(root_path),
+            source: "package.json".to_string(),
+        });
     }
 
     // 2) tsconfig paths (explicit — preferred over package.json guess).

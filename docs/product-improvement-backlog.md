@@ -82,7 +82,7 @@
 |---|---|---|
 | **P2-1** | 仓库级 macro 默认配置（全局仍 OFF） | **done** `macro_default = off\|if_fresh\|on` |
 | **P2-2** | CI 爆炸半径注释 demo | **done** `blast-radius-demo.yml`（非 required） |
-| **P2-3** | 更多 L1 规则（有 eval 才做） | **open（eval-gated）** |
+| **P2-3** | 更多 L1 规则（有 eval 才做） | **closed eval-gated — eval 不支持扩规则**（H5） |
 | **P2-4** | 对外一句话竞争叙事 | **done** README 对比表 |
 
 ### 明确不做（近两个季度）
@@ -100,7 +100,7 @@
 | P0-1…P0-5d | **shipped** — 含 isolated lab `lab_ready=true`；live 噪声未分离已披露 |
 | P1-1…P1-4 | **shipped** |
 | P2-1, P2-2, P2-4 | **shipped** |
-| P2-3 | **open（eval-gated）** |
+| P2-3 | **closed eval-gated**（H5：无提升，不扩规则） |
 | next-cut A re-export | **done**（v0.5.4） |
 | package map | **done fail-loud + subpath**（v0.5.6）；真实 monorepo 抽检 residual open |
 
@@ -141,18 +141,24 @@
 - **生态 sound** / 生态完整
 - **full TypeScript resolution** / 完整 module resolution
 
-### Residual（open，非阻塞）
+### Residual（H1–H6 收口后）
 
-- `exports` conditions
-- `node_modules` 外部包
-- 真实脏 monorepo 全量抽检（私有 corpus，operator-only）
-- **P2-3** L1 规则包 — **eval-gated**（无金标数字不开工）
+| 项 | 状态 |
+|---|---|
+| `exports` conditions | **H1 partial closed**（`.`/`./sub` + 有限条件） |
+| `node_modules` 外部包 | **H2 honest closed**（module-only + `external_dependency`；非 full npm 图） |
+| 真实脏 monorepo 全量 | **H3 synthetic closed**；private corpus 仍 operator-only |
+| 更大 N live | **H4 blocked**（无 host LLM runner）；fixture 已扩；历史 score 不改写 |
+| P2-3 L1 规则包 | **H5 closed eval-gated** — eval 不支持扩规则 |
+| CHANGELOG / push | **H6**（见 CHANGELOG.md） |
+
+仍禁止：live 噪声优势、生态 sound、full TS resolution、完整 npm 图。
 
 ## 建议执行顺序（当前）
 
 ```text
 已完成：P0-3 → P0-4 → P0-2 → P0-1 → P0-5 系列 → P1-* → P2-1/2/4 → F1–F7 / v0.5.7
-状态：停机待命（不自行开工）
+状态：H1–H6 已收口；候选下一刀需用户指令
 候选下一刀（列出即止，非开工）：
   1) exports 最小支持（仍 partial，禁止 full TS）
   2) 更大 N live（噪声分离）

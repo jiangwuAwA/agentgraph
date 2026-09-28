@@ -777,6 +777,7 @@ mod tests {
                 snippet: String::new(),
             }),
             root_id: String::new(),
+            external_dependency: false,
         }
     }
 

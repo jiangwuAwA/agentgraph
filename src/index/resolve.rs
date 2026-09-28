@@ -422,6 +422,10 @@ pub fn resolve_package_import(
     if specifier.is_empty() || specifier.starts_with('.') || specifier.starts_with('/') {
         return None;
     }
+    // Exact full specifier first (exports subpath keys like `@demo/lib/client`).
+    if let Some(entry) = aliases.get(specifier) {
+        return Some(hit_from_entry(specifier.to_string(), entry, None));
+    }
     let (pkg, _sub) = split_package_specifier(specifier);
     if let Some(entry) = aliases.get(pkg) {
         return Some(hit_from_entry(pkg.to_string(), entry, None));

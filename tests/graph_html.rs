@@ -509,6 +509,7 @@ fn reference_record_callers_builder_renders() {
         confidence: Confidence::Exact,
         evidence: None,
         root_id: String::new(),
+        external_dependency: false,
     }];
     let data = agentgraph::viz::build_callers_graph("helper", &refs, sample_flags());
     let html = render_graph_html(&data);

@@ -47,8 +47,8 @@ fn write_tree(base: &Path) -> PathBuf {
     std::fs::write(r1.join("src/index.ts"), "export class A {}\n").unwrap();
     std::fs::write(r2.join("src/index.ts"), "export class B {}\n").unwrap();
     let ws = base.join("workspace.json");
-    let body = format!(
-        "{{\"roots\":[{{\"id\":\"aa\",\"path\":\"packages/a\"}},{{\"id\":\"bb\",\"path\":\"packages/b\"}}]}}"
+    let body = String::from(
+        "{\"roots\":[{\"id\":\"aa\",\"path\":\"packages/a\"},{\"id\":\"bb\",\"path\":\"packages/b\"}]}",
     );
     std::fs::write(&ws, body).unwrap();
     ws

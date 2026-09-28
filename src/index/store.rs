@@ -546,8 +546,10 @@ impl Store {
     /// Link package-name import refs to the mapped workspace root barrel/file.
     ///
     /// Additive: sets `refs.resolved` for `kind='import'` rows whose `module`
-    /// equals a known package (or `package/…` subpath). Returns update count.
-    /// **Not** full TypeScript resolution — partial package map only.
+    /// equals a known package (or `package/…` subpath). Wildcard aliases
+    /// (`@/*` -> `src/*`) resolve each module through the limited extension
+    /// table and only set `resolved` when a concrete file exists (never invent).
+    /// Returns update count. **Not** full TypeScript resolution — partial package map only.
     pub fn link_package_imports(
         &mut self,
         aliases: &super::workspace::PackageAliasMap,
@@ -557,7 +559,20 @@ impl Store {
         }
         let roots = self.workspace_roots_meta().unwrap_or_default();
         let mut updated = 0usize;
+
+        // Wildcard keys need per-module resolution (each import maps to a different file).
+        let mut wildcard_keys: Vec<String> = Vec::new();
+        let mut exact_keys: Vec<(String, &super::workspace::PackageAliasEntry)> = Vec::new();
         for (pkg, entry) in aliases {
+            if pkg.ends_with('*') {
+                wildcard_keys.push(pkg.clone());
+            } else {
+                exact_keys.push((pkg.clone(), entry));
+            }
+        }
+
+        // 1) Exact package keys: bulk-update module = pkg / pkg/subpath -> barrel.
+        for (pkg, entry) in exact_keys {
             let root_path = entry.root_path.clone().or_else(|| {
                 roots
                     .iter()
@@ -570,21 +585,18 @@ impl Store {
                     .map(std::path::Path::new)
                     .and_then(super::workspace::discover_barrel_entry)
             });
-            // Prefer workspace-relative display path when root_path looks relative.
             let display: Option<String> = match (&root_path, &root_rel_entry) {
                 (Some(rp), Some(e)) => {
                     let rp_n = rp.replace('\\', "/");
                     let e_n = e.replace('\\', "/");
                     if rp_n.contains(':') || rp_n.starts_with('/') {
-                        // Absolute: keep root-relative entry for display.
                         Some(e_n)
                     } else {
                         Some(format!("{}/{e_n}", rp_n.trim_end_matches('/')))
                     }
                 }
                 (_, Some(e)) => Some(e.clone()),
-                (Some(_), None) => Some(format!("@alias:{pkg}→{}", entry.root_id)),
-                (None, None) => Some(format!("@alias:{pkg}→{}", entry.root_id)),
+                (Some(_), None) | (None, None) => Some(format!("@alias:{pkg}→{}", entry.root_id)),
             };
             let n = self.conn.execute(
                 "UPDATE refs SET resolved = ?1
@@ -594,6 +606,45 @@ impl Store {
             )?;
             updated += n;
         }
+
+        // 2) Wildcard keys: resolve each matching module; concrete file or null.
+        for key in &wildcard_keys {
+            let prefix = key.trim_end_matches('*').to_string();
+            if prefix.is_empty() {
+                continue;
+            }
+            // Collect distinct modules under the wildcard prefix.
+            let like = format!("{prefix}%");
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT module FROM refs
+                 WHERE kind = 'import' AND module LIKE ?1 AND module != ?2",
+            )?;
+            let modules: Vec<String> = stmt
+                .query_map(params![like, prefix], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(stmt);
+            for module in modules {
+                let Some(hit) = crate::index::resolve::resolve_package_import(&module, aliases)
+                else {
+                    continue;
+                };
+                let display = crate::index::resolve::package_resolve_display(&hit);
+                // Only write a file path when the hit actually resolved to a file
+                // (entry set). Otherwise leave resolved NULL (no invented path).
+                let resolved_val: Option<String> = if hit.entry.is_some() {
+                    Some(display)
+                } else {
+                    None
+                };
+                let n = self.conn.execute(
+                    "UPDATE refs SET resolved = ?1
+                     WHERE kind = 'import' AND module = ?2",
+                    params![resolved_val, module],
+                )?;
+                updated += n;
+            }
+        }
+
         if updated > 0 {
             self.cache.borrow_mut().clear();
         }

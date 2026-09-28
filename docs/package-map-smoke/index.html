@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1419" />
+  <title>Package Map Smoke · agentgraph</title>
+  <style>
+    :root {
+      --bg: #0c1222;
+      --panel: #151e32;
+      --panel2: #1b2740;
+      --ink: #e8eef8;
+      --muted: #9aa8bd;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --acc: #38bdf8;
+      --line: #2a3854;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); }
+    body {
+      font: 15px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      padding: 16px 14px 32px;
+    }
+    .app {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .logo {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      display: grid; place-items: center; font-weight: 700; font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+    h1 { font-size: 18px; margin: 0; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 14px 12px;
+      margin: 12px 0;
+    }
+    .card h2 {
+      margin: 0 0 8px; font-size: 13px; font-weight: 650;
+      color: var(--acc); letter-spacing: 0.02em;
+    }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat {
+      background: var(--panel2); border-radius: 12px; padding: 12px;
+      border: 1px solid var(--line);
+    }
+    .stat .n { font-size: 22px; font-weight: 700; line-height: 1.1; }
+    .stat .l { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .pill {
+      display: inline-block; font-size: 11px; padding: 2px 8px;
+      border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+      margin: 0 4px 4px 0;
+    }
+    .pill.ok { color: var(--ok); border-color: rgba(34,197,94,.45); }
+    .pill.warn { color: var(--warn); border-color: rgba(245,158,11,.45); }
+    .pill.bad { color: var(--bad); border-color: rgba(239,68,68,.45); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    ul { margin: 6px 0 0; padding-left: 1.1em; }
+    li { margin: 4px 0; }
+    footer {
+      margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="brand">
+      <div class="logo">AG</div>
+      <div>
+        <h1>Package Map Smoke</h1>
+        <div class="sub">agentgraph · operator monorepo 抽检 · 非 full TS resolution</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>样本规模（量化仓切片 · 不含私有源码）</h2>
+      <div class="stats">
+        <div class="stat"><div class="n">4</div><div class="l">workspace roots</div></div>
+        <div class="stat"><div class="n">198</div><div class="l">frontend files</div></div>
+        <div class="stat"><div class="n">7,485</div><div class="l">frontend refs</div></div>
+        <div class="stat"><div class="n">37</div><div class="l">Rust crate files</div></div>
+      </div>
+      <p class="muted" style="margin:10px 0 0">Rust: event-engine · repository · auth（约 1.8k refs）+ TS frontend。</p>
+    </div>
+
+    <div class="card">
+      <h2>覆盖成功</h2>
+      <div>
+        <span class="pill ok">package.json name</span>
+        <span class="pill ok">tsconfig paths</span>
+        <span class="pill ok">importers 命中</span>
+        <span class="pill ok">重名 fail-loud</span>
+        <span class="pill ok">子路径</span>
+      </div>
+      <ul>
+        <li><b>package.json</b> → <code>stock-trading-app</code> 映射到 frontend</li>
+        <li><b>tsconfig</b> → <code>@/*</code> 别名存在（source: tsconfig_paths）</li>
+        <li><b>importers</b> <code>@/config/chartTheme</code> → <b>8</b> 条 import 列表</li>
+        <li>hard fixture：<code>@demo/registry</code> → <code>resolved=src/index.ts</code></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>缺口 / 非目标</h2>
+      <table>
+        <tr><th>场景</th><th>状态</th></tr>
+        <tr><td>通配 <code>@/*</code> 解析到具体文件</td><td><span class="pill warn">gap</span> resolved=null</td></tr>
+        <tr><td>exports conditions</td><td><span class="pill warn">gap</span></td></tr>
+        <tr><td>node_modules 外部包</td><td><span class="pill bad">non-goal</span> 仅列 module</td></tr>
+        <tr><td>嵌套 workspace 包</td><td><span class="pill warn">有限</span></td></tr>
+        <tr><td>真实脏 monorepo 全量</td><td><span class="pill warn">blocked</span> 私有 corpus</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>结论（诚实）</h2>
+      <ul>
+        <li>别名能<strong>发现</strong>（package.json / tsconfig / CLI）</li>
+        <li>通配路径<strong>未落到 resolved 文件</strong>是主要产品缺口</li>
+        <li><strong>非</strong> full TypeScript resolution / <strong>非</strong>生态 sound</li>
+      </ul>
+    </div>
+
+    <footer>
+      文档：<code>docs/eval-package-map.md</code> · 版本 v0.5.6+ · 仅公开数字，无私有源码
+    </footer>
+  </div>
+</body>
+</html>

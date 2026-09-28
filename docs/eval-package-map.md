@@ -45,17 +45,37 @@ Reproduce: `cargo test --test workspace_package_alias --test workspace_package_d
 
 本机 operator 抽检（**不**提交私有仓路径源码）：
 
+### 公开 hard fixture `ts-multi-root-client`
+
 | 检查 | 结果 |
 |---|---|
-| public hard fixture `ts-multi-root-client`（含 `package.json`） | **pass** — `package_aliases` 含 `@demo/registry` 等 |
-| `importers @demo/registry` | **pass** — `order.service.ts` 行；`resolved=src/index.ts`（barrel） |
+| package.json name 自动映射 | **pass** — `@demo/registry` 等 |
+| `importers @demo/registry` | **pass** — `order.service.ts`；`resolved=src/index.ts` |
 | 重名包 fail-loud | **pass**（`tests/workspace_package_dup.rs`） |
 | 子路径 `@demo/registry/client` | **pass**（unit resolve） |
-| nestjs-starter `package.json` `name` | 可发现（单包名 `nest-typescript-starter`；无跨 root 包名冲突样本） |
-| exports conditions / node_modules | **gap**（保持 open） |
-| 真实脏 monorepo 全量抽检 | **blocked on private corpus** — 仅 operator 本地可跑；不进 CI、不贴源码 |
 
-结论：公开 fixture + hard fixture 已锁主要行为；真实脏 monorepo 证据仍 residual open。
+### 真实量化仓切片（operator 本地，不贴源码）
+
+样本：**4 roots** · frontend 198 files / 7485 refs + 3 个 Rust crate（event-engine 5/384、repository 27/915、auth 5/471）。
+
+| 规则来源 | 包名 / 路径 | 结果 |
+|---|---|---|
+| `package.json` `name` | `stock-trading-app` → `frontend` | **覆盖** |
+| `tsconfig` `paths` | `@/*` → `frontend`（`entry=src/*`） | **别名存在** |
+| `importers @/config/chartTheme` | 8 条 import | **命中 module 列表** |
+| `resolved` 映射 | `@/*` 通配 | **gap** — `resolved` 仍为 `null`（通配未落到具体文件） |
+| 外部包 `@ant-design/icons` 等 | `@tanstack/*`、`@testing-library/*` | **gap / non-goal** — 只列 module，不进 `node_modules` |
+| Rust crate 路径 | `crates/*` | **n/a** — Cargo 路径，非 npm 包名 |
+| exports conditions | — | **gap** |
+| 嵌套 workspace 包 | — | **有限**（nest warn） |
+| 重名包 fail-loud | 合成 fixture | **pass**；本切片无冲突样本 |
+
+**结论：** package.json / tsconfig 别名能发现；**通配 `@/*` 未解析到具体文件**是主要产品 gap；外部 npm 包保持 non-goal。
+
+### 非私有 / 非阻塞 residual
+
+- 真实脏 monorepo 全量抽检：**blocked on private corpus**（operator 本地可跑；不进 CI、不贴源码）
+- exports conditions、`node_modules`、重名 Agent 发现 override：residual open
 
 ## Post-fix note
 

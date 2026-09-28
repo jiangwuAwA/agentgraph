@@ -813,3 +813,49 @@ Expected S1 gate outcome: `lab_ready=false` with gap list (no live matrix yet).
 - Decision path never sees `task.json` labels.
 
 Trajectories: [`evals/agent-ab-h4/`](../evals/agent-ab-h4/).
+
+
+## I-track — budgeted live noise (unlabeled dense tasks)
+
+**Goal:** real live extra-noise advantage for arm A (agentgraph) vs arm B (read/grep) under file budget — no score forgery.
+
+### Why H4 noise was 0 (verified)
+
+1. Fixtures **self-labeled** decoys (`// Noise:`).
+2. Tasks were small (2-4 expected files).
+3. No file budget.
+4. `extra_noise` only counted **listed** noise_files.
+
+### I1 redesign (`fixtures/eval-i-noise/`)
+
+| Change | Detail |
+|---|---|
+| No self-labels | decoys have **no** Noise comments |
+| Dense | i-order-pipeline **56** TS; i-cache-registry **102** TS |
+| Same-name decoys | createOrder / chargeCard / CacheRegistry in legacy/admin too |
+| File budget | **K=8** |
+| Noise definition | **all** non-expected files in file_set |
+| Issue wording | audit / security-review invites over-collection |
+
+Scorer: `scripts/eval_i_noise.py` (additive; never rewrites H4/P0 scores).
+
+### Live snapshot (i_live_runner_1 = xiaomi/mimo-v2.6-pro)
+
+| arm | N | recall | extra-noise | file_set | precision@8 |
+|---|---|---|---|---|---|
+| A (agentgraph) | 5 | **0.933** | **5.20** | 8.0 | 0.350 |
+| B (read/grep) | 4 | **0.889** | **5.33** | 8.0 | 0.313 |
+
+**A vs B:** extra-noise **A < B** (delta ~ +0.13) and recall **A >= B**.
+→ **budgeted live noise advantage (small margin)** on this I-track slice.
+
+**Honesty:** margin is **small**. Do not generalize to H4 or claim ecosystem noise wins.
+Not 生态 sound. Historical H4/P0 scores **unchanged**. Real N labeled.
+
+### I2 (next if margin must grow)
+
+- Product precision: rank + K-truncation + directory diversity.
+- Return `file_budget` / `pruned` in payloads.
+- Default: 少而准 under budget.
+
+Trajectories: `evals/agent-ab-noise/`.

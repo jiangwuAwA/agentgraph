@@ -1,0 +1,102 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/chargeCard.ts",
+    "src/legacy/orderHandler.ts",
+    "src/payments/refundCard.ts",
+    "src/admin/orderAdmin.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph find",
+      "args": ["createOrder"],
+      "ok": true,
+      "summary": {
+        "definitions": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]
+      },
+      "note": "3 createOrder definition sites"
+    },
+    {
+      "tool": "agentgraph find",
+      "args": ["chargeCard"],
+      "ok": true,
+      "summary": {
+        "definitions": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]
+      },
+      "note": "3 chargeCard definition sites; refundCard.ts exports chargeCard"
+    },
+    {
+      "tool": "agentgraph callers",
+      "args": ["createOrder"],
+      "ok": true,
+      "summary": {
+        "callers": ["src/orders/orderService.ts"]
+      },
+      "note": "import + call from OrderService.place"
+    },
+    {
+      "tool": "agentgraph callers",
+      "args": ["chargeCard"],
+      "ok": true,
+      "summary": {
+        "callers": ["src/orders/orderService.ts"]
+      },
+      "note": "import + call from OrderService.place"
+    },
+    {
+      "tool": "agentgraph impact",
+      "args": ["createOrder"],
+      "ok": true,
+      "summary": {},
+      "note": "no transitive dependents beyond orderService.ts"
+    },
+    {
+      "tool": "agentgraph impact",
+      "args": ["chargeCard"],
+      "ok": true,
+      "summary": {},
+      "note": "no transitive dependents beyond orderService.ts"
+    },
+    {
+      "tool": "agentgraph importers",
+      "args": ["src/orders/createOrder.ts", "src/payments/chargeCard.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "only orderService.ts imports the canonical modules"
+    },
+    {
+      "tool": "agentgraph related",
+      "args": ["createOrder", "chargeCard"],
+      "ok": true,
+      "summary": {},
+      "note": "confirmed definition cluster + orderService"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard", "src/"],
+      "ok": true,
+      "summary": {
+        "matches": 14,
+        "files": 9
+      },
+      "note": "text scan found admin/metrics mentioners beyond symbol graph; adjacent stub files (exportCsv, paymentAdmin, reportUtil, orderConfig, paymentConfig, *Index) do not mention the symbols"
+    },
+    {
+      "tool": "read",
+      "args": ["src/orders/orderService.ts", "src/admin/orderAdmin.ts", "src/orders/orderMetrics.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "confirmed call sites and documenter content; dropped orderMetrics.ts (comment-only mention) under 8-file cap"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

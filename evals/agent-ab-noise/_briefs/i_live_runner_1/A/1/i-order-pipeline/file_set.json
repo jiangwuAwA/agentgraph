@@ -1,0 +1,33 @@
+﻿{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/orderHandler.ts",
+    "src/legacy/chargeCard.ts",
+    "src/admin/orderAdmin.ts",
+    "src/orders/orderMetrics.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["find source files defining or calling createOrder chargeCard using agentgraph CLI for code audit file list"], "ok": true, "summary": {"loaded_skill_id": null}, "note": "no matching skill"},
+    {"tool": "bash", "args": ["agentgraph stats"], "ok": true, "summary": {"files": 56, "symbols": 131, "references": 85}, "note": "index already present"},
+    {"tool": "bash", "args": ["agentgraph find createOrder"], "ok": true, "summary": {"defs": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]}, "note": "3 definitions"},
+    {"tool": "bash", "args": ["agentgraph find chargeCard"], "ok": true, "summary": {"defs": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]}, "note": "3 definitions"},
+    {"tool": "bash", "args": ["agentgraph callers createOrder"], "ok": true, "summary": {"paths": ["src/orders/orderService.ts"], "kinds": ["import", "call"]}, "note": "exact refs"},
+    {"tool": "bash", "args": ["agentgraph callers chargeCard"], "ok": true, "summary": {"paths": ["src/orders/orderService.ts"], "kinds": ["import", "call"]}, "note": "exact refs"},
+    {"tool": "bash", "args": ["agentgraph impact createOrder; agentgraph impact chargeCard"], "ok": true, "summary": {"dependents": ["src/orders/orderService.ts"]}, "note": "depth-1 only"},
+    {"tool": "bash", "args": ["agentgraph related createOrder; agentgraph related chargeCard"], "ok": true, "summary": {"paths": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts", "src/orders/orderService.ts", "src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]}, "note": "definition+import graph"},
+    {"tool": "bash", "args": ["agentgraph who-calls createOrder; agentgraph who-calls chargeCard"], "ok": true, "summary": {"subset_ok": true, "window": "default", "implementors": 0}, "note": "no implementor flood"},
+    {"tool": "grep", "args": ["createOrder|chargeCard", "workdir"], "ok": true, "summary": {"matches": 14, "files": 9}, "note": "exhaustive text scan"},
+    {"tool": "grep", "args": ["create.?[Oo]rder|charge.?[Cc]ard|CreateOrder|ChargeCard", "workdir"], "ok": true, "summary": {"matches": 14, "files": 9}, "note": "case/space-variant scan; same set"},
+    {"tool": "bash", "args": ["Get-Content src/orders/createOrder.ts src/payments/chargeCard.ts src/orders/orderService.ts src/legacy/createOrder.ts src/legacy/chargeCard.ts src/legacy/orderHandler.ts src/payments/refundCard.ts src/admin/orderAdmin.ts src/orders/orderMetrics.ts"], "ok": true, "summary": {"read_files": 9}, "note": "ranked and cut to 8"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

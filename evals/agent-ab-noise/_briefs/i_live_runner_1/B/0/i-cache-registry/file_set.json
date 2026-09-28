@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-cache-registry",
+  "runner_id": "i_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/cache/registry.ts",
+    "src/app/bootstrap.ts",
+    "src/legacy/registry.ts",
+    "src/admin/registry.ts",
+    "src/shared/registry.ts",
+    "src/app/registry.ts",
+    "src/api/registry.ts",
+    "src/cli/registry.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File"], "ok": true, "summary": {"files_listed": 107}, "note": "workdir inventory"},
+    {"tool": "grep", "args": ["CacheRegistry", "."], "ok": true, "summary": {"matches": 14, "files": 11}, "note": "primary class-name search"},
+    {"tool": "bash", "args": ["Get-Content src\\cache\\registry.ts, src\\app\\bootstrap.ts, src\\legacy\\registry.ts, src\\admin\\registry.ts, src\\shared\\registry.ts, src\\app\\registry.ts, src\\cache\\logger.ts, src\\admin\\logger.ts, src\\shared\\logger.ts, src\\legacy\\logger.ts"], "ok": true, "summary": {"read": 10}, "note": "read define/construct/logger candidates"},
+    {"tool": "grep", "args": ["registry|Registry|wrap|helper", "src/**/*logger*.ts"], "ok": true, "summary": {"matches": 0}, "note": "logger helpers do not reference the class"},
+    {"tool": "bash", "args": ["Get-Content src\\api\\registry.ts, src\\cli\\registry.ts, src\\config\\registry.ts, src\\metrics\\registry.ts, src\\util\\registry.ts, src\\cache\\ttlCache.ts, ..."], "ok": true, "summary": {"read": 8}, "note": "remaining registries + TtlCache wrapper"},
+    {"tool": "bash", "args": ["scan *.ts for CacheRegistry|logCache"], "ok": true, "summary": {"files": 21}, "note": "final occurrence sweep"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

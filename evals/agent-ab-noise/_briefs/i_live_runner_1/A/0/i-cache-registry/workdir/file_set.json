@@ -1,0 +1,63 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-cache-registry",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/cache/registry.ts",
+    "src/app/bootstrap.ts",
+    "src/legacy/registry.ts",
+    "src/admin/registry.ts",
+    "src/shared/registry.ts",
+    "src/app/registry.ts",
+    "src/api/registry.ts",
+    "src/cli/registry.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["agentgraph index --root ."],
+      "ok": true,
+      "summary": { "files": 102, "symbols": 115, "refs": 11 },
+      "note": "full index of workdir"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find CacheRegistry --root ."],
+      "ok": true,
+      "summary": { "class_defs": 10 },
+      "note": "10 CacheRegistry class definitions across src/*"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers CacheRegistry --root . --include-dynamic"],
+      "ok": true,
+      "summary": { "refs": 2, "resolved": "src/cache/registry.ts" },
+      "note": "only src/app/bootstrap.ts imports+constructs CacheRegistry"
+    },
+    {
+      "tool": "grep",
+      "args": ["CacheRegistry", "**/*"],
+      "ok": true,
+      "summary": { "files_with_class_name": 11 },
+      "note": "11 files contain the class name; loggers do not"
+    },
+    {
+      "tool": "read",
+      "args": ["src/cache/registry.ts", "src/app/bootstrap.ts", "src/legacy/registry.ts", "src/admin/registry.ts", "src/shared/registry.ts", "src/cache/logger.ts"],
+      "ok": true,
+      "summary": { "cache_registry": "defines class, wraps TtlCache", "bootstrap": "constructs instance", "legacy": "deprecated def", "admin": "admin console def", "shared": "ops snapshot def", "logger": "logCache only, no class name" },
+      "note": "verified define/construct/wrap/document roles"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph impact CacheRegistry --root . --include-dynamic"],
+      "ok": true,
+      "summary": { "edges": 2 },
+      "note": "no further wrappers beyond bootstrap"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

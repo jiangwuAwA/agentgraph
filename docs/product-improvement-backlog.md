@@ -115,15 +115,48 @@
 
 ---
 
+## v0.5.7 产品收束（对外口径）
+
+产品线在此收束；**不再扩 feature**，除非用户另指下一刀。
+
+### 已交付
+
+- 噪声治理（query-time `edge_role` / implementors 分离 / high-freq cap）
+- Workspace multi-root（manifest / `--workspace-root` / scoped sound）
+- `blast_radius` / `who_calls`（含 recommendation、诚实 window）
+- **package map partial**（package.json name / CLI alias / tsconfig paths；含通配 `@/*` **resolved**，有限扩展表）
+- P0-5 lab 矩阵（`lab_ready=true`，isolated）
+- graph diff / S-recert / HTML L2
+
+### 可引用（对外/评测）
+
+- **structure-fact** 与任务级结构事实
+- **召回** 与 **cwr** 信号
+- hard 上 **scripted 噪声对照**（非 live 优势）
+- **package map partial**（含通配 resolved + 有限扩展表）
+
+### 不可引用（禁止对外）
+
+- **live 噪声优势**（live 噪声未分离）
+- **生态 sound** / 生态完整
+- **full TypeScript resolution** / 完整 module resolution
+
+### Residual（open，非阻塞）
+
+- `exports` conditions
+- `node_modules` 外部包
+- 真实脏 monorepo 全量抽检（私有 corpus，operator-only）
+- **P2-3** L1 规则包 — **eval-gated**（无金标数字不开工）
+
 ## 建议执行顺序（当前）
 
 ```text
-已完成：P0-3 → P0-4 → P0-2 → P0-1 → P0-5 系列 → P1-* → P2-1/2/4
-下一步候选（按产品判断）：
-  1) F7：行为可见则 v0.5.7（package map partial + 通配 resolved；仍禁止 full TS / 生态 sound）
-  2) 真实 monorepo package map 抽检（residual #5，补证据）
+已完成：P0-3 → P0-4 → P0-2 → P0-1 → P0-5 系列 → P1-* → P2-1/2/4 → F1–F7 / v0.5.7
+状态：停机待命（不自行开工）
+候选下一刀（列出即止，非开工）：
+  1) exports 最小支持（仍 partial，禁止 full TS）
+  2) 更大 N live（噪声分离）
   3) P2-3 L1 规则包（仅当有 eval 金标数字）
-  4) 停机 / 发版叙事复审
 ```
 
 ## 与 session 任务面板的映射

@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "list", "args": ["workdir/**/*"], "ok": true, "summary": {"files_seen": 15}, "note": "recursive walk of isolated workdir"},
+    {"tool": "grep", "args": ["RegistryClient", "workdir/"], "ok": true, "summary": {"matches": 14, "files": 7}, "note": "symbol hits across registry/service/cli/docs"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": 4}, "note": "roots: registry, service, cli, docs"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"lines": 11}, "note": "class RegistryClient defines fetch(id): string"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"lines": 8}, "note": "OrderService consumes client.fetch(id)"},
+    {"tool": "grep", "args": ["fetch", "workdir/"], "ok": true, "summary": {"matches": 2, "files": 2}, "note": "fetch only in registry/client.ts and service/order.service.ts"},
+    {"tool": "list", "args": ["brief dir and parent"], "ok": true, "summary": {"entries": 4}, "note": "locate contract files without touching other cells"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {"lines": 52}, "note": "output schemas for this cell"},
+    {"tool": "read", "args": ["../ISSUE.md"], "ok": true, "summary": {"lines": 32}, "note": "issue brief (same as prompt)"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

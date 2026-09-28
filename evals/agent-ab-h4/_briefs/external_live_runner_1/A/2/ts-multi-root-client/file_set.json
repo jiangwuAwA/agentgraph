@@ -1,0 +1,191 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "registry",
+          "service",
+          "cli",
+          "docs"
+        ]
+      },
+      "note": "multi-root manifest"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": "RegistryClient.fetch"
+      },
+      "note": "contract definition site"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/index.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "exports": [
+          "RegistryClient",
+          "createClient"
+        ]
+      },
+      "note": "public barrel"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/service/src/order.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "calls": "client.fetch(id)"
+      },
+      "note": "return-contract consumer"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/service/src/order.controller.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "uses": "OrderService"
+      },
+      "note": "downstream of consumer"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/cli/src/help.ts",
+        "packages/cli/src/main.ts",
+        "packages/docs/src/changelog.ts",
+        "packages/docs/src/overview.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "mentions": "string/prose only"
+      },
+      "note": "name-mention noise, not dependents"
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots_indexed": 4,
+        "files": 8,
+        "symbols": 15,
+        "references": 9
+      },
+      "note": "workspace multi-root index"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": [
+          "registry/src/client.ts",
+          "registry/src/index.ts"
+        ]
+      },
+      "note": "definition + barrel"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "roots": [
+          "registry",
+          "service"
+        ]
+      },
+      "note": "cli/docs roots show 0 refs"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": [
+        "fetch"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 1,
+        "at": "service/src/order.service.ts:6"
+      },
+      "note": "sole fetch return consumer"
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "depth": 3,
+        "subset_ok": true,
+        "window": "sound"
+      },
+      "note": "impact through OrderService"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "top": [
+          "registry/src/index.ts",
+          "registry/src/client.ts",
+          "service/src/order.service.ts"
+        ]
+      },
+      "note": "retrieval scoping"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": [
+        "fetch"
+      ],
+      "ok": true,
+      "summary": {
+        "impact": [
+          "service/src/order.service.ts"
+        ]
+      },
+      "note": "return-contract blast"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,106 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . index"],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 44, "references": 38, "exact": 26, "heuristic": 12},
+      "note": "indexed isolated workdir rust corpus"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . find encode"],
+      "ok": true,
+      "summary": {"hits": 13, "trait_def": "Encode::encode@src/packet.rs:3", "implementor_methods": 12},
+      "note": "all encode method defs live in src/packet.rs"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . find Encode"],
+      "ok": true,
+      "summary": {"trait": "src/packet.rs:2", "enum_collision": "src/metrics.rs:8"},
+      "note": "metrics Encode enum is a type-name collision, not the packet trait"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . who-calls encode"],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 12, "high_freq_name": false, "subset_ok": true, "window": "default", "promise_tier": "ast_modeled"},
+      "note": "callers=exact in src/wire.rs (send_packet/dump_all/checksum); implementors=heuristic rs.di.impl_trait in src/packet.rs; noise files absent"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . callers encode"],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 12, "implementors_truncated": false},
+      "note": "same caller/implementor split as who-calls recipe"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . related encode"],
+      "ok": true,
+      "summary": {"paths": ["src/packet.rs", "src/wire.rs"]},
+      "note": "related retrieval ranks only trait+impl file and importing caller file"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root . impact encode"],
+      "ok": true,
+      "summary": {"depth1_files": ["src/packet.rs", "src/wire.rs"], "depth2": "src/lib.rs:9 import wire::send_packet"},
+      "note": "depth-2 lib.rs is re-export surface only, not payload structure"
+    },
+    {
+      "tool": "read",
+      "args": ["src/packet.rs"],
+      "ok": true,
+      "summary": {"trait": "Encode", "impls": ["Header","Body","Footer","Ack","Nack","Ping","Pong","Meta","Chunk0","Chunk1","Chunk2","Chunk3"]},
+      "note": "payload producers; must review for Encode::encode payload format change"
+    },
+    {
+      "tool": "read",
+      "args": ["src/wire.rs"],
+      "ok": true,
+      "summary": {"callers": ["send_packet","dump_all","checksum"]},
+      "note": "real Encode::encode call sites consuming the payload; must review"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {"reexports": ["packet::Encode", "wire::send_packet"], "mods": ["packet","wire","metrics","legacy","clone_heavy"]},
+      "note": "crate re-export/module wiring only; excluded from file_set"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {"collisions": ["Encode enum", "encode_label", "encode_metric"]},
+      "note": "excluded: name collision, no packet::Encode edge"
+    },
+    {
+      "tool": "read",
+      "args": ["src/legacy.rs"],
+      "ok": true,
+      "summary": {"fns": ["encode_legacy", "note"]},
+      "note": "excluded: legacy encode helper, unused by packet/wire"
+    },
+    {
+      "tool": "read",
+      "args": ["src/clone_heavy.rs"],
+      "ok": true,
+      "summary": {"fns": ["clone_tight", "reopen", "encode_name_for_clone"]},
+      "note": "excluded: clone helpers, no Encode edge"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

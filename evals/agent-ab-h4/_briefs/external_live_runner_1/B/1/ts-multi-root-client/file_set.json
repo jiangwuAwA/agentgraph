@@ -1,0 +1,18 @@
+{
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

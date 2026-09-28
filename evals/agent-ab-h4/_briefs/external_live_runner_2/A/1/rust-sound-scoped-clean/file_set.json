@@ -1,0 +1,33 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "list", "args": ["."], "ok": true, "summary": {"entries": ["workspace.json", "packages", ".mimocode"]}, "note": "enumerate isolated workdir"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"]}, "note": "multi-root manifest, paths relative to workdir"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"defines": ["batch_write", "batch_write_verbose"]}, "note": "symbol definition + intra-file call"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"reexport": "write::batch_write", "call_site": "flush_all"}, "note": "true dependent"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"violations": ["unsafe transmute"], "collisions": "comments + batch_write_shadow only"}, "note": "no true batch_write edge; unsafe leaves S"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"collisions": "doc/comment mentions only"}, "note": "no definition/call edge"},
+    {"tool": "bash", "args": ["agentgraph --help"], "ok": true, "summary": {"version_note": "recipe inventory"}, "note": "discover recipes"},
+    {"tool": "bash", "args": ["agentgraph --version"], "ok": true, "summary": {"version": "0.5.8"}, "note": ""},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json index"], "ok": true, "summary": {"files": 4, "clean_violations": 0, "clean_promise_tier": "ast_modeled", "dirty_violations": 3, "dirty_promise_tier": "disabled"}, "note": "single shared store + root_id"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json blast-radius batch_write"], "ok": true, "summary": {"subset_ok": false, "window": "default", "impact_nodes": 2, "impact_roots": ["clean"]}, "note": "union sound disabled — dirty sibling is weakest root"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json who-calls batch_write"], "ok": true, "summary": {"callers": 2, "implementor_count": 0, "roots": ["clean"], "high_freq_name": false}, "note": "all true refs tagged root_id=clean"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json impact batch_write --sound --workspace-root clean"], "ok": true, "summary": {"subset_ok": true, "promise_tier": "ast_modeled", "edges": 2}, "note": "scoped sound on clean root — recommended path"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers batch_write --sound --workspace-root clean"], "ok": true, "summary": {"subset_ok": true, "callers": 2}, "note": "scoped sound callers"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json subset"], "ok": true, "summary": {"in_subset": false, "violation_count": 3, "violation_kinds": ["unsafe", "transmute"], "violation_root": "dirty"}, "note": "union claim disabled; recommendation = scoped --sound on clean"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json find batch_write"], "ok": true, "summary": {"definitions": 1, "path": "src/write.rs", "root_id": "clean"}, "note": "dirty has no batch_write definition"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json importers src/write.rs --workspace-root clean"], "ok": true, "summary": {"importers": 0}, "note": "module-level importers empty"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json related batch_write"], "ok": true, "summary": {"related": ["src/write.rs", "src/lib.rs"]}, "note": "definition:function + reference:import"},
+    {"tool": "grep", "args": ["batch_write", "packages"], "ok": true, "summary": {"clean_hits": 5, "dirty_hits": 6, "dirty_true_edges": 0}, "note": "dirty hits are comments/strings and batch_write_shadow — name-grep noise, excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

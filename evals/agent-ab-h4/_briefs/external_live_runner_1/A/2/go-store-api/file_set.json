@@ -1,0 +1,50 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 11, "references": 19},
+      "note": "indexed isolated workdir (go only)"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "Get"],
+      "ok": true,
+      "summary": {"callers": 1, "implementor_count": 7},
+      "note": "call site api/handlers.go:6 (LoadUser); implementors MemRepo.Get + RedisCache.Get in store/store.go; high_freq_name=true"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "Get"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_nodes": 4},
+      "note": "impact collapses to api/handlers.go + store/store.go"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Get"],
+      "ok": true,
+      "summary": {"definitions": 2},
+      "note": "MemRepo.Get and RedisCache.Get both defined in store/store.go"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go", "cmd/main.go", "internal/metrics.go", "store/store.go"],
+      "ok": true,
+      "summary": {},
+      "note": "read all four sources; cmd/main.go and internal/metrics.go have no Repository/Get dependency"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

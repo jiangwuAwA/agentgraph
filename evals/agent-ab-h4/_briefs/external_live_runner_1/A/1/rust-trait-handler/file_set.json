@@ -1,0 +1,78 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "index"],
+      "ok": true,
+      "summary": {"files": 3, "symbols": 12, "references": 17, "exact": 13, "heuristic": 4},
+      "note": "built local index over isolated workdir"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "who-calls", "render"],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 4, "high_freq_name": false, "promise_tier": "ast_modeled"},
+      "note": "implementors separated from callers by default"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "blast-radius", "render"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "nodes": 7, "promise_tier": "ast_modeled"},
+      "note": "impact depth 3; implementor + call edges"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "find", "render"],
+      "ok": true,
+      "summary": {"defs": 3, "qualified": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"]},
+      "note": "trait method + 2 impls, all in src/handlers.rs"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "find", "Handler"],
+      "ok": true,
+      "summary": {"defs": 1, "qualified": ["Handler"]},
+      "note": "trait definition in src/handlers.rs"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "callers", "render"],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 4},
+      "note": "3 exact dyn-dispatch call sites across handlers.rs and lib.rs"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {"trait_def": true, "impls": 2, "dyn_call_sites": 1},
+      "note": "Handler::render signature + HtmlHandler/JsonHandler impls + render_dyn(&dyn Handler)"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {"dyn_call_sites": 2},
+      "note": "dispatch(&dyn Handler) and bootstrap(Vec<Box<dyn Handler>>) both call .render()"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {"handler_refs": 0},
+      "note": "noise file — no Handler/render dependency; excluded from file_set"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

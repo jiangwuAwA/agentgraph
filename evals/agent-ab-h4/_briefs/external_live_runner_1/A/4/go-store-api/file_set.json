@@ -1,0 +1,19 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    "agentgraph index",
+    "agentgraph find Get",
+    "agentgraph who-calls Get",
+    "agentgraph blast-radius Get"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

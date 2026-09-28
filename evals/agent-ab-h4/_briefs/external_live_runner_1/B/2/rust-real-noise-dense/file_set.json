@@ -1,0 +1,55 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "list",
+      "target": "workdir",
+      "note": "walk of isolated workdir; found src/ with 6 .rs files"
+    },
+    {
+      "tool": "grep",
+      "pattern": "encode",
+      "note": "28 hits across src/*.rs; used to separate trait/callers from name collisions"
+    },
+    {
+      "tool": "read",
+      "target": "src/packet.rs",
+      "note": "Encode trait definition + 12 implementors (Header/Body/Footer/Ack/Nack/Ping/Pong/Meta/Chunk0-3)"
+    },
+    {
+      "tool": "read",
+      "target": "src/wire.rs",
+      "note": "real Encode::encode call sites: send_packet, dump_all, checksum"
+    },
+    {
+      "tool": "read",
+      "target": "src/lib.rs",
+      "note": "crate root module map + re-exports; confirms metrics/legacy/clone_heavy are sibling noise modules"
+    },
+    {
+      "tool": "read",
+      "target": "src/metrics.rs",
+      "note": "collision: unrelated Encode enum + encode_label/encode_metric; excluded"
+    },
+    {
+      "tool": "read",
+      "target": "src/legacy.rs",
+      "note": "collision: legacy encode_legacy + comment noise; excluded"
+    },
+    {
+      "tool": "read",
+      "target": "src/clone_heavy.rs",
+      "note": "collision: clone helpers + encode_name_for_clone; excluded"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph", "args": ["index", "--workspace", "workspace.json"], "ok": true, "summary": {"files": 15, "symbols": 29, "references": 7, "roots": ["core", "app", "legacy", "cli"]}, "note": "multi-root workspace index; package aliases resolved @demo/core->core etc."},
+    {"tool": "agentgraph", "args": ["find", "OrderHandler", "--workspace", "workspace.json"], "ok": true, "summary": {"hits": 2, "core": "packages/core/src/orderHandler.ts", "legacy": "packages/legacy/src/utils/orderHandler.ts"}, "note": "two same-named classes; disambiguated by root_id + package name"},
+    {"tool": "agentgraph", "args": ["who-calls", "OrderHandler", "--workspace", "workspace.json"], "ok": true, "summary": {"callers": 4, "window": "default", "subset_ok": true, "exact_edges": 4}, "note": "app/src/useOrder.ts resolved @alias:@demo/core->core; legacy/src/index.ts resolved ./utils/orderHandler (not core)"},
+    {"tool": "agentgraph", "args": ["blast-radius", "OrderHandler.execute", "--workspace", "workspace.json"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_nodes": ["packages/app/src/useOrder.ts:5"]}, "note": "only execute call site on core OrderHandler is app useOrder"},
+    {"tool": "agentgraph", "args": ["impact", "OrderHandler", "--workspace", "workspace.json"], "ok": true, "summary": {"edges": 4, "cross_root_consumer": "app", "legacy_pair_is_same_root": true}, "note": "legacy pair is intra-legacy name collision, not a core dependent"},
+    {"tool": "agentgraph", "args": ["callers", "execute", "--workspace", "workspace.json"], "ok": true, "summary": {"hits": 1, "at": "packages/app/src/useOrder.ts:5", "qualifier": "OrderHandler"}, "note": "dense noise execute methods exist but are not referenced as OrderHandler.execute"},
+    {"tool": "agentgraph", "args": ["find", "execute", "--workspace", "workspace.json"], "ok": true, "summary": {"defs": 10, "noise_methods": 8, "orderhandler_defs": 2}, "note": "Noise0..Noise7.execute decoys plus two OrderHandler.execute (core + legacy)"},
+    {"tool": "agentgraph", "args": ["related", "OrderHandler", "--workspace", "workspace.json"], "ok": true, "summary": {"top": ["packages/core/src/orderHandler.ts", "packages/legacy/src/utils/orderHandler.ts", "packages/app/src/useOrder.ts"]}, "note": "used only for scoping; correctness decided by import/module resolution"},
+    {"tool": "read", "args": ["packages/core/src/orderHandler.ts"], "ok": true, "summary": {"exports": "class OrderHandler", "method": "execute(id: string): string"}, "note": "true contract site in @demo/core"},
+    {"tool": "read", "args": ["packages/app/src/useOrder.ts"], "ok": true, "summary": {"import": "@demo/core/orderHandler", "calls": ["new OrderHandler()", "h.execute(id)"]}, "note": "true cross-root dependent via package name"},
+    {"tool": "read", "args": ["packages/legacy/src/utils/orderHandler.ts"], "ok": true, "summary": {"exports": "class OrderHandler", "method": "execute(id: string): string"}, "note": "same-named decoy class in wrong package; excluded"},
+    {"tool": "read", "args": ["packages/legacy/src/index.ts"], "ok": true, "summary": {"import": "./utils/orderHandler"}, "note": "depends on legacy OrderHandler, not core; excluded"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {"kind": "string_literal"}, "note": "help prose mentions OrderHandler.execute as text; not a dependent; excluded"},
+    {"tool": "read", "args": ["packages/app/src/other.ts"], "ok": true, "summary": {"import": "@demo/core/noise/noise0"}, "note": "no OrderHandler use; excluded"},
+    {"tool": "read", "args": ["packages/core/package.json", "packages/app/package.json", "packages/legacy/package.json", "packages/core/tsconfig.json"], "ok": true, "summary": {"names": ["@demo/core", "@demo/app", "@demo/legacy"], "legacy_paths_alias": "@/*->src/*"}, "note": "package names confirm app consumes core by package name; legacy @/* alias is separate"},
+    {"tool": "read", "args": ["packages/core/src/noise/noise0.ts", "packages/core/src/noise/bundle.ts"], "ok": true, "summary": {"noise0": "class Noise0.execute", "bundle": "filler string"}, "note": "sampled noise dir; decoy execute methods, not OrderHandler; excluded"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

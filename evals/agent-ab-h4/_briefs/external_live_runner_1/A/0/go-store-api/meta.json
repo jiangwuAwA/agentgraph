@@ -1,0 +1,9 @@
+{
+  "kind": "live_llm_agent",
+  "model_note": "xiaomi/mimo-v2.6-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "arm_isolated": true,
+  "lab_ready_claim": false,
+  "approx_tokens": null
+}

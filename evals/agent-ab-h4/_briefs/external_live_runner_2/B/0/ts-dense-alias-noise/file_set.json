@@ -1,0 +1,21 @@
+{
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "15",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

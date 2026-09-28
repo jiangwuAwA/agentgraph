@@ -1,0 +1,37 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "app/registry.py",
+    "app/plugins.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "glob",
+      "args": ["**/*"],
+      "ok": true,
+      "summary": {"files": ["app/docs_strings.py", "app/plugins.py", "app/bootstrap.py", "app/registry.py"]},
+      "note": "workdir inventory; ignored .mimocode/"
+    },
+    {
+      "tool": "grep",
+      "args": ["PluginRegistry"],
+      "ok": true,
+      "summary": {"matches": 5, "files": ["app/docs_strings.py", "app/bootstrap.py", "app/registry.py"]},
+      "note": "registry definition + bootstrap construct/call; docs_strings is prose-only"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py", "app/bootstrap.py", "app/plugins.py", "app/docs_strings.py"],
+      "ok": true,
+      "summary": {"construct_call_sites": ["app/bootstrap.py"], "definition": ["app/registry.py"], "plugin_factory": ["app/plugins.py"], "noise": ["app/docs_strings.py"]},
+      "note": "bootstrap() constructs PluginRegistry, register(\"metrics\", MetricsPlugin), create; docs_strings excluded as name-mention noise"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["ls"], "ok": true, "summary": {"entries": 3}, "note": "workdir layout: packages/, workspace.json"},
+    {"tool": "bash", "args": ["cat workspace.json"], "ok": true, "summary": {"roots": ["clean", "dirty"]}, "note": "workspace manifest: packages/clean + packages/dirty"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse packages -File"], "ok": true, "summary": {"files": 4}, "note": "4 rust sources total"},
+    {"tool": "bash", "args": ["agentgraph --help"], "ok": true, "summary": {}, "note": "CLI surface: blast-radius/who-calls/impact/callers/find"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"lines": 7}, "note": "re-export `pub use write::batch_write` + flush_all calls batch_write"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"lines": 8}, "note": "true batch_write definition; batch_write_verbose also calls it"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"lines": 12}, "note": "unsafe transmute (leaves S); batch_write only in comment + batch_write_shadow helper name"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"lines": 9}, "note": "batch_write only in a comment/string; no definition or call edge"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json index"], "ok": true, "summary": {"files": 4, "clean_subset_violations": 0, "dirty_subset_violations": 3, "clean_promise_tier": "ast_modeled", "dirty_promise_tier": "disabled"}, "note": "union store indexed; dirty promise_tier=disabled (transmute x2 + unsafe)"},
+    {"tool": "bash", "args": ["agentgraph blast-radius batch_write --json"], "ok": false, "summary": {}, "note": "flag not supported by recipe (learning: recipes take no --json)"},
+    {"tool": "bash", "args": ["agentgraph blast-radius batch_write --workspace-root clean --sound --json"], "ok": false, "summary": {}, "note": "recipe has no --sound flag; it auto-selects the window"},
+    {"tool": "bash", "args": ["agentgraph blast-radius --help; agentgraph who-calls --help; agentgraph impact --help; agentgraph callers --help"], "ok": true, "summary": {}, "note": "recipe auto sound-vs-default; impact/callers expose --sound + --workspace-root"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json blast-radius batch_write"], "ok": true, "summary": {"window": "default", "subset_ok": false, "promise_tier": "disabled", "impact_nodes": 2, "sound_candidates": ["clean(eligible)", "dirty(ineligible, 3 violations)"]}, "note": "union window correctly refuses sound; recommendation = scoped sound on clean, avoid dirty"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json blast-radius batch_write --workspace-root clean"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "nodes": ["packages/clean/src/lib.rs:3", "packages/clean/src/lib.rs:6"]}, "note": "scoped sound on clean root; only true clean dependents"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json who-calls batch_write --workspace-root clean"], "ok": true, "summary": {"callers": 2, "implementors": 0, "high_freq_name": false}, "note": "callers both in packages/clean/src/lib.rs (import + flush_all call)"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers batch_write --sound --workspace-root clean"], "ok": true, "summary": {"mode": "sound", "subset_ok": true, "callers": 2, "violations": 0}, "note": "sound walk over clean root: import edge + flush_all call edge"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json find batch_write"], "ok": true, "summary": {"definitions": ["packages/clean/src/write.rs:2"]}, "note": "only one real definition, in clean; dirty has no batch_write definition"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers batch_write"], "ok": true, "summary": {"rows": 2, "roots": ["clean"]}, "note": "union callers also clean-only: dirty name collisions produce zero indexed edges"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json impact batch_write --workspace-root dirty"], "ok": true, "summary": {"nodes": 0}, "note": "dirty scope empty: comment/string collisions are grep noise, not dependents"},
+    {"tool": "read", "args": ["../ISSUE.md"], "ok": true, "summary": {}, "note": "issue brief"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "output schema contract"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

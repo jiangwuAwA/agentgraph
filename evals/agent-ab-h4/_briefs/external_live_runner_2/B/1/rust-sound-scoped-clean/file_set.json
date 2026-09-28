@@ -1,0 +1,92 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force (workdir, parent)"],
+      "ok": true,
+      "summary": {"entries": 3},
+      "note": "workdir holds workspace.json + packages/"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": 2},
+      "note": "roots: clean=packages/clean, dirty=packages/dirty"
+    },
+    {
+      "tool": "read",
+      "args": ["../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {"lines": 52},
+      "note": "harness output contract, not source"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse packages"],
+      "ok": true,
+      "summary": {"files": 4},
+      "note": "4 .rs files total (2 clean, 2 dirty)"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/write.rs"],
+      "ok": true,
+      "summary": {"lines": 8, "symbols": ["batch_write", "batch_write_verbose"]},
+      "note": "true definition site of clean::batch_write; verbose helper calls it"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"lines": 7, "symbols": ["flush_all"]},
+      "note": "true clean dependent: re-export pub use write::batch_write + flush_all calls batch_write"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/dirty/src/lib.rs"],
+      "ok": true,
+      "summary": {"lines": 12, "unsafe": true},
+      "note": "unsafe transmute leaves S; batch_write only in comments / batch_write_shadow (different symbol) -> noise"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {"lines": 9},
+      "note": "no true batch_write def/call edge; comment + string mention only"
+    },
+    {
+      "tool": "bash",
+      "args": ["rg -n batch_write ."],
+      "ok": false,
+      "summary": {"error": "rg not installed"},
+      "note": "fell back to grep tool"
+    },
+    {
+      "tool": "grep",
+      "args": ["batch_write"],
+      "ok": true,
+      "summary": {"matches": 12, "files": 4},
+      "note": "clean: 5 code-level hits (def/re-export/call/doc); dirty: 7 hits all comments/strings/batch_write_shadow"
+    },
+    {
+      "tool": "glob",
+      "args": ["**/*.rs"],
+      "ok": true,
+      "summary": {"files": 4},
+      "note": "corpus fully enumerated"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

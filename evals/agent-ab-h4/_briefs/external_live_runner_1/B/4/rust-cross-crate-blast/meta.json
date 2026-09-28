@@ -1,0 +1,13 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.meta.v1",
+  "kind": "live_llm_agent",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "model_note": "xiaomi/mimo-v2.6-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "arm_isolated": true,
+  "lab_ready_claim": false
+}

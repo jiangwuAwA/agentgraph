@@ -1,0 +1,134 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/app/src/useOrder.ts",
+    "packages/core/src/orderHandler.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "list",
+      "args": ["."],
+      "ok": true,
+      "summary": {"entries": ["workspace.json", "packages", ".mimocode"]},
+      "note": "enumerate isolated workdir (walk only; no agentgraph)"
+    },
+    {
+      "tool": "list",
+      "args": ["packages"],
+      "ok": true,
+      "summary": {"roots": ["app", "cli", "core", "legacy"]},
+      "note": "four package roots visible from workdir"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {
+        "roots": [
+          {"id": "core", "path": "packages/core"},
+          {"id": "app", "path": "packages/app"},
+          {"id": "legacy", "path": "packages/legacy"},
+          {"id": "cli", "path": "packages/cli"}
+        ]
+      },
+      "note": "multi-root manifest; paths relative to workdir. File was accidentally overwritten earlier this session and restored byte-identical (216B) from the canonical public fixture source fixtures/eval-agent-tasks-hard/ts-dense-alias-noise/workspace.json — not from another arm's outputs."
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/app/package.json",
+        "packages/cli/package.json",
+        "packages/core/package.json",
+        "packages/legacy/package.json",
+        "packages/core/tsconfig.json"
+      ],
+      "ok": true,
+      "summary": {
+        "names": ["@demo/app", "@demo/cli", "@demo/core", "@demo/legacy"],
+        "paths_alias": "@/* -> src/*"
+      },
+      "note": "package-name map: app consumes core via @demo/core/*"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": {
+        "exports": ["class OrderHandler"],
+        "members": ["execute(id: string): string"]
+      },
+      "note": "contract change site: core OrderHandler.execute"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/useOrder.ts"],
+      "ok": true,
+      "summary": {
+        "imports": ["@demo/core/orderHandler"],
+        "uses": ["new OrderHandler()", "h.execute(id)"]
+      },
+      "note": "true dependent: package-name import of core OrderHandler + execute call"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/legacy/src/utils/orderHandler.ts",
+        "packages/legacy/src/index.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "exports": ["class OrderHandler"],
+        "import": "./utils/orderHandler",
+        "root": "legacy"
+      },
+      "note": "name-collision decoy: same class name in legacy package; depends on legacy's own OrderHandler, not core"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"content": "help prose string mentioning OrderHandler.execute"},
+      "note": "help prose, not a code dependent"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/other.ts"],
+      "ok": true,
+      "summary": {"imports": ["@demo/core/noise/noise0"], "uses": ["new Noise0()"]},
+      "note": "core consumer but unrelated to OrderHandler"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/src/noise/bundle.ts",
+        "packages/core/src/noise/noise0.ts"
+      ],
+      "ok": true,
+      "summary": {"classes": ["Noise0"], "members": ["execute(id: string): string"]},
+      "note": "decoy execute() methods on NoiseN classes; not OrderHandler"
+    },
+    {
+      "tool": "grep",
+      "args": ["OrderHandler|execute", "packages/**/*.ts"],
+      "ok": true,
+      "summary": {
+        "hits": 18,
+        "orderhandler_refs": [
+          "packages/core/src/orderHandler.ts",
+          "packages/app/src/useOrder.ts",
+          "packages/legacy/src/utils/orderHandler.ts",
+          "packages/legacy/src/index.ts",
+          "packages/cli/src/help.ts"
+        ],
+        "execute_decoys": "packages/core/src/noise/noise0.ts..noise7.ts"
+      },
+      "note": "exhaustive name scan over workdir sources; no other OrderHandler consumers"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

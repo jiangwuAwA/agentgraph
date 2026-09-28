@@ -1,0 +1,14 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.meta.v1",
+  "runner_id": "external_live_runner_2",
+  "kind": "live_llm_agent",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "saw_labels_before_commit": false,
+  "arm_isolated": true,
+  "read_budget": null,
+  "approx_tokens": null,
+  "lab_ready_claim": false,
+  "notes": "Independent session, issue-only brief; no structure-fact task.json labels, no golden file sets, no scored tables, no other arms'/runners' outputs opened. Decision path: workdir enumeration + reads of all 3 sources + agentgraph index/who-calls/blast-radius recipes; file_set determined before consulting harness code for the output contract (harness code read only for schema/field definitions and ban lists; coarse one-line task-design rationale text incidentally visible there, not label lists). file_set paths are workdir-relative forward-slash; chose_correct_workspace_root=null because this task has no multi-root workspace choice; approx_tokens=null (not measured)."
+}

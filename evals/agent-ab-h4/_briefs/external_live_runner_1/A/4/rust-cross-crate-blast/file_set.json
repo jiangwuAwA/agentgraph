@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/api/src/lib.rs"
+  ],
+  "tool_calls": [
+    "agentgraph --workspace workspace.json index",
+    "agentgraph --workspace workspace.json find normalize_id",
+    "agentgraph --workspace workspace.json callers normalize_id",
+    "agentgraph --workspace workspace.json blast-radius normalize_id",
+    "agentgraph --workspace workspace.json who-calls normalize_id",
+    "agentgraph --workspace workspace.json --workspace-root core impact normalize_id",
+    "agentgraph --workspace workspace.json --workspace-root api impact normalize_id",
+    "agentgraph --workspace workspace.json --workspace-root tools impact normalize_id",
+    "agentgraph --workspace workspace.json --workspace-root web impact normalize_id"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

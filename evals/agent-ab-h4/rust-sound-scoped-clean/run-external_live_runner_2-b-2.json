@@ -1,0 +1,421 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "B",
+  "policy_label": "P0-5d arm B — walk/grep/read only (no agentgraph) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "B",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 2,
+  "run_id": "external_live_runner_2-b-2",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/B/2/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "walk",
+    "grep",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 2
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 7,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 2
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 7,
+    "read_files": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs",
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs",
+      "B/2/RUNNER_CONTRACT.md",
+      "B/2/ISSUE.md",
+      "rust-sound-scoped-clean/RUNNER_CONTRACT.md"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": [
+        "analyze rust workspace, produce file_set.v1 + meta.v1 JSON for eval harness"
+      ],
+      "ok": true,
+      "summary": {
+        "matched": false
+      },
+      "note": "no applicable skill; proceeded with walk/grep/read only (arm B)",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -Depth 3"
+      ],
+      "ok": true,
+      "summary": {
+        "tree": "workspace.json, packages/clean, packages/dirty, .mimocode"
+      },
+      "note": "initial tree listing",
+      "seq": 2
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -File"
+      ],
+      "ok": true,
+      "summary": {
+        "file_count": 6
+      },
+      "note": "workspace.json + 4 rust sources + .mimocode noise; no Cargo.toml/tests",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "packages/clean",
+          "packages/dirty"
+        ]
+      },
+      "note": "two-root manifest; clean root is packages/clean",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "reexport": "pub use write::batch_write",
+        "caller": "flush_all -> batch_write"
+      },
+      "note": "true clean dependent",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/write.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": "batch_write",
+        "caller": "batch_write_verbose -> batch_write"
+      },
+      "note": "true definition site",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "unsafe_transmute": true,
+        "collision": "batch_write_shadow + comment mentions"
+      },
+      "note": "no true batch_write definition/call edge",
+      "seq": 7
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "batch_write": "doc comment + string literal only"
+      },
+      "note": "grep noise, not a dependent",
+      "seq": 8
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "batch_write"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 12,
+        "clean": 5,
+        "dirty": 7
+      },
+      "note": "dirty matches are comments/strings/name-collision only",
+      "seq": 9
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "unsafe|transmute"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 2,
+        "all_in": "packages/dirty"
+      },
+      "note": "dirty unsafe disables union sound; scoped sound on clean root only",
+      "seq": 10
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Force (cwd)"
+      ],
+      "ok": true,
+      "summary": {
+        "entries": 3
+      },
+      "note": "workdir contents",
+      "seq": 11
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Force .. ; Get-ChildItem -Force ../.."
+      ],
+      "ok": true,
+      "summary": {
+        "parent": "workdir+brief",
+        "grandparent": "sibling task dirs"
+      },
+      "note": "located brief dir; did not open sibling tasks",
+      "seq": 12
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "(Get-Location).Path; Resolve-Path ..; Resolve-Path ../.."
+      ],
+      "ok": true,
+      "summary": {
+        "cwd": "workdir"
+      },
+      "note": "path verification",
+      "seq": 13
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "labelled listing of self/parent/grandparent"
+      ],
+      "ok": true,
+      "summary": {
+        "brief_dir_files": [
+          "ISSUE.md",
+          "RUNNER_CONTRACT.md",
+          "workdir"
+        ]
+      },
+      "note": "",
+      "seq": 14
+    },
+    {
+      "tool": "read",
+      "args": [
+        "B/2/RUNNER_CONTRACT.md"
+      ],
+      "ok": false,
+      "summary": {},
+      "note": "wrong path (one level too high); no content read",
+      "seq": 15
+    },
+    {
+      "tool": "read",
+      "args": [
+        "B/2/ISSUE.md"
+      ],
+      "ok": false,
+      "summary": {},
+      "note": "wrong path (one level too high); no content read",
+      "seq": 16
+    },
+    {
+      "tool": "read",
+      "args": [
+        "rust-sound-scoped-clean/RUNNER_CONTRACT.md"
+      ],
+      "ok": true,
+      "summary": {
+        "schemas": [
+          "file_set.v1",
+          "meta.v1"
+        ]
+      },
+      "note": "this cell's own contract; no labels",
+      "seq": 17
+    },
+    {
+      "tool": "write",
+      "args": [
+        "workdir/file_set.json"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 2
+      },
+      "note": "commit into current workdir",
+      "seq": 18
+    },
+    {
+      "tool": "write",
+      "args": [
+        "workdir/meta.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "commit into current workdir",
+      "seq": 19
+    },
+    {
+      "tool": "write",
+      "args": [
+        "brief-dir/file_set.json"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 2
+      },
+      "note": "same commitment into brief dir per contract location",
+      "seq": 20
+    },
+    {
+      "tool": "write",
+      "args": [
+        "brief-dir/meta.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "same commitment into brief dir per contract location",
+      "seq": 21
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "B",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm B: isolated runner decision path"
+  ],
+  "errors": []
+}

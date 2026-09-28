@@ -1,0 +1,99 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "app/bootstrap.py",
+    "app/registry.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--root", "."],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 7, "references": 7},
+      "note": "indexed isolated workdir"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "PluginRegistry"],
+      "ok": true,
+      "summary": {"hits": 1, "path": "app/registry.py", "kind": "class"},
+      "note": "definition"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "PluginRegistry"],
+      "ok": true,
+      "summary": {"refs": 2, "paths": ["app/bootstrap.py"]},
+      "note": "import + construction call"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "PluginRegistry"],
+      "ok": true,
+      "summary": {"callers": 2, "implementors": 0, "window": "default", "promise_tier": "ast_modeled"},
+      "note": "recipe honesty payload"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "PluginRegistry"],
+      "ok": true,
+      "summary": {"paths": ["app/registry.py", "app/bootstrap.py"]},
+      "note": "retrieval scope"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "register"],
+      "ok": true,
+      "summary": {"refs": 1, "at": "app/bootstrap.py:7"},
+      "note": "register call site"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "create"],
+      "ok": true,
+      "summary": {"refs": 1, "at": "app/bootstrap.py:8"},
+      "note": "create call site"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["impact", "PluginRegistry"],
+      "ok": true,
+      "summary": {"edges": 2, "paths": ["app/bootstrap.py"]},
+      "note": "blast radius"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "app/registry.py"],
+      "ok": true,
+      "summary": {"importers": 1, "path": "app/bootstrap.py"},
+      "note": "module import edge"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"class": "PluginRegistry", "register_line": 5},
+      "note": "register definition"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {"constructs": "PluginRegistry()", "calls": ["register", "create"]},
+      "note": "sole construct/call site"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py", "app/docs_strings.py"],
+      "ok": true,
+      "summary": {"plugins.py": "MetricsPlugin only", "docs_strings.py": "prose noise"},
+      "note": "neither constructs nor calls the registry"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

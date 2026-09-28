@@ -1,0 +1,120 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["--root", "app", "index"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 7, "references": 7, "exact": 7},
+      "note": "built index over isolated workdir/app"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "PluginRegistry"],
+      "ok": true,
+      "summary": {"definition_files": ["registry.py"], "kind": "class"},
+      "note": "PluginRegistry defined in registry.py"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "register"],
+      "ok": true,
+      "summary": {"qualified_name": "PluginRegistry.register", "path": "registry.py"},
+      "note": "register method under PluginRegistry"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["--root", "app", "callers", "PluginRegistry"],
+      "ok": true,
+      "summary": {"caller_files": ["bootstrap.py"], "kinds": ["import", "call"]},
+      "note": "import + construct site only"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["--root", "app", "impact", "PluginRegistry"],
+      "ok": true,
+      "summary": {"impact_files": ["bootstrap.py"]},
+      "note": "depth-1 dependents"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["--root", "app", "who-calls", "register"],
+      "ok": true,
+      "summary": {"caller_files": ["bootstrap.py"], "at": "bootstrap.py:7"},
+      "note": "reg.register call site"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["--root", "app", "who-calls", "create"],
+      "ok": true,
+      "summary": {"caller_files": ["bootstrap.py"], "at": "bootstrap.py:8"},
+      "note": "reg.create call site"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["--root", "app", "blast-radius", "PluginRegistry"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_files": ["bootstrap.py"]},
+      "note": "definition + bootstrap construct"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": ["--root", "app", "related", "PluginRegistry"],
+      "ok": true,
+      "summary": {"paths": ["registry.py", "bootstrap.py"]},
+      "note": "definition + imports"
+    },
+    {
+      "tool": "agentgraph.importers",
+      "args": ["--root", "app", "importers", "registry.py"],
+      "ok": true,
+      "summary": {"importer_files": ["bootstrap.py"]},
+      "note": "only bootstrap imports registry"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "MetricsPlugin"],
+      "ok": true,
+      "summary": {"definition_files": ["plugins.py"]},
+      "note": "plugin class passed as factory; not a registry construct/call site"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"defines": ["PluginRegistry", "PluginRegistry.register", "PluginRegistry.create"]},
+      "note": "register currently stores name without validation"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {"constructs": "PluginRegistry", "calls": ["register", "create"]},
+      "note": "sole construct + call site of the registry"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py"],
+      "ok": true,
+      "summary": {"defines": ["MetricsPlugin"]},
+      "note": "factory passed to register; does not construct or call registry"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py"],
+      "ok": true,
+      "summary": {"kind": "prose_docstring"},
+      "note": "mentions PluginRegistry in prose only — noise, not a construct/call site"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

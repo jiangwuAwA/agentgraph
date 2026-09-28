@@ -1,0 +1,64 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "list",
+      "args": ["."],
+      "ok": true,
+      "summary": {"entries": ["api", "cmd", "internal", "store", ".mimocode"]},
+      "note": "walk workdir tree"
+    },
+    {
+      "tool": "read",
+      "args": ["store/store.go"],
+      "ok": true,
+      "summary": {
+        "Repository.Get": "Get(id string) string",
+        "Cache.Get": "Get(id string) string",
+        "implementors": ["MemRepo.Get", "RedisCache.Get"]
+      },
+      "note": "interface defs + named implementors MemRepo/RedisCache"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go"],
+      "ok": true,
+      "summary": {
+        "imports": ["example.com/app/store"],
+        "Get_call_sites": ["LoadUser -> r.Get(id)"]
+      },
+      "note": "api handler call site via store.Repository"
+    },
+    {
+      "tool": "read",
+      "args": ["cmd/main.go"],
+      "ok": true,
+      "summary": {"imports": ["fmt"], "Get": false},
+      "note": "bootstrap noise; no Repository/Get usage"
+    },
+    {
+      "tool": "read",
+      "args": ["internal/metrics.go"],
+      "ok": true,
+      "summary": {"imports": [], "Get": false},
+      "note": "metrics noise; no Repository dependency"
+    },
+    {
+      "tool": "grep",
+      "args": ["Get", "*.go"],
+      "ok": true,
+      "summary": {"matches": 5, "files": ["store/store.go", "api/handlers.go"]},
+      "note": "confirm no other Get call sites or implementors"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

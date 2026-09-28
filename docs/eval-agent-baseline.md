@@ -773,26 +773,49 @@ cargo test --test agent_ab_d_eval
 Expected S1 gate outcome: `lab_ready=false` with gap list (no live matrix yet).
 
 
-## H4-live — hard-slice live A/B (incl. `ts-dense-alias-noise`)
+## H4-live — hard+easy live A/B (isolated `mimo run`)
 
-**Status:** live LLM runner path **connected** (`mimo run` isolated sessions).
-Matrix is **partial** — table reports **real recorded N**.
+**Status:** live matrix **near-complete** at **N=5** (stretch N=8 not run).
+`lab_ready=**false**` — **5** (runner×arm×task) cells still <5 after stamp
+(see `lab-ready` gap list). Historical P0-5c/d scores **unchanged**.
 
-### Runner + model_note
+### Runners (non-author, independent_session=true)
 
-| runner_id | model_note | independent_session | kind |
-|---|---|---|---|
-| `external_live_runner_1` | `xiaomi/mimo-v2.6-pro` | **true** | live_llm_agent |
-| `external_live_runner_2` | `xiaomi/mimo-v2.6-flash` | **true** | live_llm_agent (queued) |
+| runner_id | model_note | kind |
+|---|---|---|
+| `external_live_runner_1` | `xiaomi/mimo-v2.6-pro` | live_llm_agent |
+| `external_live_runner_2` | `xiaomi/mimo-v2.6-flash` | live_llm_agent |
 
-### Summary (recorded only; additive)
+### Matrix
 
-| runner | arm | N (runs) | recall | extra-noise | cwr (t/f/na) | mcp_or_cli |
-|---|---|---|---|---|---|---|
-| mimo-v2.6-pro | A | 8 | **0.885** | **0.00** | 6/0/2 | 0.88 |
-| mimo-v2.6-pro | B | 5 | **0.900** | **0.00** | 4/0/1 | 0 |
+- **Tasks (9):** easy `ts-nest-user-repo`, `rust-trait-handler`, `py-plugin-registry`, `go-store-api` + hard `ts-dense-alias-noise`, `ts-multi-root-client`, `rust-real-noise-dense`, `rust-cross-crate-blast`, `rust-sound-scoped-clean`
+- **Arms:** A (agentgraph tools) / B (read-grep)
+- **Target N≥5** per (runner, arm, task); recorded N is real.
 
-**Honest read:** noise ~0 / **not separated** — **no live noise advantage**.
-Primary signals **recall** + **cwr**. Per-cell N often 1–2 (target N≥5).
-`lab_ready=false`. `ts-dense-alias-noise` A recall 1.0 (N=2), B 1.0 (N=1), cwr=true.
-Historical P0-5c/d **unchanged**. Trajectories: `evals/agent-ab-h4/`.
+### Summary (scored trajectories; additive)
+
+| runner | model_note | arm | N runs | recall | extra-noise | cwr (t/f/na) | mcp_or_cli |
+|---|---|---|---|---|---|---|---|
+| runner_1 | mimo-v2.6-pro | A | 45 | **0.954** | **0.00** | 20/0/25 | 1.71 |
+| runner_1 | mimo-v2.6-pro | B | 39 | **0.904** | **0.00** | 16/0/23 | 0 |
+| runner_2 | mimo-v2.6-flash | A | 44 | **1.000** | **0.00** | 20/0/24 | 1.75 |
+| runner_2 | mimo-v2.6-flash | B | 45 | **0.937** | **0.00** | 19/0/26 | 0 |
+
+**Honest read (mandatory)**
+
+- **Live A/B noise is not separated** (`extra-noise=0.00` on every arm). Primary
+  signals are **recall** and **cwr**. **Do not** claim live noise advantage.
+- A uses agentgraph recipes; B is read/grep only.
+- **Per-cell real N:** 31/36 cells at **N=5**; **5 cells** remain N=2–4 after
+  stamp. **Do not invent N.**
+- `lab_ready=false` until those cells fill. Never cite as complete lab proof while false.
+
+### Limits
+
+- Single-machine live queue; N=5 recorded, stretch N=8 not run.
+- `approx_tokens` null unless truly measured.
+- Decision path never sees `task.json` labels.
+- Not ecosystem sound / not a universal product ranking.
+
+Trajectories: [`evals/agent-ab-h4/`](../evals/agent-ab-h4/).
+Drivers: `scripts/eval_agent_ab_h4_live.py`, `scripts/h4_live_batch.py`.

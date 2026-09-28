@@ -1,0 +1,106 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["list workdir files recursively"],
+      "ok": true,
+      "summary": {"files_seen": 19},
+      "note": "4-package TS workspace + workspace.json manifest"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "app", "legacy", "cli"]},
+      "note": "multi-root manifest"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts", "packages/app/src/useOrder.ts", "packages/app/src/other.ts", "packages/legacy/src/index.ts", "packages/legacy/src/utils/orderHandler.ts", "packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"note": "target, true dependent, decoys read"},
+      "note": "core OrderHandler.execute is target; app imports @demo/core/orderHandler"
+    },
+    {
+      "tool": "bash",
+      "args": ["read packages/core/src/noise/noise0-7.ts + bundle.ts + all package.json"],
+      "ok": true,
+      "summary": {"noise_classes": 8, "note": "Noise0..Noise7 have same-name execute() but unrelated classes"},
+      "note": "cli/help.ts holds OrderHandler.execute only as help prose string"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "--workspace", "workspace.json", "--workspace-alias", "@demo/core=core", "--workspace-alias", "@demo/app=app", "--workspace-alias", "@demo/legacy=legacy", "--workspace-alias", "@demo/cli=cli", "index", "--force"],
+      "ok": true,
+      "summary": {"files": 15, "symbols": 29, "refs": 7, "roots": 4},
+      "note": "cross-root package aliases registered"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "find", "OrderHandler"],
+      "ok": true,
+      "summary": {"matches": 2, "locations": ["core:src/orderHandler.ts", "legacy:src/utils/orderHandler.ts"]},
+      "note": "two same-named classes across roots"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "who-calls", "OrderHandler"],
+      "ok": true,
+      "summary": {"callers": 4, "true_dependent_files": ["app:src/useOrder.ts"], "name_collision_files": ["legacy:src/index.ts"]},
+      "note": "app import resolved @alias:@demo/core->core; legacy import resolved to its own ./utils/orderHandler"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "blast-radius", "OrderHandler"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_files": ["app:src/useOrder.ts", "legacy:src/index.ts"]},
+      "note": "resolution metadata separates true vs collision edges"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "find", "execute"],
+      "ok": true,
+      "summary": {"matches": 10, "note": "8 NoiseN.execute + 2 OrderHandler.execute"},
+      "note": "dense same-name decoys enumerated"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "callers", "execute", "--limit", "50"],
+      "ok": true,
+      "summary": {"call_sites": 1, "location": "app:src/useOrder.ts:5", "qualifier": "OrderHandler"},
+      "note": "only true execute() consumer"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "related", "OrderHandler"],
+      "ok": true,
+      "summary": {"files": 5},
+      "note": "ranked related files; noise not present"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "impact", "OrderHandler", "--depth", "3"],
+      "ok": true,
+      "summary": {"depth": 1, "nodes": 4},
+      "note": "no transitive dependents beyond useOrder/index imports"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "importers", "packages/core/src/orderHandler.ts"],
+      "ok": false,
+      "summary": {"error": "db path resolution failed for --workspace-root variant"},
+      "note": "non-blocking; alias resolution already covered via who-calls/blast-radius"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

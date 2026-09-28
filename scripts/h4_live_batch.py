@@ -23,6 +23,10 @@ TASKS = [
     "rust-real-noise-dense",
     "rust-cross-crate-blast",
     "rust-sound-scoped-clean",
+    "ts-nest-user-repo",
+    "rust-trait-handler",
+    "py-plugin-registry",
+    "go-store-api",
 ]
 RUNNERS = {
     "external_live_runner_1": "xiaomi/mimo-v2.6-pro",

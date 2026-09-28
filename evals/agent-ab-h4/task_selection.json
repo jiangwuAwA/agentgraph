@@ -2,20 +2,18 @@
   "schema": "agentgraph.eval_agent_ab_d.selection.v1",
   "protocol": "p0-5d-isolated-lab",
   "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
-  "easy_tasks": [],
-  "hard_tasks": [
-    "rust-cross-crate-blast",
-    "rust-real-noise-dense",
-    "rust-sound-scoped-clean",
-    "ts-multi-root-client",
-    "ts-dense-alias-noise"
+  "easy_tasks": [
+    "ts-nest-user-repo",
+    "rust-trait-handler",
+    "py-plugin-registry",
+    "go-store-api"
   ],
+  "hard_tasks": [],
   "rationale": {
-    "rust-cross-crate-blast": "hard · multi-root cross-crate blast + name collision",
-    "rust-real-noise-dense": "hard · dense implementors + encode name collisions",
-    "rust-sound-scoped-clean": "hard · sound-disabled dirty sibling + clean scoped root",
-    "ts-multi-root-client": "hard · multi-root TS wrong-root + help/docs noise",
-    "ts-dense-alias-noise": ""
+    "ts-nest-user-repo": "easy · TypeScript Nest-like DI; clean vs health/unrelated noise",
+    "rust-trait-handler": "easy · Rust trait impl blast; metrics sibling noise",
+    "py-plugin-registry": "easy · Python registry; docs_strings noise",
+    "go-store-api": "easy · Go store API; package-sibling noise"
   },
   "selection_note": "easy≥4 + hard≥4 from public fixtures only; hard set = all four P0-5c fixtures; easy set = P0-5b language-diverse clean/noise tasks",
   "seeds_target": [
@@ -68,10 +66,9 @@
     "require_easy_and_hard": true
   },
   "task_order_base": [
-    "rust-cross-crate-blast",
-    "rust-real-noise-dense",
-    "rust-sound-scoped-clean",
-    "ts-multi-root-client",
-    "ts-dense-alias-noise"
+    "ts-nest-user-repo",
+    "rust-trait-handler",
+    "py-plugin-registry",
+    "go-store-api"
   ]
 }

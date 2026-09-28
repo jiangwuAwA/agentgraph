@@ -1,0 +1,695 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 3,
+  "run_id": "external_live_runner_2-a-3",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/3/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 11,
+    "recipe_tools": [
+      "version",
+      "index",
+      "blast-radius",
+      "callers",
+      "who-calls",
+      "find",
+      "impact"
+    ],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 11,
+      "recipe_tools": [
+        "version",
+        "index",
+        "blast-radius",
+        "callers",
+        "who-calls",
+        "find",
+        "impact"
+      ],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 6,
+    "read_files": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs",
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs",
+      "scripts/eval_agent_ab_d.py",
+      "../RUNNER_CONTRACT.md"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": [
+        "identify review file set for rust batch_write issue"
+      ],
+      "ok": true,
+      "summary": {
+        "result": "no_match"
+      },
+      "note": "no matching skill",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Force (workdir)"
+      ],
+      "ok": true,
+      "summary": {
+        "entries": [
+          "packages",
+          "workspace.json",
+          ".mimocode"
+        ]
+      },
+      "note": "",
+      "seq": 2
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -Directory"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "",
+      "seq": 3
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -File"
+      ],
+      "ok": true,
+      "summary": {
+        "files": [
+          "workspace.json",
+          "packages/clean/src/lib.rs",
+          "packages/clean/src/write.rs",
+          "packages/dirty/src/lib.rs",
+          "packages/dirty/src/shadow.rs"
+        ]
+      },
+      "note": "full file inventory of isolated workdir",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "clean",
+          "dirty"
+        ]
+      },
+      "note": "multi-root workspace manifest",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "reexport": "line 3 pub use write::batch_write",
+        "caller": "flush_all line 6"
+      },
+      "note": "true clean dependent",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/write.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "def": "batch_write line 2",
+        "same_file_dependent": "batch_write_verbose line 7"
+      },
+      "note": "symbol under change",
+      "seq": 7
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "unsafe": "transmute in dirty_entry",
+        "collision": "batch_write_shadow + comment noise only"
+      },
+      "note": "no true batch_write definition/call",
+      "seq": 8
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "collision": "comment mentions batch_write"
+      },
+      "note": "grep noise only",
+      "seq": 9
+    },
+    {
+      "tool": "agentgraph.version",
+      "args": [],
+      "ok": true,
+      "summary": {
+        "version": "0.5.8"
+      },
+      "note": "",
+      "seq": 10
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "--help"
+      ],
+      "ok": true,
+      "summary": {
+        "flags": [
+          "--workspace",
+          "--workspace-root",
+          "--workspace-db"
+        ]
+      },
+      "note": "",
+      "seq": 11
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": [
+        "--help"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "auto sound vs default"
+      },
+      "note": "",
+      "seq": 12
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": [
+        "--help"
+      ],
+      "ok": true,
+      "summary": {
+        "flags": [
+          "--sound",
+          "--workspace-root"
+        ]
+      },
+      "note": "",
+      "seq": 13
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 4,
+        "clean": {
+          "violations": 0,
+          "promise_tier": "ast_modeled"
+        },
+        "dirty": {
+          "violations": 3,
+          "promise_tier": "disabled"
+        }
+      },
+      "note": "dirty unsafe disables union sound",
+      "seq": 14
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "subset_ok": false,
+        "window": "default",
+        "promise_tier": "disabled",
+        "sound_candidates": [
+          "clean"
+        ]
+      },
+      "note": "union sound NOT claimed; recipe recommends scoped sound on clean, avoid dirty",
+      "seq": 15
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "subset_ok": true,
+        "window": "sound",
+        "nodes": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ]
+      },
+      "note": "scoped sound on clean root",
+      "seq": 16
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--sound",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "callers": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ],
+        "promise_tier": "ast_modeled"
+      },
+      "note": "true clean dependents only; no dirty rows",
+      "seq": 17
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 2,
+        "implementor_count": 0,
+        "subset_ok": true
+      },
+      "note": "",
+      "seq": 18
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "symbols": [
+          "packages/clean/src/write.rs::batch_write"
+        ]
+      },
+      "note": "dirty has no true batch_write symbol (collision is name/comment noise)",
+      "seq": 19
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": [
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--sound",
+        "--workspace-root",
+        "clean",
+        "--depth",
+        "3"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "nodes": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ]
+      },
+      "note": "scoped sound impact walk",
+      "seq": 20
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "eval_agent_ab_d.file_set|eval_agent_ab_d.meta"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": "schema name occurrences"
+      },
+      "note": "located schema definition; path matches only, no other-cell file contents read",
+      "seq": 21
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String scripts/eval_agent_ab_d.py (relative path)"
+      ],
+      "ok": false,
+      "summary": {},
+      "note": "path not found from workdir cwd",
+      "seq": 22
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String D:/projects/agentgraph/scripts/eval_agent_ab_d.py (outline)"
+      ],
+      "ok": true,
+      "summary": {
+        "schema_consts": [
+          "FILE_SET_SCHEMA",
+          "META_SCHEMA"
+        ]
+      },
+      "note": "",
+      "seq": 23
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String HARNESS_VERSION"
+      ],
+      "ok": true,
+      "summary": {
+        "value": "agentgraph.eval_agent_ab_d.harness.v1"
+      },
+      "note": "",
+      "seq": 24
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": [
+          "runner_contract_markdown",
+          "validate_runner_outputs"
+        ]
+      },
+      "note": "harness output contract only; no structure-fact labels or expected file lists read",
+      "seq": 25
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": [
+          "compute_ext_metrics_d"
+        ]
+      },
+      "note": "field semantics for tool_calls / cwr / budgets",
+      "seq": 26
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": [
+          "brief_dir",
+          "read_brief_outputs"
+        ]
+      },
+      "note": "confirms outputs are read from brief dir",
+      "seq": 27
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String _is_recipe_tool|_is_grep_tool (context)"
+      ],
+      "ok": true,
+      "summary": {
+        "imported_from": "eval_agent_tasks"
+      },
+      "note": "",
+      "seq": 28
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String scripts/eval_agent_tasks.py def _is_recipe_tool"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 0
+      },
+      "note": "not defined there",
+      "seq": 29
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String scripts/*.py def _is_recipe_tool"
+      ],
+      "ok": true,
+      "summary": {
+        "found_in": "eval_agent_ab_c.py"
+      },
+      "note": "",
+      "seq": 30
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String _is_grep_tool (context)"
+      ],
+      "ok": true,
+      "summary": {
+        "grep_tools": [
+          "grep",
+          "grep_symbol",
+          "name_grep",
+          "walk"
+        ]
+      },
+      "note": "",
+      "seq": 31
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem parent + workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "brief_dir": [
+          "ISSUE.md",
+          "RUNNER_CONTRACT.md",
+          "workdir"
+        ]
+      },
+      "note": "determined output location = brief dir",
+      "seq": 32
+    },
+    {
+      "tool": "read",
+      "args": [
+        "../RUNNER_CONTRACT.md"
+      ],
+      "ok": true,
+      "summary": {
+        "cell": "external_live_runner_2 / A / 3 / rust-sound-scoped-clean"
+      },
+      "note": "my own cell contract template",
+      "seq": 33
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": [
+          "compute_ext_metrics_d (full)",
+          "HARNESS_VERSION"
+        ]
+      },
+      "note": "harness contract only",
+      "seq": 34
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Select-String scripts/eval_agent_ab_d.py (HARNESS_VERSION)"
+      ],
+      "ok": true,
+      "summary": {
+        "value": "agentgraph.eval_agent_ab_d.harness.v1"
+      },
+      "note": "",
+      "seq": 35
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

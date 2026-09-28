@@ -1,0 +1,22 @@
+{
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "12",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

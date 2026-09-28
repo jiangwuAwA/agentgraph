@@ -1,0 +1,122 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "api", "tools", "web"]},
+      "note": "multi-root manifest; store resolves to workdir/.agentgraph/index.db"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/*/src/*.rs"],
+      "ok": true,
+      "summary": {"files": 8},
+      "note": "all 8 sources read to classify definition / true consumer / name-collision / comment-only noise"
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"files": 8, "symbols": 13, "refs": 10, "exact": 10, "heuristic": 0},
+      "note": "one shared store + root_id tagging for all four roots"
+    },
+    {
+      "tool": "agentgraph.workspace_status",
+      "args": ["workspace", "status", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"index_seq": 4, "promise_tier": "ast_modeled", "sound_eligible_roots": ["api", "core", "tools", "web"], "subset_violations": 0},
+      "note": "per-root counts; all roots sound-eligible for scoped --sound"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "normalize_id"],
+      "ok": true,
+      "summary": {"hits": 2, "defs": ["core/src/id.rs:2", "tools/src/lib.rs:9"]},
+      "note": "two same-named defs — core canonical + tools local collision (symbol ids 1 and 10, distinct roots)"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["callers", "normalize_id"],
+      "ok": true,
+      "summary": {"hits": 4, "roots": ["api", "core", "tools"]},
+      "note": "union view mixes both symbols; tools/src/lib.rs:14 hits tools' own symbol, not core's"
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": ["blast-radius", "normalize_id"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "depth": 3, "nodes": 5, "promise_tier": "ast_modeled"},
+      "note": "auto-picked sound window; includes depth-2 api/src/lib.rs handle via lookup; honesty note = not a complete runtime graph"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["impact", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "core", "--sound"],
+      "ok": true,
+      "summary": {"subset_ok": true, "nodes": ["src/lib.rs:3 (re-export id::normalize_id)", "src/lib.rs:6 (batch_key)"]},
+      "note": "scoped to definition root — in-repo dependents of the contract"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["impact", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "api", "--sound"],
+      "ok": true,
+      "summary": {"subset_ok": true, "nodes": ["src/routes.rs:4 (lookup, qualifier=core)", "src/lib.rs:4 (handle, depth 2)"]},
+      "note": "true cross-crate consumers of core::normalize_id plus its transitive caller"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["impact", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "tools", "--sound"],
+      "ok": true,
+      "summary": {"subset_ok": true, "nodes": ["src/lib.rs:14 (audit_label)"]},
+      "note": "collision: resolves to tools' local normalize_id, no edge into core — excluded as unrelated package"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["impact", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "web"],
+      "ok": true,
+      "summary": {"nodes": 0},
+      "note": "comment-only mentions in web produce no edges — excluded"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["who-calls", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "core"],
+      "ok": true,
+      "summary": {"callers": 2, "implementors": 0, "high_freq_name": false},
+      "note": "definition-root callers only: lib.rs re-export + batch_key"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["callers", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "api"],
+      "ok": true,
+      "summary": {"hits": 1, "qualifier": "core"},
+      "note": "single direct cross-crate call site core::normalize_id(raw) at src/routes.rs:4"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["callers", "normalize_id", "--workspace", "workspace.json", "--workspace-root", "tools"],
+      "ok": true,
+      "summary": {"hits": 1, "enclosing": "audit_label"},
+      "note": "confirms tools hit is intra-package only — no dependency on core"
+    },
+    {
+      "tool": "grep",
+      "args": ["FILE_SET_SCHEMA|META_SCHEMA", "scripts/eval_agent_ab_d.py"],
+      "ok": true,
+      "summary": {"hits": 23},
+      "note": "harness contract templates only — no structure-fact labels, no scored tables, no other cells' outputs opened"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

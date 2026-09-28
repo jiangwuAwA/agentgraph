@@ -1,0 +1,57 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": ["."],
+      "ok": true,
+      "summary": {"files": [".mimocode/.cron-lock", ".mimocode/.gitignore", "src/handlers.rs", "src/lib.rs", "src/metrics.rs"]},
+      "note": "workdir listing; 3 rust sources"
+    },
+    {
+      "tool": "read",
+      "args": ["../ISSUE.md", "../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {"role": "contract"},
+      "note": "output schema and constraints only"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {"trait": "Handler", "method": "render", "impls": ["HtmlHandler", "JsonHandler"], "dyn_calls": ["render_dyn"]},
+      "note": "trait def + 2 impls + dyn call"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {"dyn_calls": ["dispatch", "bootstrap"], "constructs": ["HtmlHandler", "JsonHandler"]},
+      "note": "dyn dispatch call sites + construction"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {"handler_deps": false},
+      "note": "noise file; no Handler/render dependency"
+    },
+    {
+      "tool": "grep",
+      "args": ["render|Handler|dyn |impl ", "src/**/*.rs"],
+      "ok": true,
+      "summary": {"render_hits": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"], "handler_hits": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"], "dyn_hits": ["src/handlers.rs", "src/lib.rs"], "impl_hits": ["src/handlers.rs"]},
+      "note": "metrics.rs hits are doc-comment noise only"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

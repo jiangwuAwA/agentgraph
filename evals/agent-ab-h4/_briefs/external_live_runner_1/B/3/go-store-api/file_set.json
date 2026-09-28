@@ -1,0 +1,74 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force"],
+      "ok": true,
+      "summary": { "dirs": ["api", "cmd", "internal", "store"] },
+      "note": "walk workdir tree"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File"],
+      "ok": true,
+      "summary": { "go_files": ["api/handlers.go", "cmd/main.go", "internal/metrics.go", "store/store.go"] },
+      "note": "enumerate all sources; 4 Go files"
+    },
+    {
+      "tool": "grep",
+      "args": ["Repository|Get\\(", "*.go"],
+      "ok": true,
+      "summary": {
+        "store/store.go": ["Repository.Get iface", "Cache.Get iface", "MemRepo.Get", "RedisCache.Get"],
+        "api/handlers.go": ["LoadUser r.Get(id)", "SaveUser r.Put"],
+        "cmd/main.go": ["noise comment only"],
+        "internal/metrics.go": ["noise comment only"]
+      },
+      "note": "locate Get defs and call sites"
+    },
+    {
+      "tool": "read",
+      "args": ["store/store.go"],
+      "ok": true,
+      "summary": {
+        "Repository.Get": "line 4",
+        "MemRepo.Get": "line 16",
+        "RedisCache.Get": "line 34",
+        "Cache.Get": "line 9"
+      },
+      "note": "implementors of Get"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go"],
+      "ok": true,
+      "summary": { "call_site": "LoadUser line 6 r.Get(id)" },
+      "note": "handler call site must pass ctx"
+    },
+    {
+      "tool": "read",
+      "args": ["cmd/main.go"],
+      "ok": true,
+      "summary": { "Repository_refs": 0 },
+      "note": "noise: bootstrap, no Repository use"
+    },
+    {
+      "tool": "read",
+      "args": ["internal/metrics.go"],
+      "ok": true,
+      "summary": { "Repository_refs": 0 },
+      "note": "noise: metrics helpers, no Repository use"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

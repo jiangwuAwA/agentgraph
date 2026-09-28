@@ -1,0 +1,111 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/app/src/useOrder.ts",
+    "packages/core/src/orderHandler.ts"
+  ],
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "bash",
+      "args": ["agentgraph index --workspace workspace.json --workspace-alias @demo/core=packages/core --workspace-alias @demo/app=packages/app --workspace-alias @demo/legacy=packages/legacy --workspace-alias @demo/cli=packages/cli"],
+      "ok": true,
+      "summary": {"files": 15, "symbols": 29, "references": 7, "roots": ["core", "app", "legacy", "cli"]},
+      "note": "multi-root workspace index with package-name aliases so @demo/core/* resolves across roots"
+    },
+    {
+      "seq": 2,
+      "tool": "bash",
+      "args": ["agentgraph find OrderHandler"],
+      "ok": true,
+      "summary": {"hits": 2},
+      "note": "two same-named classes: core/src/orderHandler.ts (true) and legacy/src/utils/orderHandler.ts (decoy)"
+    },
+    {
+      "seq": 3,
+      "tool": "bash",
+      "args": ["agentgraph callers OrderHandler --exact-only"],
+      "ok": true,
+      "summary": {"exact_refs": 4},
+      "note": "app/src/useOrder.ts resolves via @alias:@demo/core→core; legacy/src/index.ts resolves to legacy's own OrderHandler (not core)"
+    },
+    {
+      "seq": 4,
+      "tool": "bash",
+      "args": ["agentgraph who-calls OrderHandler.execute"],
+      "ok": true,
+      "summary": {"callers": 1, "implementors": 0, "subset_ok": true},
+      "note": "sole true call site: app/src/useOrder.ts:5 qualifier=OrderHandler root_id=app"
+    },
+    {
+      "seq": 5,
+      "tool": "bash",
+      "args": ["agentgraph find execute"],
+      "ok": true,
+      "summary": {"hits": 10},
+      "note": "8 decoy Noise*.execute in core/src/noise/*, plus 2 OrderHandler.execute (core true, legacy decoy)"
+    },
+    {
+      "seq": 6,
+      "tool": "bash",
+      "args": ["agentgraph blast-radius OrderHandler.execute"],
+      "ok": true,
+      "summary": {"impact": 1, "window": "sound", "subset_ok": true},
+      "note": "sound window collapses to app/src/useOrder.ts only"
+    },
+    {
+      "seq": 7,
+      "tool": "bash",
+      "args": ["agentgraph impact OrderHandler.execute --sound"],
+      "ok": true,
+      "summary": {"impact": 1},
+      "note": "S-qualified sound walk: only app/src/useOrder.ts"
+    },
+    {
+      "seq": 8,
+      "tool": "bash",
+      "args": ["agentgraph subset"],
+      "ok": true,
+      "summary": {"violation_count": 0, "in_subset": true},
+      "note": "all four roots S-clean; ast_modeled promise tier"
+    },
+    {
+      "seq": 9,
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": {"defines": "OrderHandler.execute"},
+      "note": "true target — the contract that must change"
+    },
+    {
+      "seq": 10,
+      "tool": "read",
+      "args": ["packages/app/src/useOrder.ts"],
+      "ok": true,
+      "summary": {"imports": "@demo/core/orderHandler", "calls": "h.execute(id)"},
+      "note": "true dependent via package-name alias"
+    },
+    {
+      "seq": 11,
+      "tool": "read",
+      "args": ["packages/legacy/src/utils/orderHandler.ts", "packages/legacy/src/index.ts"],
+      "ok": true,
+      "summary": {"kind": "name_collision"},
+      "note": "same class name in wrong package; legacy index depends on legacy's own class — not a core dependent"
+    },
+    {
+      "seq": 12,
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"kind": "help_prose"},
+      "note": "string literal mentions OrderHandler.execute as prose only — not a dependent"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

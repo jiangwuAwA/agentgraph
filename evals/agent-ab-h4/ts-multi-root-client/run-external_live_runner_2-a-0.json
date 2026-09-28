@@ -1,0 +1,433 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "ts-multi-root-client",
+  "seed": 0,
+  "run_id": "external_live_runner_2-a-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-multi-root-client",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/0/ts-multi-root-client",
+  "symbol": "RegistryClient",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 4,
+  "read_budget": 5,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 4,
+    "read_budget": 5,
+    "read_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/cli/src/main.ts"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "ts-multi-root-client",
+    "title": "Multi-root RegistryClient — pick true roots, drop docs/help noise",
+    "language": "typescript",
+    "issue": "RegistryClient.fetch return contract must change. Multi-root workspace: registry defines the client; service consumes it. cli/docs only mention the name in help/prose. Using workspace index, choose the correct roots for review; do not treat name mentions as dependents.",
+    "symbol": "RegistryClient",
+    "expected_files": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "noise_files": [
+      "packages/cli/src/main.ts",
+      "packages/cli/src/help.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": [
+        "identify source files needing review for RegistryClient.fetch contract change"
+      ],
+      "ok": true,
+      "summary": {
+        "loaded_skill_id": null
+      },
+      "note": "no matching skill; proceeded with agentgraph CLI + reads",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "ls / glob **/*"
+      ],
+      "ok": true,
+      "summary": {
+        "entries": [
+          "workspace.json",
+          "packages/{registry,service,cli,docs}"
+        ]
+      },
+      "note": "4-root isolated multi-root workdir, 8 source files",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "registry",
+          "service",
+          "cli",
+          "docs"
+        ]
+      },
+      "note": "multi-root manifest; registry=definition, service=consumer per issue",
+      "seq": 3
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 14,
+        "roots_hit": [
+          "registry",
+          "service",
+          "cli",
+          "docs"
+        ]
+      },
+      "note": "cli/docs hits are string/comment prose mentions only; true edges in registry+service",
+      "seq": 4
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json",
+        "--workspace-alias",
+        "@demo/registry=registry"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 8,
+        "symbols": 15,
+        "references": 9,
+        "exact": 7,
+        "heuristic": 2,
+        "cli_refs": 0,
+        "docs_refs": 0
+      },
+      "note": "workspace index: cli/docs roots have zero refs; all edges in registry+service",
+      "seq": 5
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "find",
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 2,
+        "definitions": [
+          "registry:src/client.ts (class)",
+          "registry:src/index.ts (barrel re-export)"
+        ]
+      },
+      "note": "definition lives in registry root",
+      "seq": 6
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "blast-radius",
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "impact_rows": 7,
+        "depth": 3
+      },
+      "note": "impact closure: registry client.ts+index.ts; service order.service.ts (depth1) + order.controller.ts (depth2 via OrderService); no cli/docs rows",
+      "seq": 7
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "impact",
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 7,
+        "roots": [
+          "registry",
+          "service"
+        ]
+      },
+      "note": "transitive dependents only in registry+service roots",
+      "seq": 8
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "callers",
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 4,
+        "paths": [
+          "src/client.ts",
+          "src/index.ts",
+          "src/order.service.ts"
+        ]
+      },
+      "note": "direct refs: barrel import, cross-root @demo/registry import, ts.nest.ctor_inject",
+      "seq": 9
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "who-calls",
+        "RegistryClient"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "implementors": 0,
+        "high_freq_name": false
+      },
+      "note": "no implementor flood; plain reference sites",
+      "seq": 10
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": [
+        "importers",
+        "packages/service/src/order.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": []
+      },
+      "note": "module importer check",
+      "seq": 11
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": [
+          "class RegistryClient",
+          "fetch(id: string): string",
+          "createClient"
+        ]
+      },
+      "note": "change site: fetch return contract",
+      "seq": 12
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/index.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "exports": [
+          "RegistryClient",
+          "createClient"
+        ]
+      },
+      "note": "public API surface of the registry root",
+      "seq": 13
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/service/src/order.service.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "imports": [
+          "@demo/registry"
+        ],
+        "uses": [
+          "ctor inject RegistryClient",
+          "load returns this.client.fetch(id)"
+        ]
+      },
+      "note": "direct consumer: fetch return flows into load",
+      "seq": 14
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/service/src/order.controller.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "imports": [
+          "./order.service"
+        ],
+        "uses": [
+          "ctor inject OrderService",
+          "get(id): string returns service lookup"
+        ]
+      },
+      "note": "depth-2 dependent in service root; typed return annotation mirrors fetch return contract",
+      "seq": 15
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/cli/src/main.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "mentions": "RegistryClient in help string/comment only"
+      },
+      "note": "cli root is prose/name-mention noise (0 indexed refs) - excluded",
+      "seq": 16
+    }
+  ],
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.controller.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.service.ts",
+      "packages/service/src/order.controller.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/cli/src/main.ts",
+      "packages/docs/src/overview.ts",
+      "packages/docs/src/changelog.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/registry/src/client.ts",
+      "packages/registry/src/index.ts",
+      "packages/service/src/order.controller.ts",
+      "packages/service/src/order.service.ts"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-multi-root-client/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

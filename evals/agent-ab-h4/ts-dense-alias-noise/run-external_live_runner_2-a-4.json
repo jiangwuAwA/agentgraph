@@ -1,0 +1,377 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "ts-dense-alias-noise",
+  "seed": 4,
+  "run_id": "external_live_runner_2-a-4",
+  "fixture": "fixtures/eval-agent-tasks-hard/ts-dense-alias-noise",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/4/ts-dense-alias-noise",
+  "symbol": "OrderHandler",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 6,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 6,
+    "read_files": [
+      "workdir/",
+      "packages/core/src/orderHandler.ts",
+      "packages/app/src/useOrder.ts",
+      "packages/legacy/src/utils/orderHandler.ts",
+      "packages/cli/src/help.ts",
+      "../RUNNER_CONTRACT.md"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": 4,
+    "task_order": [
+      "go-store-api",
+      "ts-nest-user-repo",
+      "rust-trait-handler",
+      "py-plugin-registry"
+    ],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [
+      "external_live_runner_2"
+    ],
+    "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "ts-dense-alias-noise",
+    "title": "Dense same-name + cross-root alias — pick true OrderHandler",
+    "language": "typescript",
+    "issue": "OrderHandler.execute contract must change in the core package. Many decoy execute() methods exist; legacy has a same-named class. App consumes core via package name. Choose true dependents; do not treat name collisions or help prose as dependents.",
+    "symbol": "OrderHandler",
+    "expected_files": [
+      "packages/core/src/orderHandler.ts",
+      "packages/app/src/useOrder.ts"
+    ],
+    "noise_files": [
+      "packages/core/src/noise/noise0.ts",
+      "packages/core/src/noise/noise1.ts",
+      "packages/core/src/noise/noise2.ts",
+      "packages/core/src/noise/noise3.ts",
+      "packages/core/src/noise/noise4.ts",
+      "packages/core/src/noise/noise5.ts",
+      "packages/core/src/noise/noise6.ts",
+      "packages/core/src/noise/noise7.ts",
+      "packages/core/src/noise/bundle.ts",
+      "packages/app/src/other.ts",
+      "packages/legacy/src/utils/orderHandler.ts",
+      "packages/legacy/src/index.ts",
+      "packages/cli/src/help.ts"
+    ],
+    "forbidden_files": [
+      "packages/cli/src/help.ts",
+      "packages/legacy/src/utils/orderHandler.ts"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "workdir/"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "listed cell workdir: packages/, workspace.json",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --version; agentgraph --help"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "agentgraph 0.5.8 on PATH; confirmed workspace/alias recipe flags",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "core",
+          "app",
+          "legacy",
+          "cli"
+        ]
+      },
+      "note": "multi-root manifest with 4 roots",
+      "seq": 3
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -File packages"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 15
+      },
+      "note": "enumerated all package sources",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/src/orderHandler.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "true target: export class OrderHandler { execute(id: string): string }",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/app/src/useOrder.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "imports { OrderHandler } from '@demo/core/orderHandler'; calls h.execute(id)",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/legacy/src/utils/orderHandler.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "same-named class in wrong package (decoy)",
+      "seq": 7
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/cli/src/help.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "help prose string mentioning OrderHandler.execute (decoy)",
+      "seq": 8
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-Content package.json x4, legacy/src/index.ts, app/src/other.ts, core/src/noise/bundle.ts"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "@demo/core|app|legacy|cli names; legacy index imports ./utils/orderHandler; other.ts imports Noise0; bundle.ts is filler",
+      "seq": 9
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-Content noise3..7.ts + bundle head"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "Noise0-7 all define execute() decoy methods",
+      "seq": 10
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph index --workspace workspace.json --workspace-alias @demo/core=core"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 15,
+        "symbols": 29,
+        "references": 7,
+        "db_path": ".agentgraph/index.db"
+      },
+      "note": "multi-root index; alias @demo/core -> core resolved from CLI (source: cli); package.json names auto-mapped; not a cross-root type merge",
+      "seq": 11
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem ..; Test-Path ../file_set.json; Test-Path ../meta.json"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "brief dir holds ISSUE.md + RUNNER_CONTRACT.md; no prior outputs present",
+      "seq": 12
+    },
+    {
+      "tool": "read",
+      "args": [
+        "../RUNNER_CONTRACT.md"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "output schema contract only; no structure-fact labels seen",
+      "seq": 13
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph find OrderHandler"
+      ],
+      "ok": true,
+      "summary": {
+        "defs": 2
+      },
+      "note": "core/src/orderHandler.ts (root core) + legacy/src/utils/orderHandler.ts (root legacy)",
+      "seq": 14
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph who-calls OrderHandler"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "window": "default",
+        "subset_ok": true
+      },
+      "note": "app/src/useOrder.ts:1 resolved '@alias:@demo/core->core' = true dependent; legacy/src/index.ts resolved 'src/utils/orderHandler.ts' = name collision, not a core dependent",
+      "seq": 15
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph blast-radius OrderHandler"
+      ],
+      "ok": true,
+      "summary": {
+        "impact_nodes": 4,
+        "window": "sound"
+      },
+      "note": "same split: useOrder.ts (core alias) vs legacy index.ts (collision)",
+      "seq": 16
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph importers packages/core/src/orderHandler.ts; agentgraph find execute"
+      ],
+      "ok": true,
+      "summary": {
+        "importers": 0,
+        "execute_symbols": 10
+      },
+      "note": "importers empty (alias-based module edge lives on callers); execute decoys Noise0-7 in core/noise plus 2 OrderHandler.execute defs; cli/help.ts has 0 indexed refs so help prose is not a dependent",
+      "seq": 17
+    }
+  ],
+  "file_set": [
+    "packages/app/src/useOrder.ts",
+    "packages/core/src/orderHandler.ts"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/orderHandler.ts",
+      "packages/app/src/useOrder.ts"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/cli/src/help.ts",
+      "packages/legacy/src/utils/orderHandler.ts"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/app/src/useOrder.ts",
+      "packages/core/src/orderHandler.ts"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/ts-dense-alias-noise/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

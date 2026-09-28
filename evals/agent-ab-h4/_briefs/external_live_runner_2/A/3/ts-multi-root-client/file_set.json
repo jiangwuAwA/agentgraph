@@ -1,0 +1,115 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["registry", "service", "cli", "docs"]},
+      "note": "workspace manifest: 4 roots"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--workspace", "workspace.json", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"files": 8, "symbols": 15, "references": 9, "exact_refs": 9, "heuristic_refs": 2},
+      "note": "multi-root index; cli 0 refs, docs 0 refs"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "RegistryClient", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"window": "sound", "nodes": 7, "roots": ["registry", "service"]},
+      "note": "impact stays inside registry + service"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "RegistryClient.fetch", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"callers": 0},
+      "note": "qualified name has no direct caller edge"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "RegistryClient", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"callers": 4},
+      "note": "registry barrel + service import/ctor_inject"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "fetch", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"callers": 1, "at": "src/order.service.ts:6"},
+      "note": "only real call site of fetch return value"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "OrderService", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"callers": 2, "at": ["src/order.controller.ts:1", "src/order.controller.ts:4"]},
+      "note": "transitive dependent inside service root"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "RegistryClient", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"defs": 2, "roots": ["registry"]},
+      "note": "definition lives only in registry"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "fetch", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"defs": 1, "return_type": ": string", "root": "registry"},
+      "note": "RegistryClient.fetch in src/client.ts:4"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "RegistryClient", "--workspace-db", ".agentgraph/ws.db"],
+      "ok": true,
+      "summary": {"paths": ["src/index.ts", "src/client.ts", "src/order.service.ts"]},
+      "note": "no cli/docs file appears"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/registry/src/client.ts", "packages/registry/src/index.ts"],
+      "ok": true,
+      "summary": {"defines": "RegistryClient.fetch(): string + barrel re-export"},
+      "note": "contract change site"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/service/src/order.service.ts", "packages/service/src/order.controller.ts"],
+      "ok": true,
+      "summary": {"consumes": "imports @demo/registry, calls this.client.fetch(id)"},
+      "note": "service root is the real consumer"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/main.ts", "packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"refs": 0, "mentions": "help string only"},
+      "note": "name mention, not a dependent - excluded"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/docs/src/overview.ts", "packages/docs/src/changelog.ts"],
+      "ok": true,
+      "summary": {"refs": 0, "mentions": "prose strings only"},
+      "note": "name mention, not a dependent - excluded"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

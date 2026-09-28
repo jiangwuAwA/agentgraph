@@ -1,0 +1,134 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workdir/"],
+      "ok": true,
+      "summary": {},
+      "note": "listed cell workdir: packages/, workspace.json"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --version; agentgraph --help"],
+      "ok": true,
+      "summary": {},
+      "note": "agentgraph 0.5.8 on PATH; confirmed workspace/alias recipe flags"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "app", "legacy", "cli"]},
+      "note": "multi-root manifest with 4 roots"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File packages"],
+      "ok": true,
+      "summary": {"files": 15},
+      "note": "enumerated all package sources"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "true target: export class OrderHandler { execute(id: string): string }"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/useOrder.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "imports { OrderHandler } from '@demo/core/orderHandler'; calls h.execute(id)"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/legacy/src/utils/orderHandler.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "same-named class in wrong package (decoy)"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "help prose string mentioning OrderHandler.execute (decoy)"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content package.json x4, legacy/src/index.ts, app/src/other.ts, core/src/noise/bundle.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "@demo/core|app|legacy|cli names; legacy index imports ./utils/orderHandler; other.ts imports Noise0; bundle.ts is filler"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content noise3..7.ts + bundle head"],
+      "ok": true,
+      "summary": {},
+      "note": "Noise0-7 all define execute() decoy methods"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph index --workspace workspace.json --workspace-alias @demo/core=core"],
+      "ok": true,
+      "summary": {"files": 15, "symbols": 29, "references": 7, "db_path": ".agentgraph/index.db"},
+      "note": "multi-root index; alias @demo/core -> core resolved from CLI (source: cli); package.json names auto-mapped; not a cross-root type merge"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem ..; Test-Path ..\\file_set.json; Test-Path ..\\meta.json"],
+      "ok": true,
+      "summary": {},
+      "note": "brief dir holds ISSUE.md + RUNNER_CONTRACT.md; no prior outputs present"
+    },
+    {
+      "tool": "read",
+      "args": ["../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {},
+      "note": "output schema contract only; no structure-fact labels seen"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find OrderHandler"],
+      "ok": true,
+      "summary": {"defs": 2},
+      "note": "core/src/orderHandler.ts (root core) + legacy/src/utils/orderHandler.ts (root legacy)"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls OrderHandler"],
+      "ok": true,
+      "summary": {"callers": 4, "window": "default", "subset_ok": true},
+      "note": "app/src/useOrder.ts:1 resolved '@alias:@demo/core->core' = true dependent; legacy/src/index.ts resolved 'src/utils/orderHandler.ts' = name collision, not a core dependent"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph blast-radius OrderHandler"],
+      "ok": true,
+      "summary": {"impact_nodes": 4, "window": "sound"},
+      "note": "same split: useOrder.ts (core alias) vs legacy index.ts (collision)"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph importers packages/core/src/orderHandler.ts; agentgraph find execute"],
+      "ok": true,
+      "summary": {"importers": 0, "execute_symbols": 10},
+      "note": "importers empty (alias-based module edge lives on callers); execute decoys Noise0-7 in core/noise plus 2 OrderHandler.execute defs; cli/help.ts has 0 indexed refs so help prose is not a dependent"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

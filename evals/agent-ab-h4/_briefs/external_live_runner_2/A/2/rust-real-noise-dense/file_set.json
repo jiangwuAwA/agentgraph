@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph_cli", "args": ["index", "--root", "."], "ok": true, "summary": {"files": 6, "symbols": 44, "refs": 38}, "note": "indexed isolated workdir"},
+    {"tool": "agentgraph_cli", "args": ["stats"], "ok": true, "summary": {"files": 6}, "note": ""},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {}, "note": "crate root: pub use packet::Encode, pub use wire::send_packet"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"trait": "Encode", "implementors": 12}, "note": "trait definition + dense implementors (payload producers)"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"callers": 3}, "note": "send_packet/dump_all/checksum call Encode::encode"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {}, "note": "collision: Encode enum + encode_label, excluded"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {}, "note": "collision: encode_legacy + noise comments, excluded"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {}, "note": "collision: encode_name_for_clone, no Encode edge, excluded"},
+    {"tool": "agentgraph_cli", "args": ["find", "Encode"], "ok": true, "summary": {"hits": 2}, "note": "trait in packet.rs vs enum collision in metrics.rs"},
+    {"tool": "agentgraph_cli", "args": ["find", "encode"], "ok": true, "summary": {"hits": 13}, "note": "Encode::encode + 12 impl methods, all in packet.rs"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "encode", "--json"], "ok": false, "summary": {}, "note": "flag not supported; retried without it"},
+    {"tool": "agentgraph_cli", "args": ["who-calls", "encode"], "ok": true, "summary": {"callers": 3, "implementor_count": 12, "high_freq_name": false}, "note": "callers only in wire.rs; implementors only in packet.rs; no high-freq demotion"},
+    {"tool": "agentgraph_cli", "args": ["blast-radius", "Encode"], "ok": true, "summary": {"impact_nodes": 2, "subset_ok": true}, "note": "lib.rs:8 re-export + wire.rs:2 use edge"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

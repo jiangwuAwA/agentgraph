@@ -1,0 +1,80 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "index"],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 15, "references": 25},
+      "note": "built L0/L1 index over isolated workdir"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "blast-radius", "UserRepository"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "depth": 3},
+      "note": "impact neighborhood: user.module, user.service, user.controller"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "who-calls", "UserRepository"],
+      "ok": true,
+      "summary": {"caller_files": ["src/user.module.ts", "src/user.service.ts"]},
+      "note": "DI registration + ctor_inject references"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "who-calls", "find"],
+      "ok": true,
+      "summary": {"callers": ["src/user.service.ts:9"]},
+      "note": "UserService.load is sole call site of UserRepository.find"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "impact", "UserRepository"],
+      "ok": true,
+      "summary": {"nodes": 8},
+      "note": "transitive dependents include controller via UserService"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "related", "UserRepository"],
+      "ok": true,
+      "summary": {"paths": ["src/user.repository.ts", "src/user.module.ts", "src/user.service.ts"]},
+      "note": "module-level importers"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "find", "UserRepository"],
+      "ok": true,
+      "summary": {"kind": "class", "path": "src/user.repository.ts"},
+      "note": "definition site"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "find", "find"],
+      "ok": true,
+      "summary": {"qualified_name": "UserRepository.find", "path": "src/user.repository.ts"},
+      "note": "method definition under contract change"
+    },
+    {
+      "tool": "read",
+      "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"],
+      "ok": true,
+      "summary": {"source_files": 6},
+      "note": "read all src/*.ts to classify review vs noise"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["agentgraph --root . index"], "ok": true, "summary": {"files": 4, "symbols": 11, "refs": 19}, "note": "built local index for workdir"},
+    {"tool": "bash", "args": ["agentgraph --root . find Get"], "ok": true, "summary": {"hits": ["MemRepo.Get store/store.go:16", "RedisCache.Get store/store.go:34"]}, "note": "two method definitions"},
+    {"tool": "bash", "args": ["agentgraph --root . who-calls Get"], "ok": true, "summary": {"callers": 1, "implementors": 7}, "note": "caller api/handlers.go:6 LoadUser; implementors in store/store.go"},
+    {"tool": "bash", "args": ["agentgraph --root . callers Get"], "ok": true, "summary": {"callers": 1, "implementors": 7}, "note": "same split as who-calls"},
+    {"tool": "bash", "args": ["agentgraph --root . blast-radius Get"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["api/handlers.go", "store/store.go"]}, "note": "blast radius confined to two files"},
+    {"tool": "bash", "args": ["agentgraph --root . related Get"], "ok": true, "summary": {"paths": ["store/store.go", "api/handlers.go"]}, "note": "retrieval scoping"},
+    {"tool": "bash", "args": ["read store/store.go api/handlers.go cmd/main.go internal/metrics.go"], "ok": true, "summary": {"noise": ["cmd/main.go", "internal/metrics.go"]}, "note": "noise files do not use Repository/Cache Get"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

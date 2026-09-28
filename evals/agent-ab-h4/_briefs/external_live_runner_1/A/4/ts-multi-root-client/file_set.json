@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["agentgraph --help"], "ok": true, "summary": {"commands": ["index", "workspace", "find", "callers", "blast-radius", "who-calls", "impact", "related"]}, "note": "CLI recipe surface"},
+    {"tool": "bash", "args": ["agentgraph index --workspace workspace.json --workspace-alias @demo/registry=registry --force"], "ok": true, "summary": {"files": 8, "symbols": 15, "references": 9, "roots": ["registry", "service", "cli", "docs"]}, "note": "multi-root workspace index; cli/docs have 0 refs"},
+    {"tool": "bash", "args": ["agentgraph find RegistryClient --workspace workspace.json"], "ok": true, "summary": {"defs": ["packages/registry/src/client.ts:class", "packages/registry/src/index.ts:module"]}, "note": "definitions only in registry root"},
+    {"tool": "bash", "args": ["agentgraph who-calls RegistryClient --workspace workspace.json"], "ok": true, "summary": {"callers_files": ["packages/registry/src/client.ts", "packages/registry/src/index.ts", "packages/service/src/order.service.ts"], "cli_docs_refs": 0}, "note": "true code refs only; no cli/docs"},
+    {"tool": "bash", "args": ["agentgraph callers fetch --workspace workspace.json"], "ok": true, "summary": {"callers": ["packages/service/src/order.service.ts:6 OrderService.load"]}, "note": "only consumer of fetch return contract"},
+    {"tool": "bash", "args": ["agentgraph blast-radius RegistryClient.fetch --workspace workspace.json"], "ok": true, "summary": {"window": "sound", "impact": [], "subset_ok": true}, "note": "no further modeled dependents of fetch"},
+    {"tool": "bash", "args": ["agentgraph impact RegistryClient --workspace workspace.json"], "ok": true, "summary": {"depth1": ["registry/src/client.ts", "registry/src/index.ts", "service/src/order.service.ts"], "depth2": ["service/src/order.controller.ts (via OrderService, not fetch)"]}, "note": "controller is transitive via OrderService.lookup, not fetch return"},
+    {"tool": "bash", "args": ["agentgraph related RegistryClient --workspace workspace.json"], "ok": true, "summary": {"ranked": ["packages/registry/src/index.ts", "packages/registry/src/client.ts", "packages/service/src/order.service.ts"]}, "note": "related ranking matches review set"},
+    {"tool": "bash", "args": ["agentgraph workspace status --workspace workspace.json"], "ok": true, "summary": {"registry_refs": 3, "service_refs": 6, "cli_refs": 0, "docs_refs": 0}, "note": "correct roots = registry+service; cli/docs name-mention noise"},
+    {"tool": "read", "args": ["packages/registry/src/client.ts"], "ok": true, "summary": {"defines": "RegistryClient.fetch(id): string"}, "note": "return contract site"},
+    {"tool": "read", "args": ["packages/service/src/order.service.ts"], "ok": true, "summary": {"uses": "return this.client.fetch(id) in OrderService.load"}, "note": "only consumer of fetch return"},
+    {"tool": "read", "args": ["packages/registry/src/index.ts", "packages/cli/src/main.ts", "packages/cli/src/help.ts", "packages/docs/src/overview.ts", "packages/docs/src/changelog.ts", "packages/service/src/order.controller.ts"], "ok": true, "summary": {"noise": "cli/docs name-mention only", "controller": "calls service.lookup not fetch"}, "note": "excluded from file_set"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

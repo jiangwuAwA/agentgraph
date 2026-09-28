@@ -1,0 +1,83 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": ["workdir"],
+      "ok": true,
+      "summary": {
+        "roots": ["packages/registry", "packages/service", "packages/cli", "packages/docs"],
+        "files": 8
+      },
+      "note": "workspace.json lists 4 roots; enumerated all source files"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {
+        "roots": ["registry", "service", "cli", "docs"]
+      },
+      "note": "multi-root manifest"
+    },
+    {
+      "tool": "grep",
+      "args": ["RegistryClient"],
+      "ok": true,
+      "summary": {
+        "hits": 14,
+        "files": [
+          "packages/registry/src/client.ts",
+          "packages/registry/src/index.ts",
+          "packages/service/src/order.service.ts",
+          "packages/cli/src/help.ts",
+          "packages/cli/src/main.ts",
+          "packages/docs/src/overview.ts",
+          "packages/docs/src/changelog.ts"
+        ]
+      },
+      "note": "symbol token scan across workdir"
+    },
+    {
+      "tool": "grep",
+      "args": ["fetch|import|export"],
+      "ok": true,
+      "summary": {
+        "fetch_call_sites": ["packages/service/src/order.service.ts"],
+        "fetch_definitions": ["packages/registry/src/client.ts"]
+      },
+      "note": "locate fetch contract and consumers"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/registry/src/client.ts",
+        "packages/registry/src/index.ts",
+        "packages/service/src/order.service.ts",
+        "packages/service/src/order.controller.ts",
+        "packages/cli/src/main.ts",
+        "packages/cli/src/help.ts",
+        "packages/docs/src/overview.ts",
+        "packages/docs/src/changelog.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "contract": "RegistryClient.fetch(id: string): string",
+        "consumer": "OrderService.load -> this.client.fetch(id)",
+        "noise": ["cli help/prose", "docs prose"]
+      },
+      "note": "classified definition, consumer, and name-mention-only files"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

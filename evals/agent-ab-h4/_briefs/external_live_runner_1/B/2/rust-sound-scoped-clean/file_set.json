@@ -1,0 +1,18 @@
+{
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "tool_calls": [
+    "skill_search",
+    "bash",
+    "grep",
+    "glob"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": "1",
+  "file_set": [
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "tool_calls": [
+    { "tool": "glob", "detail": "list workdir files" },
+    { "tool": "grep", "detail": "search normalize_id across workdir" },
+    { "tool": "grep", "detail": "search workspace.json / package manifests" },
+    { "tool": "grep", "detail": "search use/pub fn/core::/mod in *.rs" },
+    { "tool": "grep", "detail": "read full contents of packages/**/*.rs" },
+    { "tool": "glob", "detail": "confirm packages/**/src/*.rs inventory" }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

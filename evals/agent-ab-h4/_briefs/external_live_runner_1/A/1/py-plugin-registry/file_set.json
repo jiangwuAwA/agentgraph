@@ -1,0 +1,163 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py",
+    "app/plugins.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["--root", "app", "index"],
+      "ok": true,
+      "summary": {
+        "files": 4,
+        "symbols": 7,
+        "references": 7
+      },
+      "note": "built L0 index over app/"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "PluginRegistry"],
+      "ok": true,
+      "summary": {
+        "hits": 1,
+        "path": "registry.py",
+        "kind": "class"
+      },
+      "note": "PluginRegistry defined at registry.py:1"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["--root", "app", "who-calls", "PluginRegistry"],
+      "ok": true,
+      "summary": {
+        "callers": ["bootstrap.py:1", "bootstrap.py:6"]
+      },
+      "note": "import + construction site in bootstrap.py"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "register"],
+      "ok": true,
+      "summary": {
+        "hits": 1,
+        "qualified_name": "PluginRegistry.register",
+        "path": "registry.py"
+      },
+      "note": "register method at registry.py:5"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["--root", "app", "who-calls", "register"],
+      "ok": true,
+      "summary": {
+        "callers": ["bootstrap.py:7"]
+      },
+      "note": "single register call site: reg.register('metrics', MetricsPlugin)"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["--root", "app", "who-calls", "create"],
+      "ok": true,
+      "summary": {
+        "callers": ["bootstrap.py:8"]
+      },
+      "note": "create call site on same registry instance"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--root", "app", "find", "MetricsPlugin"],
+      "ok": true,
+      "summary": {
+        "hits": 1,
+        "path": "plugins.py",
+        "kind": "class"
+      },
+      "note": "plugin factory registered by name in bootstrap"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["--root", "app", "who-calls", "MetricsPlugin"],
+      "ok": true,
+      "summary": {
+        "callers": ["bootstrap.py:2"]
+      },
+      "note": "plugins.py supplies factory passed to register"
+    },
+    {
+      "tool": "agentgraph.importers",
+      "args": ["--root", "app", "importers", "registry"],
+      "ok": true,
+      "summary": {
+        "importers": ["bootstrap.py"]
+      },
+      "note": "only bootstrap imports registry module"
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": ["--root", "app", "blast-radius", "PluginRegistry"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "impact_paths": ["bootstrap.py"]
+      },
+      "note": "sound window; impact confined to bootstrap.py"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": ["--root", "app", "related", "PluginRegistry"],
+      "ok": true,
+      "summary": {
+        "paths": ["registry.py", "bootstrap.py"]
+      },
+      "note": "related files by definition+import"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {
+        "defines": ["PluginRegistry", "PluginRegistry.register", "PluginRegistry.create"]
+      },
+      "note": "change target: register stores name without validation"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {
+        "constructs": "PluginRegistry",
+        "calls": ["register", "create"],
+        "name_arg": "metrics"
+      },
+      "note": "constructs registry and passes plugin name to register"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py"],
+      "ok": true,
+      "summary": {
+        "defines": ["MetricsPlugin"]
+      },
+      "note": "plugin class registered under name; title scopes plugins+bootstrap"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py"],
+      "ok": true,
+      "summary": {
+        "excluded": true
+      },
+      "note": "prose-only PluginRegistry mention; not a construct/call site"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["agentgraph --root . index"], "ok": true, "summary": {"files": 6, "symbols": 15, "references": 25}, "note": "built L0/L1 index over workdir"},
+    {"tool": "bash", "args": ["agentgraph --root . find UserRepository"], "ok": true, "summary": {"hits": 1, "path": "src/user.repository.ts"}, "note": "class definition"},
+    {"tool": "bash", "args": ["agentgraph --root . find find"], "ok": true, "summary": {"hits": 1, "qualified_name": "UserRepository.find"}, "note": "method definition"},
+    {"tool": "bash", "args": ["agentgraph --root . who-calls find"], "ok": true, "summary": {"callers": 1, "at": "src/user.service.ts:9", "enclosing": "UserService.load"}, "note": "exact call site of find"},
+    {"tool": "bash", "args": ["agentgraph --root . who-calls UserRepository"], "ok": true, "summary": {"callers": 4, "implementors": 0}, "note": "imports + ctor_inject + module_providers"},
+    {"tool": "bash", "args": ["agentgraph --root . blast-radius UserRepository"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "depth": 3}, "note": "impact cone: user.module, user.service, user.controller"},
+    {"tool": "bash", "args": ["agentgraph --root . impact UserRepository"], "ok": true, "summary": {"nodes": 10, "max_depth": 3}, "note": "transitive dependents via UserService -> UserController"},
+    {"tool": "bash", "args": ["agentgraph --root . related UserRepository"], "ok": true, "summary": {"top": ["src/user.repository.ts", "src/user.module.ts", "src/user.service.ts"]}, "note": "retrieval scoping"},
+    {"tool": "bash", "args": ["agentgraph --root . importers src/user.repository.ts"], "ok": true, "summary": {"importers": ["src/user.module.ts", "src/user.service.ts"]}, "note": "module-level edges"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {"find_throws": true}, "note": "find throws Error('not found') when row missing"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {"load_calls": "userRepo.find(id)"}, "note": "return passes through find"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {"load_calls": "users.load(id)"}, "note": "HTTP boundary of find result"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {"providers": ["UserService", "UserRepository"]}, "note": "DI registration of UserRepository"},
+    {"tool": "read", "args": ["src/health.ts", "src/unrelated.ts"], "ok": true, "summary": {"noise": true}, "note": "unrelated concerns; no UserRepository dependency"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

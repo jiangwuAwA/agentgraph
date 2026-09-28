@@ -1,0 +1,21 @@
+{
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    "agentgraph index --root .",
+    "agentgraph find Get",
+    "agentgraph callers Get",
+    "agentgraph who-calls Get",
+    "agentgraph blast-radius Get",
+    "agentgraph find Repository",
+    "agentgraph related Get"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

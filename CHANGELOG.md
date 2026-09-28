@@ -3,6 +3,17 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.10
+
+### Added
+- H4-live matrix fill: easy+hard x A/B x 2 live runners, **N=5** on 31/36 cells
+  (5 residual cells <5 — listed by lab-ready; **not invented**).
+
+### H4-live limits
+- Live A/B **noise not separated** (extra-noise 0.00 all arms) — **recall + cwr** only.
+- `lab_ready=false` until residual cells reach N>=5.
+- Historical P0-5c/d scores **unchanged**.
+
 ## v0.5.9
 
 ### Added

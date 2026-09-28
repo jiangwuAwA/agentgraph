@@ -1,0 +1,415 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-trait-handler",
+  "seed": 2,
+  "run_id": "external_live_runner_2-a-2",
+  "fixture": "fixtures/eval-agent-tasks/rust-trait-handler",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/2/rust-trait-handler",
+  "symbol": "render",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 5,
+    "recipe_tools": [
+      "index",
+      "who-calls",
+      "blast-radius"
+    ],
+    "grep_count": 4
+  },
+  "chose_correct_workspace_root": null,
+  "file_budget": 2,
+  "read_budget": 5,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 5,
+      "recipe_tools": [
+        "index",
+        "who-calls",
+        "blast-radius"
+      ],
+      "grep_count": 4
+    },
+    "chose_correct_workspace_root": null,
+    "file_budget": 2,
+    "read_budget": 5,
+    "read_files": [
+      "src/handlers.rs",
+      "src/lib.rs",
+      "src/metrics.rs",
+      "scripts/eval_agent_ab_d.py",
+      "scripts/eval_agent_ab_c.py"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-trait-handler",
+    "title": "Change Handler::render trait method — impls + dyn call sites",
+    "language": "rust",
+    "issue": "Handler::render signature must change. Find implementors and dyn dispatch call sites that must be updated.",
+    "symbol": "render",
+    "expected_files": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "noise_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_source": "expected.noise_files (no explicit forbidden list)"
+  },
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": [
+        "code-understanding file-set identification for Rust trait change"
+      ],
+      "ok": true,
+      "summary": {
+        "loaded_skill": null
+      },
+      "note": "first-query skill lookup; no matching non-Compose skill loaded, proceeded directly",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -Depth 3 <workdir>"
+      ],
+      "ok": true,
+      "summary": {
+        "source_files": 3
+      },
+      "note": "enumerate isolated workdir: src/handlers.rs, src/lib.rs, src/metrics.rs",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/handlers.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "lines": 23
+      },
+      "note": "trait Handler::render definition, HtmlHandler/JsonHandler impls (lines 10,16), render_dyn dyn call (line 22)",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "lines": 13
+      },
+      "note": "dyn Handler call sites: dispatch line 7, bootstrap line 12; imports Handler from handlers",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/metrics.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "lines": 5
+      },
+      "note": "reviewed to rule out: no Handler/render dependency",
+      "seq": 5
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--root",
+        "<workdir>"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 3,
+        "symbols": 12,
+        "refs": 17,
+        "exact": 13,
+        "heuristic": 4
+      },
+      "note": "index isolated workdir (0 failed, 0 skipped)",
+      "seq": 6
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "render",
+        "--format",
+        "json"
+      ],
+      "ok": false,
+      "summary": {
+        "error": "unexpected argument '--format'"
+      },
+      "note": "flag unsupported; retried without it",
+      "seq": 7
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "Handler",
+        "--format",
+        "json"
+      ],
+      "ok": false,
+      "summary": {
+        "error": "unexpected argument '--format'"
+      },
+      "note": "flag unsupported; retried without it",
+      "seq": 8
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "render",
+        "--root",
+        "<workdir>"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 3,
+        "implementor_count": 4,
+        "paths": [
+          "src/handlers.rs",
+          "src/lib.rs"
+        ],
+        "window": "default",
+        "subset_ok": true
+      },
+      "note": "dyn/exact call sites: handlers.rs:22 (render_dyn), lib.rs:7 (dispatch), lib.rs:12 (bootstrap); impl edges: handlers.rs:10 (HtmlHandler), handlers.rs:16 (JsonHandler) + dyn_trait_method expansions",
+      "seq": 9
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "Handler",
+        "--root",
+        "<workdir>"
+      ],
+      "ok": true,
+      "summary": {
+        "nodes": 1,
+        "path": "src/lib.rs",
+        "window": "sound",
+        "subset_ok": true
+      },
+      "note": "Handler import impact: src/lib.rs:1",
+      "seq": 10
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "eval_agent_ab_d",
+        "scripts/"
+      ],
+      "ok": true,
+      "summary": {
+        "note": "schema-name lookup"
+      },
+      "note": "locate harness schema definitions in scripts/eval_agent_ab_d.py only; repo-wide grep incidentally surfaced sibling cells' schema lines (no other cell outputs opened, no golden/label/scored lists read)",
+      "seq": 11
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "read_brief_outputs|validate_runner_outputs",
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 2
+      },
+      "note": "find output-validation functions in harness code",
+      "seq": 12
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": "runner_contract_markdown templates (file_set/meta field contract)"
+      },
+      "note": "contract template lookup in harness code",
+      "seq": 13
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": "validate_runner_outputs + scripted fill + ext metrics"
+      },
+      "note": "validation rules + ext-metric formulas (harness code, not fixture labels)",
+      "seq": 14
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "sections": "BRIEF_BAN_STRINGS, ARM_TOOLS, CONTAMINATION_BAN_LIST, task rationale lines"
+      },
+      "note": "ban-list check; coarse one-line task-design rationale text incidentally visible (not structure-fact label lists, not golden file sets, not scored tables) — file_set was already determined from reads + agentgraph recipes before this",
+      "seq": 15
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "def _is_recipe_tool|def _is_grep_tool",
+        "scripts/eval_agent_ab_c.py"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 2
+      },
+      "note": "tool-classifier lookup",
+      "seq": 16
+    },
+    {
+      "tool": "read",
+      "args": [
+        "scripts/eval_agent_ab_c.py"
+      ],
+      "ok": true,
+      "summary": {
+        "section": "_is_recipe_tool / _is_grep_tool"
+      },
+      "note": "confirm agentgraph.* tool naming counts as recipe calls",
+      "seq": 17
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "HARNESS_VERSION|FILE_SET_SCHEMA|META_SCHEMA",
+        "scripts/eval_agent_ab_d.py"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 3
+      },
+      "note": "confirm schema/version string constants",
+      "seq": 18
+    }
+  ],
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "src/metrics.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "src/handlers.rs",
+      "src/lib.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks/rust-trait-handler/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

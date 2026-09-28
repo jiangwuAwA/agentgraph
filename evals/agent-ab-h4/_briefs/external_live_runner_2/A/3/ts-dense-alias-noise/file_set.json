@@ -1,0 +1,94 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--version", "--help"],
+      "ok": true,
+      "summary": { "version": "0.5.8", "recipes": ["find", "who-calls", "blast-radius", "importers"] },
+      "note": "CLI availability check"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": { "roots": ["core", "app", "legacy", "cli"] },
+      "note": "workspace manifest"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content packages/*/package.json"],
+      "ok": true,
+      "summary": { "packages": ["@demo/core", "@demo/app", "@demo/legacy", "@demo/cli"] },
+      "note": "package names for alias resolution"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "files": 15, "symbols": 29, "refs": 7, "package_alias_demo_core": "core" },
+      "note": "multi-root workspace index; @demo/core auto-aliased to core root"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content core/app/legacy/cli source files"],
+      "ok": true,
+      "summary": {
+        "true_target": "packages/core/src/orderHandler.ts (OrderHandler.execute)",
+        "app_import": "@demo/core/orderHandler",
+        "legacy_own_class": "packages/legacy/src/utils/orderHandler.ts",
+        "cli_help_prose": "packages/cli/src/help.ts"
+      },
+      "note": "manual reads of candidate sources"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "OrderHandler"],
+      "ok": true,
+      "summary": { "definitions": 2, "roots": ["core", "legacy"] },
+      "note": "two same-name classes; core is the target"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "OrderHandler"],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "true_dependent": "app/src/useOrder.ts (resolved @alias:@demo/core->core, exact)",
+        "decoy": "legacy/src/index.ts resolves to local src/utils/orderHandler.ts"
+      },
+      "note": "default window; subset_ok=true"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "OrderHandler"],
+      "ok": true,
+      "summary": { "impact_nodes": 4, "subset_ok": true, "window": "sound" },
+      "note": "recipe cross-check, same true/decoy split"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": { "importers": 0 },
+      "note": "path-form query empty; package-alias imports covered by who-calls"
+    },
+    {
+      "tool": "grep",
+      "args": ["OrderHandler|execute\\(", "packages/**/*.ts"],
+      "ok": true,
+      "summary": { "orderhandler_files": 5, "noise_execute_classes": 8 },
+      "note": "enumerated name-collision decoys (noise0-7, legacy class, help prose)"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

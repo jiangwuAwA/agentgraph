@@ -1,0 +1,64 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "glob",
+      "args": ["workdir/**/*"],
+      "ok": true,
+      "summary": {"files": 4, "go": 4},
+      "note": "walk isolated workdir copy"
+    },
+    {
+      "tool": "grep",
+      "args": ["Get|Repository|MemRepo|RedisCache|interface", "workdir"],
+      "ok": true,
+      "summary": {"matches": 15},
+      "note": "symbol-token + type-name scan"
+    },
+    {
+      "tool": "grep",
+      "args": ["\\.Get\\(|func \\(.*\\) Get|Get\\(|Repository|Cache", "workdir"],
+      "ok": true,
+      "summary": {"matches": 13},
+      "note": "call-site vs method-def scan"
+    },
+    {
+      "tool": "grep",
+      "args": [".", "workdir/store/store.go"],
+      "ok": true,
+      "summary": {"lines": 36},
+      "note": "Repository/Cache interfaces; MemRepo.Get + RedisCache.Get implementors"
+    },
+    {
+      "tool": "grep",
+      "args": [".", "workdir/api/handlers.go"],
+      "ok": true,
+      "summary": {"lines": 11},
+      "note": "LoadUser r.Get(id) call site; SaveUser is Put-only"
+    },
+    {
+      "tool": "grep",
+      "args": [".", "workdir/cmd/main.go"],
+      "ok": true,
+      "summary": {"lines": 8},
+      "note": "noise — no Repository/Get"
+    },
+    {
+      "tool": "grep",
+      "args": [".", "workdir/internal/metrics.go"],
+      "ok": true,
+      "summary": {"lines": 6},
+      "note": "noise — no Repository/Get"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py",
+    "app/plugins.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": ["."],
+      "ok": true,
+      "summary": {"files": ["app/bootstrap.py", "app/docs_strings.py", "app/plugins.py", "app/registry.py"]},
+      "note": "listed isolated workdir/app tree"
+    },
+    {
+      "tool": "grep",
+      "args": ["PluginRegistry"],
+      "ok": true,
+      "summary": {"hits": 5, "files": ["app/docs_strings.py", "app/bootstrap.py", "app/registry.py"]},
+      "note": "symbol token search"
+    },
+    {
+      "tool": "grep",
+      "args": ["register|registry|Plugin"],
+      "ok": true,
+      "summary": {"hits": 9, "files": ["app/docs_strings.py", "app/plugins.py", "app/bootstrap.py", "app/registry.py"]},
+      "note": "construction/call/id usage search"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"symbols": ["PluginRegistry", "PluginRegistry.register", "PluginRegistry.create"]},
+      "note": "class defines register(name, factory); change site for name validation"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {"constructs": ["PluginRegistry()"], "calls": ["reg.register", "reg.create"]},
+      "note": "only constructor and caller of the registry"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py"],
+      "ok": true,
+      "summary": {"symbols": ["MetricsPlugin"]},
+      "note": "plugin factory passed to reg.register; title names plugins + bootstrap"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py"],
+      "ok": true,
+      "summary": {"kind": "doc_noise"},
+      "note": "prose mentions PluginRegistry only; no construct/call"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

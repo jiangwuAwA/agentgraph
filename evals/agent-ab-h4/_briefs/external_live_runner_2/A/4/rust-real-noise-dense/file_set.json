@@ -1,0 +1,23 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "11",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

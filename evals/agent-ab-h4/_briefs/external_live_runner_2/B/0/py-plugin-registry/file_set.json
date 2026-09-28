@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": ["app/registry.py", "app/bootstrap.py"],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["find source files constructing/calling PluginRegistry.register"], "ok": true, "summary": {}, "note": "no matching skill; proceeded with walk/grep/read"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -Depth 3"], "ok": true, "summary": {}, "note": "listed brief/workdir tree"},
+    {"tool": "read", "args": ["app/registry.py"], "ok": true, "summary": {}, "note": "defines PluginRegistry.register (change target)"},
+    {"tool": "read", "args": ["app/bootstrap.py"], "ok": true, "summary": {}, "note": "constructs PluginRegistry() and calls reg.register"},
+    {"tool": "read", "args": ["app/plugins.py"], "ok": true, "summary": {}, "note": "MetricsPlugin factory only; no registry interaction"},
+    {"tool": "read", "args": ["app/docs_strip.py"], "ok": false, "summary": {}, "note": "guessed filename from truncated listing; corrected"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File"], "ok": true, "summary": {}, "note": "full file list: 4 py modules under app/"},
+    {"tool": "grep", "args": ["PluginRegistry|register\\("], "ok": true, "summary": {"files": 3}, "note": "hits in registry.py, bootstrap.py, docs_strings.py (prose)"},
+    {"tool": "read", "args": ["app/docs_strings.py"], "ok": true, "summary": {}, "note": "self-labeled prose-only noise"},
+    {"tool": "grep", "args": ["import|from", "*.py"], "ok": true, "summary": {"files": 1}, "note": "only bootstrap.py has imports; no other registry users"},
+    {"tool": "memory", "args": ["search file_set.v1 schema"], "ok": true, "summary": {"results": 0}, "note": "no prior memory; used this cell's contract instead"},
+    {"tool": "grep", "args": ["file_set\\.v1", "D:/projects/agentgraph"], "ok": true, "summary": {}, "note": "schema lookup only; matched schema-declaration lines, no labels or other cells' file lists read"},
+    {"tool": "bash", "args": ["Get-ChildItem brief dir and parent"], "ok": true, "summary": {}, "note": "found this cell's ISSUE.md and RUNNER_CONTRACT.md"},
+    {"tool": "read", "args": ["../ISSUE.md"], "ok": true, "summary": {}, "note": "this cell's issue text (same as prompt)"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "output schema fields"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

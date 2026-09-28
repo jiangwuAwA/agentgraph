@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts"
+  ],
+  "tool_calls": [
+    { "tool": "list", "target": "." },
+    { "tool": "glob", "target": "**/*" },
+    { "tool": "grep", "target": "UserRepository" },
+    { "tool": "read", "target": "src/user.repository.ts" },
+    { "tool": "read", "target": "src/user.service.ts" },
+    { "tool": "read", "target": "src/user.module.ts" },
+    { "tool": "read", "target": "src/user.controller.ts" },
+    { "tool": "read", "target": "src/health.ts" },
+    { "tool": "read", "target": "src/unrelated.ts" },
+    { "tool": "write", "target": "file_set.json" },
+    { "tool": "write", "target": "meta.json" }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

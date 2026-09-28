@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": "1",
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    { "tool": "walk", "target": "." },
+    { "tool": "read", "target": "workspace.json" },
+    { "tool": "walk", "target": "packages" },
+    { "tool": "grep", "pattern": "batch_write", "target": "." },
+    { "tool": "grep", "pattern": "use clean|clean::|pub use|flush_all|batch_write_verbose|batch_write_shadow|shadow_write|transmute|unsafe", "target": "." },
+    { "tool": "read", "target": "packages/clean/src/write.rs" },
+    { "tool": "read", "target": "packages/clean/src/lib.rs" },
+    { "tool": "read", "target": "packages/dirty/src/lib.rs" },
+    { "tool": "read", "target": "packages/dirty/src/shadow.rs" }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

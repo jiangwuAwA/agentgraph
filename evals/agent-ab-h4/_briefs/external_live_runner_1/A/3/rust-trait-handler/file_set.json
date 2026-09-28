@@ -1,0 +1,18 @@
+{
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    "agentgraph --root . index",
+    "agentgraph --root . who-calls render",
+    "agentgraph --root . find render",
+    "agentgraph --root . blast-radius render"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

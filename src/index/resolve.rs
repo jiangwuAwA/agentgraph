@@ -1,7 +1,7 @@
 //! Module-path resolution for relative imports (TS/JS/Python/Go/Rust)
 //! plus workspace package-name aliases (partial package map — not full TS resolution).
 
-use super::workspace::PackageAliasMap;
+use super::workspace::{PackageAliasEntry, PackageAliasMap};
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
@@ -342,8 +342,76 @@ pub struct PackageResolveHit {
     pub workspace_file: Option<String>,
 }
 
+/// Limited extension table for wildcard / extension-less path probing (F6).
+const ALIAS_FILE_EXTS: &[&str] = &[".ts", ".tsx", ".d.ts", ".js", ".jsx"];
+const ALIAS_INDEX_FILES: &[&str] = &[
+    "index.ts",
+    "index.tsx",
+    "index.d.ts",
+    "index.js",
+    "index.jsx",
+];
+
+/// Probe `root_abs` + `rel` with the limited extension table.
+/// Returns the root-relative path of the first existing candidate.
+/// Never invents a path when nothing exists on disk.
+fn probe_alias_file(root_abs: &Path, rel: &str) -> Option<String> {
+    let rel = rel.replace('\\', "/");
+    let rel = rel.trim_start_matches('/').to_string();
+    if rel.is_empty() {
+        return None;
+    }
+    let exact = root_abs.join(&rel);
+    if exact.is_file() {
+        return Some(rel);
+    }
+    let has_known_ext = ALIAS_FILE_EXTS.iter().any(|e| rel.ends_with(e));
+    if !has_known_ext {
+        for ext in ALIAS_FILE_EXTS {
+            let cand = format!("{rel}{ext}");
+            if root_abs.join(&cand).is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    for idx in ALIAS_INDEX_FILES {
+        let cand = format!("{rel}/{idx}");
+        if root_abs.join(&cand).is_file() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+fn workspace_display_file(root_path: &str, root_rel: &str) -> String {
+    let rp = root_path
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_string();
+    let display_root = if Path::new(&rp).is_absolute() {
+        let parts: Vec<&str> = rp.split('/').filter(|p| !p.is_empty()).collect();
+        if parts.len() >= 2 {
+            format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
+        } else {
+            parts.last().map(|s| s.to_string()).unwrap_or(rp)
+        }
+    } else {
+        rp
+    };
+    let e = root_rel
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string();
+    format!("{display_root}/{e}")
+}
+
 /// Resolve a package import specifier via the workspace package alias map.
 ///
+/// Supports exact package keys and **tsconfig-style wildcards** (`@/*` -> `src/*`):
+/// the longest matching prefix wins; `*` in the alias entry is replaced by the
+/// unmatched suffix. For wildcards the concrete leaf is probed on disk with a
+/// **limited extension table** (`.ts`/`.tsx`/`.d.ts`/`.js`/`.jsx` + `/index.*`);
+/// when nothing exists the hit keeps `root_id` only (no invented path).
 /// Returns `None` for relative imports and unknown packages.
 /// When only `root_id` is known (no entry/file), still returns a hit so
 /// queries can connect the import to the mapped workspace root.
@@ -351,37 +419,98 @@ pub fn resolve_package_import(
     specifier: &str,
     aliases: &PackageAliasMap,
 ) -> Option<PackageResolveHit> {
-    let (pkg, _sub) = split_package_specifier(specifier);
-    if pkg.is_empty() || pkg.starts_with('.') || pkg.starts_with('/') {
+    if specifier.is_empty() || specifier.starts_with('.') || specifier.starts_with('/') {
         return None;
     }
-    let entry = aliases.get(pkg)?;
-    let workspace_file = match (&entry.root_path, &entry.entry) {
-        (Some(rp), Some(e)) => {
-            let rp = rp.replace('\\', "/").trim_end_matches('/').to_string();
-            // Absolute root paths still produce a short workspace-ish display
-            // using the last two segments when they look like `packages/<id>`.
-            let display_root = if Path::new(&rp).is_absolute() {
-                let parts: Vec<&str> = rp.split('/').filter(|p| !p.is_empty()).collect();
-                if parts.len() >= 2 {
-                    format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
-                } else {
-                    parts.last().map(|s| s.to_string()).unwrap_or(rp)
-                }
-            } else {
-                rp
-            };
-            let e = e.replace('\\', "/").trim_start_matches('/').to_string();
-            Some(format!("{display_root}/{e}"))
+    let (pkg, _sub) = split_package_specifier(specifier);
+    if let Some(entry) = aliases.get(pkg) {
+        return Some(hit_from_entry(pkg.to_string(), entry, None));
+    }
+    // Wildcard aliases: `@/*` -> `src/*`, longest prefix before `*` wins.
+    let mut best: Option<(usize, String, String, &PackageAliasEntry)> = None;
+    for (key, entry) in aliases {
+        let Some(prefix) = key.strip_suffix('*') else {
+            continue;
+        };
+        if prefix.is_empty() {
+            continue;
         }
+        if let Some(rest) = specifier.strip_prefix(prefix) {
+            if rest.is_empty() {
+                continue;
+            }
+            let score = prefix.len();
+            if best.as_ref().map(|(s, _, _, _)| score > *s).unwrap_or(true) {
+                best = Some((score, key.clone(), rest.to_string(), entry));
+            }
+        }
+    }
+    let (_score, key, rest, entry) = best?;
+    Some(hit_from_entry(key, entry, Some(rest)))
+}
+
+fn hit_from_entry(
+    key: String,
+    entry: &PackageAliasEntry,
+    wild_rest: Option<String>,
+) -> PackageResolveHit {
+    let package = if key.ends_with('*') {
+        key.trim_end_matches('*').to_string()
+    } else {
+        key.clone()
+    };
+
+    // Wildcard mapping: substitute `*`, then probe concrete files. Fail -> no file.
+    if let Some(rest) = wild_rest {
+        let pattern = entry.entry.clone().unwrap_or_else(|| "*".to_string());
+        let candidate_rel = if pattern.contains('*') {
+            pattern.replacen('*', rest.as_str(), 1)
+        } else {
+            format!("{}/{}", pattern.trim_end_matches('/'), rest)
+        };
+        let candidate_rel = candidate_rel.replace('\\', "/");
+        // Only probe when root_path is an existing directory (verifiable).
+        let probed = entry.root_path.as_deref().and_then(|rp| {
+            let rp_path = Path::new(rp);
+            if rp_path.is_dir() {
+                probe_alias_file(rp_path, &candidate_rel)
+            } else {
+                None
+            }
+        });
+        return match probed {
+            Some(found) => {
+                let workspace_file = entry
+                    .root_path
+                    .as_deref()
+                    .map(|rp| workspace_display_file(rp, &found));
+                PackageResolveHit {
+                    package,
+                    root_id: entry.root_id.clone(),
+                    entry: Some(found),
+                    workspace_file,
+                }
+            }
+            None => PackageResolveHit {
+                package,
+                root_id: entry.root_id.clone(),
+                entry: None,
+                workspace_file: None,
+            },
+        };
+    }
+
+    // Exact package key: declared barrel/entry is trusted as-is (no FS probe).
+    let workspace_file = match (&entry.root_path, &entry.entry) {
+        (Some(rp), Some(e)) => Some(workspace_display_file(rp, e)),
         _ => None,
     };
-    Some(PackageResolveHit {
-        package: pkg.to_string(),
+    PackageResolveHit {
+        package,
         root_id: entry.root_id.clone(),
         entry: entry.entry.clone(),
         workspace_file,
-    })
+    }
 }
 
 /// Build the `refs.resolved` display value for a package import hit.

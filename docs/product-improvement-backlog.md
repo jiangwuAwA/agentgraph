@@ -110,7 +110,7 @@
 2. fixtures `**/.agentgraph/` — **done** gitignore  
 3. Session 面板 ID 与文档 P0-x 不一致 — **以本文档为准**  
 4. Workspace union CLI 含 spawn p95 可到秒级 — Agent 优先 root filter / MCP  
-5. **真实 monorepo package map eval（非阻塞）** — partial package map 已交付；缺口：exports conditions、`node_modules`、嵌套 workspace 包、重名包 Agent 是否发现 override。**禁止**写成 full TS resolution / 生态 sound  
+5. **真实 monorepo package map eval（非阻塞）** — partial package map 已交付；**F6 通配 `@/*` resolved 已收口（有限扩展表，无匹配不编造）**；缺口：exports conditions、`node_modules`、嵌套 workspace 包、重名包 Agent 是否发现 override。**禁止**写成 full TS resolution / 生态 sound  
 6. **post-fix 评测轨迹并列表** — 可选；不覆盖历史 stamp  
 
 ---
@@ -120,9 +120,10 @@
 ```text
 已完成：P0-3 → P0-4 → P0-2 → P0-1 → P0-5 系列 → P1-* → P2-1/2/4
 下一步候选（按产品判断）：
-  1) 真实 monorepo package map 抽检（residual #5，补证据）
-  2) P2-3 L1 规则包（仅当有 eval 金标数字）
-  3) 停机 / 发版叙事复审
+  1) F7：行为可见则 v0.5.7（package map partial + 通配 resolved；仍禁止 full TS / 生态 sound）
+  2) 真实 monorepo package map 抽检（residual #5，补证据）
+  3) P2-3 L1 规则包（仅当有 eval 金标数字）
+  4) 停机 / 发版叙事复审
 ```
 
 ## 与 session 任务面板的映射

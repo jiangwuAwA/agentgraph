@@ -229,6 +229,7 @@ DEFAULT_DOCS = [
     "docs/graph-html.md",
     "docs/graph-diff.md",
     "docs/workspace.md",
+    "docs/eval-package-map.md",
     "docs/onboarding.md",
     "docs/agent-recipes.md",
     "docs/eval-l1.md",

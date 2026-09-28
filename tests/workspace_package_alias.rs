@@ -573,3 +573,102 @@ fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
         }
     }
 }
+
+/// Two roots claiming the same package.json name must not silently pick the first.
+/// Either discovery fails-loud, or the alias is marked ambiguous and requires
+/// CLI `--workspace-alias` override (no silent cross-root).
+#[test]
+fn duplicate_package_name_requires_explicit_override() {
+    let base = temp_dir("dup-pkg-name");
+    let r1 = base.join("packages/a");
+    let r2 = base.join("packages/b");
+    std::fs::create_dir_all(r1.join("src")).unwrap();
+    std::fs::create_dir_all(r2.join("src")).unwrap();
+    std::fs::write(
+        r1.join("package.json"),
+        r#"{"name":"@demo/registry","version":"0.0.1"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        r2.join("package.json"),
+        r#"{"name":"@demo/registry","version":"0.0.1"}"#,
+    )
+    .unwrap();
+    std::fs::write(r1.join("src/index.ts"), "export class A {}\n").unwrap();
+    std::fs::write(r2.join("src/index.ts"), "export class B {}\n").unwrap();
+    std::fs::write(
+        base.join("workspace.json"),
+        format!(
+            "{{\"roots\":[{{\"id\":\"aa\",\"path\":\"{}\"}},{{\"id\":\"bb\",\"path\":\"{}\"}}]}}",
+            r1.display().to_string().replace('\\', "/"),
+            r2.display().to_string().replace('\\', "/")
+        ),
+    )
+    .unwrap();
+    let ws = base.join("workspace.json");
+    // Without CLI override: must not silently succeed as if unambiguous.
+    let out = run_raw(&["index", "--workspace", ws.to_str().unwrap(), "--force"]);
+    let text = format!("{}{}", stdout(&out), stderr(&out));
+    let status_ok = out.status.success();
+    let ambiguous = text.to_lowercase().contains("duplicate")
+        || text.to_lowercase().contains("ambiguous")
+        || text.contains("@demo/registry");
+    assert!(
+        !status_ok || ambiguous,
+        "duplicate package.json name must fail-loud or warn, got status={status_ok} text={text}"
+    );
+
+    // With CLI override: index must succeed and map to chosen root.
+    let out2 = run_raw(&[
+        "index",
+        "--workspace",
+        ws.to_str().unwrap(),
+        "--workspace-alias",
+        "@demo/registry=aa",
+        "--force",
+    ]);
+    assert!(
+        out2.status.success(),
+        "CLI override must resolve duplicate: {}",
+        stderr(&out2)
+    );
+}
+
+/// Subpath package imports map to the same package root.
+#[test]
+fn package_alias_subpath_resolves_to_same_root() {
+    use agentgraph::index::resolve::resolve_package_import;
+    use agentgraph::index::workspace::{
+        discover_package_aliases, PackageAliasEntry, WorkspaceRoot,
+    };
+    let base = temp_dir("pkg-subpath");
+    let r = base.join("packages/registry");
+    std::fs::create_dir_all(r.join("src")).unwrap();
+    std::fs::write(
+        r.join("package.json"),
+        r#"{"name":"@demo/registry","version":"0.0.1"}"#,
+    )
+    .unwrap();
+    std::fs::write(r.join("src/index.ts"), "export * from \"./client\";\n").unwrap();
+    std::fs::write(r.join("src/client.ts"), "export class RegistryClient {}\n").unwrap();
+    let roots = vec![WorkspaceRoot {
+        id: "registry".into(),
+        path: r.clone(),
+    }];
+    let aliases = discover_package_aliases(&roots, &[]);
+    assert!(
+        aliases.contains_key("@demo/registry"),
+        "package.json name must produce alias: {:?}",
+        aliases
+    );
+    let hit = resolve_package_import("@demo/registry/client", &aliases)
+        .expect("subpath must resolve to package root");
+    assert_eq!(hit.package, "@demo/registry");
+    assert_eq!(hit.root_id, "registry");
+    let _ = PackageAliasEntry {
+        root_id: String::new(),
+        entry: None,
+        root_path: None,
+        source: String::new(),
+    };
+}

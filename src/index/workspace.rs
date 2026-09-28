@@ -347,6 +347,29 @@ fn resolve_cli_alias_target(pkg: &str, target: &str, roots: &[WorkspaceRoot]) ->
 /// `tsconfig.paths` > each root's `package.json` `name`.
 /// Entry barrels are filled from disk when missing.
 /// **Honesty:** partial package map — not full TypeScript resolution.
+///
+/// Two roots sharing the same `package.json` `name` are **ambiguous** unless
+/// an explicit CLI alias exists. Use [`find_duplicate_package_names`] before
+/// indexing to fail-loud instead of silently picking the first root.
+pub fn find_duplicate_package_names(
+    roots: &[WorkspaceRoot],
+    cli_aliases: &[(String, String)],
+) -> Vec<(String, Vec<String>)> {
+    use std::collections::BTreeMap;
+    let mut claimed: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for r in roots {
+        if let Some(name) = read_package_json_name(&r.path) {
+            claimed.entry(name).or_default().push(r.id.clone());
+        }
+    }
+    let overridden: std::collections::HashSet<&str> =
+        cli_aliases.iter().map(|(p, _)| p.as_str()).collect();
+    claimed
+        .into_iter()
+        .filter(|(pkg, ids)| ids.len() > 1 && !overridden.contains(pkg.as_str()))
+        .collect()
+}
+
 pub fn discover_package_aliases(
     roots: &[WorkspaceRoot],
     cli_aliases: &[(String, String)],
@@ -719,6 +742,20 @@ pub fn index_workspace_with_aliases(
     }
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+    // Fail-loud on ambiguous package.json names (no silent first-root pick).
+    let dup_pkgs = find_duplicate_package_names(roots, cli_aliases);
+    if !dup_pkgs.is_empty() {
+        let detail = dup_pkgs
+            .iter()
+            .map(|(pkg, ids)| format!("{pkg} in roots {ids:?}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        bail!(
+            "duplicate package.json name ({detail}); \
+             pass --workspace-alias <pkg>=<root_id> to pick a target \
+             (partial package map — not full TS resolution)"
+        );
     }
     // Next-cut A: discover + persist workspace package aliases before extract.
     let package_aliases = discover_package_aliases(roots, cli_aliases);

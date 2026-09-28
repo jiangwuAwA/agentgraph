@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["identify source files via walk/grep/read -> file_set.json"], "ok": true, "summary": {}, "note": "no skill matched; proceeded with listing/grep/read only (arm B)"},
+    {"tool": "walk", "args": ["workdir (recursive listing)"], "ok": true, "summary": {"files": 24}, "note": "monorepo: workspace.json + packages/{core,app,legacy,cli}"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["core", "app", "legacy", "cli"]}, "note": "4 roots declared"},
+    {"tool": "grep", "args": ["OrderHandler"], "ok": true, "summary": {"matches": 7, "files": 5}, "note": "core/src/orderHandler.ts, app/src/useOrder.ts, legacy src x2, cli/src/help.ts"},
+    {"tool": "read", "args": ["packages/core/src/orderHandler.ts"], "ok": true, "summary": {"class": "OrderHandler", "execute": "execute(id: string): string"}, "note": "true target ('// true target' comment)"},
+    {"tool": "grep", "args": ["execute|@demo/core"], "ok": true, "summary": {"matches": 15}, "note": "decoy execute() in core/src/noise/noise0-7.ts + legacy; @demo/core package-name imports in app"},
+    {"tool": "bash", "args": ["Get-Content app/src/useOrder.ts, app/src/other.ts, app/package.json, core/package.json, core/tsconfig.json, legacy/package.json, cli/package.json"], "ok": true, "summary": {}, "note": "useOrder imports OrderHandler from '@demo/core/orderHandler' and calls h.execute(id); other.ts imports Noise0 only; core name=@demo/core"},
+    {"tool": "memory", "args": ["search: output-location convention"], "ok": true, "summary": {"hits": 0}, "note": "no prior convention recorded"},
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "issue text; outputs go to brief dir"},
+    {"tool": "read", "args": ["RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "file_set/meta schema templates; approx_tokens never invented"},
+    {"tool": "grep", "args": ["file_set", "path=docs/"], "ok": true, "summary": {"matches": 11}, "note": "metrics definitions only (recall vs files_that_matter; extra-noise vs noise_files) - no labels read"},
+    {"tool": "read", "args": ["docs/eval-agent-baseline.md"], "ok": true, "summary": {}, "note": "protocol: deliverables into brief dir; cwr null when arm has no workspace-root choice"},
+    {"tool": "bash", "args": ["Get-Content bundle.ts, noise0.ts, legacy/index.ts, legacy/utils/orderHandler.ts, cli/help.ts"], "ok": true, "summary": {}, "note": "bundle.ts is filler (no re-exports); legacy = own same-named class (wrong package); cli = help prose string only"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

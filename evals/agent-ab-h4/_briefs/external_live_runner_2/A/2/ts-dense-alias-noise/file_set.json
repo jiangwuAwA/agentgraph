@@ -1,0 +1,34 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["agentgraph CLI file-set identification, arm A"], "ok": true, "summary": {}, "note": "no matching non-Compose skill"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -Depth 3 (workdir listing)"], "ok": true, "summary": {}, "note": "workdir layout: workspace.json + packages/{app,cli,core,legacy}"},
+    {"tool": "agentgraph", "args": ["--version", "--help"], "ok": true, "summary": {"version": "0.5.8"}, "note": "CLI probe"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["core", "app", "legacy", "cli"]}, "note": "multi-root manifest"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File packages"], "ok": true, "summary": {"files": 16}, "note": ""},
+    {"tool": "bash", "args": ["dump all packages/** file contents"], "ok": true, "summary": {}, "note": "read core/app/legacy/cli sources incl. decoy execute() methods"},
+    {"tool": "agentgraph", "args": ["index", "--workspace", "workspace.json", "--workspace-alias", "@demo/core=core", "--workspace-alias", "@demo/app=app", "--workspace-alias", "@demo/legacy=legacy", "--workspace-alias", "@demo/cli=cli"], "ok": true, "summary": {"files": 15, "symbols": 29, "refs": 7, "subset_ok": true}, "note": "shared workspace store"},
+    {"tool": "agentgraph", "args": ["find", "OrderHandler"], "ok": true, "summary": {"defs": ["core:src/orderHandler.ts", "legacy:src/utils/orderHandler.ts"]}, "note": "two same-named classes across roots"},
+    {"tool": "agentgraph", "args": ["who-calls", "OrderHandler"], "ok": true, "summary": {"callers": 4, "alias_resolved": "app/src/useOrder.ts @demo/core/orderHandler -> core", "collision": "legacy/src/index.ts -> ./utils/orderHandler"}, "note": "disambiguated via module/resolved + root_id"},
+    {"tool": "agentgraph", "args": ["blast-radius", "OrderHandler"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "promise_tier": "ast_modeled"}, "note": "same impact set as who-calls"},
+    {"tool": "memory", "args": ["search: eval_agent_ab_d file_set schema"], "ok": true, "summary": {}, "note": "output-schema recall from own session memory"},
+    {"tool": "agentgraph", "args": ["who-calls", "execute"], "ok": true, "summary": {"callers": 1, "site": "app/src/useOrder.ts:5", "high_freq_name": true}, "note": "only the qualifier-qualified core call site"},
+    {"tool": "history", "args": ["search: eval_agent_ab_d file_set"], "ok": false, "summary": {}, "note": "tool error (no such column); fell back to memory grep"},
+    {"tool": "grep", "args": ["@demo/core|OrderHandler", "packages/"], "ok": true, "summary": {"matches": 9}, "note": "cross-check of all OrderHandler/package-name references"},
+    {"tool": "bash", "args": ["list workdir and parent brief dir"], "ok": true, "summary": {"brief_dir_files": ["ISSUE.md", "RUNNER_CONTRACT.md"]}, "note": ""},
+    {"tool": "read", "args": ["../ISSUE.md"], "ok": true, "summary": {}, "note": "own-cell brief"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "authoritative output contract"},
+    {"tool": "grep", "args": ["eval_agent_ab_d / tool_calls in memory dir"], "ok": true, "summary": {}, "note": "schema field-name recall from own session memory"},
+    {"tool": "read", "args": ["memory: own-session checkpoints (prior cells of this eval family)"], "ok": true, "summary": {}, "note": "schema/tool_calls shape recall; no fixture structure-fact labels and no other cells' committed file_set.json were read"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

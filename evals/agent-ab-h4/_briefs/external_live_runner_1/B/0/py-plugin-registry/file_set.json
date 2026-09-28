@@ -1,0 +1,96 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": ["."],
+      "ok": true,
+      "summary": {"entries": ["app/", ".mimocode/"]},
+      "note": "workdir root listing"
+    },
+    {
+      "tool": "grep",
+      "args": ["PluginRegistry", "workdir"],
+      "ok": true,
+      "summary": {
+        "matches": {
+          "app/docs_strings.py": [1, 2],
+          "app/bootstrap.py": [1, 6],
+          "app/registry.py": [1]
+        }
+      },
+      "note": "name-token scan to locate construct/call sites"
+    },
+    {
+      "tool": "walk",
+      "args": ["app"],
+      "ok": true,
+      "summary": {
+        "files": [
+          "app/bootstrap.py",
+          "app/docs_strings.py",
+          "app/plugins.py",
+          "app/registry.py"
+        ]
+      },
+      "note": "full source listing of app/"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"lines": 11, "defines": "PluginRegistry.register"},
+      "note": "change target: register currently stores name with no validation"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {
+        "lines": 8,
+        "constructs": "PluginRegistry()",
+        "calls": ["register", "create"],
+        "register_name": "metrics"
+      },
+      "note": "only constructor and only register call site"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py"],
+      "ok": true,
+      "summary": {"lines": 3, "defines": "MetricsPlugin"},
+      "note": "factory payload only; does not construct or call PluginRegistry — excluded from file_set"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py"],
+      "ok": true,
+      "summary": {"lines": 2, "defines": "PLUGIN_REGISTRY_DOC"},
+      "note": "self-labeled prose-only noise; mentions PluginRegistry in a doc string — excluded from file_set"
+    },
+    {
+      "tool": "walk",
+      "args": [".."],
+      "ok": true,
+      "summary": {"entries": ["ISSUE.md", "RUNNER_CONTRACT.md", "workdir/"]},
+      "note": "brief-dir layout check for output placement"
+    },
+    {
+      "tool": "read",
+      "args": ["../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {"schema_file_set": "agentgraph.eval_agent_ab_d.file_set.v1", "schema_meta": "agentgraph.eval_agent_ab_d.meta.v1"},
+      "note": "output contract only; no labels"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

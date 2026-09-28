@@ -7,11 +7,10 @@
     {
       "seed": 4,
       "task_order": [
-        "rust-real-noise-dense",
-        "rust-cross-crate-blast",
-        "ts-multi-root-client",
-        "ts-dense-alias-noise",
-        "rust-sound-scoped-clean"
+        "go-store-api",
+        "ts-nest-user-repo",
+        "rust-trait-handler",
+        "py-plugin-registry"
       ],
       "arm_order": [
         "A",

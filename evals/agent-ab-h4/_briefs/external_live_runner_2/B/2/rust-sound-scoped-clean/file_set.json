@@ -1,0 +1,36 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["analyze rust workspace, produce file_set.v1 + meta.v1 JSON for eval harness"], "ok": true, "summary": {"matched": false}, "note": "no applicable skill; proceeded with walk/grep/read only (arm B)"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -Depth 3"], "ok": true, "summary": {"tree": "workspace.json, packages/clean, packages/dirty, .mimocode"}, "note": "initial tree listing"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File"], "ok": true, "summary": {"file_count": 6}, "note": "workspace.json + 4 rust sources + .mimocode noise; no Cargo.toml/tests"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["packages/clean", "packages/dirty"]}, "note": "two-root manifest; clean root is packages/clean"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {"reexport": "pub use write::batch_write", "caller": "flush_all -> batch_write"}, "note": "true clean dependent"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {"defines": "batch_write", "caller": "batch_write_verbose -> batch_write"}, "note": "true definition site"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {"unsafe_transmute": true, "collision": "batch_write_shadow + comment mentions"}, "note": "no true batch_write definition/call edge"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {"batch_write": "doc comment + string literal only"}, "note": "grep noise, not a dependent"},
+    {"tool": "grep", "args": ["batch_write"], "ok": true, "summary": {"matches": 12, "clean": 5, "dirty": 7}, "note": "dirty matches are comments/strings/name-collision only"},
+    {"tool": "grep", "args": ["unsafe|transmute"], "ok": true, "summary": {"matches": 2, "all_in": "packages/dirty"}, "note": "dirty unsafe disables union sound; scoped sound on clean root only"},
+    {"tool": "bash", "args": ["Get-ChildItem -Force (cwd)"], "ok": true, "summary": {"entries": 3}, "note": "workdir contents"},
+    {"tool": "bash", "args": ["Get-ChildItem -Force .. ; Get-ChildItem -Force ..\\.."], "ok": true, "summary": {"parent": "workdir+brief", "grandparent": "sibling task dirs"}, "note": "located brief dir; did not open sibling tasks"},
+    {"tool": "bash", "args": ["(Get-Location).Path; Resolve-Path ..; Resolve-Path ..\\.."], "ok": true, "summary": {"cwd": "workdir"}, "note": "path verification"},
+    {"tool": "bash", "args": ["labelled listing of self/parent/grandparent"], "ok": true, "summary": {"brief_dir_files": ["ISSUE.md", "RUNNER_CONTRACT.md", "workdir"]}, "note": ""},
+    {"tool": "read", "args": ["B/2/RUNNER_CONTRACT.md"], "ok": false, "summary": {}, "note": "wrong path (one level too high); no content read"},
+    {"tool": "read", "args": ["B/2/ISSUE.md"], "ok": false, "summary": {}, "note": "wrong path (one level too high); no content read"},
+    {"tool": "read", "args": ["rust-sound-scoped-clean/RUNNER_CONTRACT.md"], "ok": true, "summary": {"schemas": ["file_set.v1", "meta.v1"]}, "note": "this cell's own contract; no labels"},
+    {"tool": "write", "args": ["workdir/file_set.json"], "ok": true, "summary": {"files": 2}, "note": "commit into current workdir"},
+    {"tool": "write", "args": ["workdir/meta.json"], "ok": true, "summary": {}, "note": "commit into current workdir"},
+    {"tool": "write", "args": ["brief-dir/file_set.json"], "ok": true, "summary": {"files": 2}, "note": "same commitment into brief dir per contract location"},
+    {"tool": "write", "args": ["brief-dir/meta.json"], "ok": true, "summary": {}, "note": "same commitment into brief dir per contract location"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

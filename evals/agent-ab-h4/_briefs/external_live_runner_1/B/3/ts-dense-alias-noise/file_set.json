@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {"tool": "walk", "args": ["packages/"], "ok": true, "summary": {"files": 15}, "note": "listed ts sources under packages/"},
+    {"tool": "grep", "args": ["OrderHandler"], "ok": true, "summary": {"matches": 7}, "note": "found core def, app consumer, legacy same-name, cli help prose"},
+    {"tool": "grep", "args": ["execute"], "ok": true, "summary": {"matches": 12}, "note": "core OrderHandler.execute, app caller, legacy decoy, noise0-7 decoy execute methods"},
+    {"tool": "grep", "args": ["@demo/"], "ok": true, "summary": {"matches": 6}, "note": "resolved package-name alias @demo/core/orderHandler from app"},
+    {"tool": "read", "args": ["packages/core/src/orderHandler.ts"], "ok": true, "summary": {}, "note": "true target class OrderHandler.execute"},
+    {"tool": "read", "args": ["packages/app/src/useOrder.ts"], "ok": true, "summary": {}, "note": "true dependent: imports OrderHandler from @demo/core/orderHandler and calls execute"},
+    {"tool": "read", "args": ["packages/legacy/src/utils/orderHandler.ts"], "ok": true, "summary": {}, "note": "decoy same-name class in wrong package; excluded"},
+    {"tool": "read", "args": ["packages/legacy/src/index.ts"], "ok": true, "summary": {}, "note": "uses legacy OrderHandler; excluded"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {}, "note": "help prose only; excluded"},
+    {"tool": "read", "args": ["packages/core/src/noise/noise0.ts"], "ok": true, "summary": {}, "note": "Noise0 decoy execute; excluded"},
+    {"tool": "read", "args": ["workspace.json", "packages/*/package.json"], "ok": true, "summary": {"roots": ["core", "app", "legacy", "cli"]}, "note": "multi-root workspace; core=packages/core is correct root for the contract change"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

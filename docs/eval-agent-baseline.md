@@ -773,26 +773,43 @@ cargo test --test agent_ab_d_eval
 Expected S1 gate outcome: `lab_ready=false` with gap list (no live matrix yet).
 
 
-## H4-live — hard-slice live A/B (incl. `ts-dense-alias-noise`)
+## H4-live — hard+easy live A/B (isolated `mimo run`)
 
-**Status:** live LLM runner path **connected** (`mimo run` isolated sessions).
-Matrix is **partial** — table reports **real recorded N**.
+**Status:** live matrix **complete** at **N=5** per (runner, arm, task) cell.
+`lab_ready=**true**` means **isolated live matrix completeness only** — not
+**not** 生态 sound / **not** a product ranking. Historical P0-5c/d scores **unchanged**.
 
-### Runner + model_note
+### Runners (non-author, independent_session=true)
 
-| runner_id | model_note | independent_session | kind |
-|---|---|---|---|
-| `external_live_runner_1` | `xiaomi/mimo-v2.6-pro` | **true** | live_llm_agent |
-| `external_live_runner_2` | `xiaomi/mimo-v2.6-flash` | **true** | live_llm_agent (queued) |
+| runner_id | model_note | kind |
+|---|---|---|
+| `external_live_runner_1` | `xiaomi/mimo-v2.6-pro` | live_llm_agent |
+| `external_live_runner_2` | `xiaomi/mimo-v2.6-flash` | live_llm_agent |
 
-### Summary (recorded only; additive)
+### Matrix
 
-| runner | arm | N (runs) | recall | extra-noise | cwr (t/f/na) | mcp_or_cli |
-|---|---|---|---|---|---|---|
-| mimo-v2.6-pro | A | 8 | **0.885** | **0.00** | 6/0/2 | 0.88 |
-| mimo-v2.6-pro | B | 5 | **0.900** | **0.00** | 4/0/1 | 0 |
+- **Tasks (9):** easy + hard (incl. `ts-dense-alias-noise`)
+- **Arms:** A (agentgraph tools) / B (read-grep)
+- **N=5** per cell (seeds 0–4). **36/36 cells complete.** Total scored **180**.
 
-**Honest read:** noise ~0 / **not separated** — **no live noise advantage**.
-Primary signals **recall** + **cwr**. Per-cell N often 1–2 (target N≥5).
-`lab_ready=false`. `ts-dense-alias-noise` A recall 1.0 (N=2), B 1.0 (N=1), cwr=true.
-Historical P0-5c/d **unchanged**. Trajectories: `evals/agent-ab-h4/`.
+### Summary (scored trajectories; additive)
+
+| runner | model_note | arm | N runs | recall | extra-noise | cwr (t/f/na) | mcp_or_cli |
+|---|---|---|---|---|---|---|---|
+| runner_1 | mimo-v2.6-pro | A | 45 | **0.954** | **0.00** | 20/0/25 | 1.71 |
+| runner_1 | mimo-v2.6-pro | B | 45 | **0.906** | **0.00** | 20/0/25 | 0 |
+| runner_2 | mimo-v2.6-flash | A | 45 | **1.000** | **0.00** | 20/0/25 | 1.84 |
+| runner_2 | mimo-v2.6-flash | B | 45 | **0.937** | **0.00** | 19/0/26 | 0 |
+
+**Honest read (mandatory)**
+
+- **Live A/B noise is not separated** (`extra-noise=0.00` every arm). Primary
+  signals **recall** + **cwr**. **Do not** claim live noise advantage.
+- `lab_ready=true` = matrix completeness only — **not** ecosystem sound.
+
+### Limits
+
+- Single-machine live queue; `approx_tokens` null unless measured.
+- Decision path never sees `task.json` labels.
+
+Trajectories: [`evals/agent-ab-h4/`](../evals/agent-ab-h4/).

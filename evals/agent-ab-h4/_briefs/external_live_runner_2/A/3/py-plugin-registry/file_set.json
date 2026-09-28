@@ -1,0 +1,169 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse workdir"],
+      "ok": true,
+      "summary": {"files": ["app/bootstrap.py", "app/docs_strings.py", "app/plugins.py", "app/registry.py"]},
+      "note": "workdir listing only"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--root", "."],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 7, "refs": 7, "exact": 7, "failed": 0},
+      "note": "indexed the isolated workdir root"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["stats"],
+      "ok": true,
+      "summary": {"root": "workdir", "languages": ["python"], "references": 7},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "PluginRegistry"],
+      "ok": true,
+      "summary": {"callers": 2, "paths": ["app/bootstrap.py"], "implementors": 0, "window": "default"},
+      "note": "import at app/bootstrap.py:1 + construction at app/bootstrap.py:6"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "PluginRegistry"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_nodes": 2, "paths": ["app/bootstrap.py"]},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "PluginRegistry"],
+      "ok": true,
+      "summary": {"path": "app/registry.py", "kind": "class", "lines": [1, 1]},
+      "note": "definition site"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "register"],
+      "ok": true,
+      "summary": {"qualified_name": "PluginRegistry.register", "path": "app/registry.py", "lines": [5, 11]},
+      "note": "symbol to change"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "register"],
+      "ok": true,
+      "summary": {"callers": 1, "at": "app/bootstrap.py:7"},
+      "note": "reg.register(\"metrics\", MetricsPlugin)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "register"],
+      "ok": true,
+      "summary": {"impact_nodes": 1, "path": "app/bootstrap.py"},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "app/registry.py"],
+      "ok": true,
+      "summary": {"importers": ["app/bootstrap.py"]},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "PluginRegistry"],
+      "ok": true,
+      "summary": {"refs": 2, "paths": ["app/bootstrap.py"]},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "PluginRegistry"],
+      "ok": true,
+      "summary": {"paths": ["app/registry.py", "app/bootstrap.py"]},
+      "note": "definition:class + imports"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "app/plugins.py"],
+      "ok": true,
+      "summary": {"importers": ["app/bootstrap.py"]},
+      "note": "plugins.py holds MetricsPlugin factory, never constructs/registers"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "MetricsPlugin"],
+      "ok": true,
+      "summary": {"path": "app/plugins.py", "kind": "class"},
+      "note": "factory argument only"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "PLUGIN_REGISTRY_DOC"],
+      "ok": true,
+      "summary": {"refs": 0},
+      "note": "docs_strings.py prose has no code edges"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "PLUGIN_REGISTRY_DOC"],
+      "ok": false,
+      "summary": {"error": "no symbol matching"},
+      "note": "confirms docs_strings.py is prose-only noise"
+    },
+    {
+      "tool": "read",
+      "args": ["app/registry.py"],
+      "ok": true,
+      "summary": {"lines": 11},
+      "note": "PluginRegistry class + register/create"
+    },
+    {
+      "tool": "read",
+      "args": ["app/bootstrap.py"],
+      "ok": true,
+      "summary": {"lines": 8},
+      "note": "imports PluginRegistry, constructs it, calls register"
+    },
+    {
+      "tool": "read",
+      "args": ["app/plugins.py"],
+      "ok": true,
+      "summary": {"lines": 3},
+      "note": "MetricsPlugin factory; no registry interaction"
+    },
+    {
+      "tool": "read",
+      "args": ["app/docs_strings.py"],
+      "ok": true,
+      "summary": {"lines": 2},
+      "note": "self-labeled noise: prose string mentioning PluginRegistry"
+    },
+    {
+      "tool": "read",
+      "args": ["../ISSUE.md"],
+      "ok": true,
+      "summary": {},
+      "note": "issue statement"
+    },
+    {
+      "tool": "read",
+      "args": ["../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {},
+      "note": "output contract"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,85 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app index"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 7, "refs_exact": 7},
+      "note": "indexed isolated app copy"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app find PluginRegistry"],
+      "ok": true,
+      "summary": {"defs": [{"path": "registry.py", "kind": "class", "line": 1}]},
+      "note": ""
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app callers PluginRegistry"],
+      "ok": true,
+      "summary": {"hits": 2, "paths": ["bootstrap.py"]},
+      "note": "import + constructor call in bootstrap.py"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app find register"],
+      "ok": true,
+      "summary": {"defs": [{"qualified_name": "PluginRegistry.register", "path": "registry.py", "line": 5}]},
+      "note": ""
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app callers register"],
+      "ok": true,
+      "summary": {"hits": 1, "paths": ["bootstrap.py"], "at": "bootstrap.py:7"},
+      "note": "reg.register call site"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app who-calls PluginRegistry"],
+      "ok": true,
+      "summary": {"window": "default", "callers": 2, "paths": ["bootstrap.py"], "subset_ok": true},
+      "note": "promise_tier=ast_modeled; not a complete runtime graph"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app related PluginRegistry"],
+      "ok": true,
+      "summary": {"paths": ["registry.py", "bootstrap.py"]},
+      "note": "definition + importer"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app importers registry.py"],
+      "ok": true,
+      "summary": {"paths": ["bootstrap.py"]},
+      "note": ""
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph --root app blast-radius PluginRegistry"],
+      "ok": true,
+      "summary": {"window": "sound", "impact": 2, "paths": ["bootstrap.py"], "subset_ok": true},
+      "note": "not a complete runtime graph"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content app\\registry.py", "Get-Content app\\bootstrap.py", "Get-Content app\\plugins.py", "Get-Content app\\docs_strings.py"],
+      "ok": true,
+      "summary": {"files_read": 4},
+      "note": "docs_strings.py is prose-only noise; plugins.py defines MetricsPlugin (register argument, not a registry constructor/caller)"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,129 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": ["identify source files needing review for RegistryClient.fetch contract change"],
+      "ok": true,
+      "summary": {"loaded_skill_id": null},
+      "note": "no matching skill; proceeded with agentgraph CLI + reads"
+    },
+    {
+      "tool": "bash",
+      "args": ["ls / glob **/*"],
+      "ok": true,
+      "summary": {"entries": ["workspace.json", "packages/{registry,service,cli,docs}"]},
+      "note": "4-root isolated multi-root workdir, 8 source files"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["registry", "service", "cli", "docs"]},
+      "note": "multi-root manifest; registry=definition, service=consumer per issue"
+    },
+    {
+      "tool": "grep",
+      "args": ["RegistryClient"],
+      "ok": true,
+      "summary": {"hits": 14, "roots_hit": ["registry", "service", "cli", "docs"]},
+      "note": "cli/docs hits are string/comment prose mentions only; true edges in registry+service"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["index", "--workspace", "workspace.json", "--workspace-alias", "@demo/registry=registry"],
+      "ok": true,
+      "summary": {"files": 8, "symbols": 15, "references": 9, "exact": 7, "heuristic": 2, "cli_refs": 0, "docs_refs": 0},
+      "note": "workspace index: cli/docs roots have zero refs; all edges in registry+service"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["find", "RegistryClient"],
+      "ok": true,
+      "summary": {"hits": 2, "definitions": ["registry:src/client.ts (class)", "registry:src/index.ts (barrel re-export)"]},
+      "note": "definition lives in registry root"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["blast-radius", "RegistryClient"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_rows": 7, "depth": 3},
+      "note": "impact closure: registry client.ts+index.ts; service order.service.ts (depth1) + order.controller.ts (depth2 via OrderService); no cli/docs rows"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["impact", "RegistryClient"],
+      "ok": true,
+      "summary": {"rows": 7, "roots": ["registry", "service"]},
+      "note": "transitive dependents only in registry+service roots"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["callers", "RegistryClient"],
+      "ok": true,
+      "summary": {"rows": 4, "paths": ["src/client.ts", "src/index.ts", "src/order.service.ts"]},
+      "note": "direct refs: barrel import, cross-root @demo/registry import, ts.nest.ctor_inject"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["who-calls", "RegistryClient"],
+      "ok": true,
+      "summary": {"callers": 4, "implementors": 0, "high_freq_name": false},
+      "note": "no implementor flood; plain reference sites"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "args": ["importers", "packages/service/src/order.service.ts"],
+      "ok": true,
+      "summary": {"rows": []},
+      "note": "module importer check"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/registry/src/client.ts"],
+      "ok": true,
+      "summary": {"defines": ["class RegistryClient", "fetch(id: string): string", "createClient"]},
+      "note": "change site: fetch return contract"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/registry/src/index.ts"],
+      "ok": true,
+      "summary": {"exports": ["RegistryClient", "createClient"]},
+      "note": "public API surface of the registry root"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/service/src/order.service.ts"],
+      "ok": true,
+      "summary": {"imports": ["@demo/registry"], "uses": ["ctor inject RegistryClient", "load returns this.client.fetch(id)"]},
+      "note": "direct consumer: fetch return flows into load"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/service/src/order.controller.ts"],
+      "ok": true,
+      "summary": {"imports": ["./order.service"], "uses": ["ctor inject OrderService", "get(id): string returns service lookup"]},
+      "note": "depth-2 dependent in service root; typed return annotation mirrors fetch return contract"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/main.ts"],
+      "ok": true,
+      "summary": {"mentions": "RegistryClient in help string/comment only"},
+      "note": "cli root is prose/name-mention noise (0 indexed refs) - excluded"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

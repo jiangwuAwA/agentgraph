@@ -1,0 +1,32 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["blast radius file-set identification for TS/Nest DI change"], "ok": true, "summary": {}, "note": "no matching non-compose skill; proceeded directly"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File (workdir)"], "ok": true, "summary": {}, "note": "walked isolated copy; 6 source files under src/"},
+    {"tool": "glob", "args": ["**/*"], "ok": true, "summary": {}, "note": "confirmed file inventory"},
+    {"tool": "read", "args": ["src/user.repository.ts"], "ok": true, "summary": {}, "note": "throw site in find(); contract change lands here"},
+    {"tool": "read", "args": ["src/user.service.ts"], "ok": true, "summary": {}, "note": "direct consumer userRepo.find via load()"},
+    {"tool": "read", "args": ["src/user.controller.ts"], "ok": true, "summary": {}, "note": "HTTP consumer of service.load; error-to-null semantics change"},
+    {"tool": "read", "args": ["src/user.module.ts"], "ok": true, "summary": {}, "note": "DI wiring: registers UserService + UserRepository providers"},
+    {"tool": "read", "args": ["src/health.ts"], "ok": true, "summary": {}, "note": "noise: no user-repo dependency"},
+    {"tool": "read", "args": ["src/unrelated.ts"], "ok": true, "summary": {}, "note": "noise: metrics helper; mentions UserRepository only in a noise comment"},
+    {"tool": "bash", "args": ["Get-ChildItem brief dir + workdir"], "ok": true, "summary": {}, "note": "located ISSUE.md / RUNNER_CONTRACT.md; outputs target brief dir"},
+    {"tool": "grep", "args": ["UserRepository|.find(|userRepo|UserService|UserController"], "ok": true, "summary": {"matches": 15}, "note": "call/import closure: repo <- service <- controller; module imports all three"},
+    {"tool": "read", "args": ["RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "output schema for file_set.json / meta.json"},
+    {"tool": "read", "args": ["ISSUE.md"], "ok": true, "summary": {}, "note": "issue + blind decision-path constraints"},
+    {"tool": "write", "args": ["file_set.json"], "ok": true, "summary": {}, "note": "committed file set"},
+    {"tool": "write", "args": ["meta.json"], "ok": true, "summary": {}, "note": "committed runner meta"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

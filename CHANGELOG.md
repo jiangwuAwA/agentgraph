@@ -3,6 +3,47 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.11
+
+### Added
+- H4-live matrix **closed**: 36/36 cells at **N=5** (180 scored).
+  `lab_ready=true` (isolated live matrix completeness **only**).
+
+### H4-live limits
+- Live A/B **noise not separated** (extra-noise 0.00 all arms) — **recall + cwr** only.
+- **No** live noise advantage / 生态 sound / full TS claims.
+- Historical P0-5c/d scores **unchanged**.
+
+## v0.5.10
+
+### Added
+- H4-live matrix fill: easy+hard x A/B x 2 live runners, **N=5** on 31/36 cells
+  (5 residual cells <5 — listed by lab-ready; **not invented**).
+
+### H4-live limits
+- Live A/B **noise not separated** (extra-noise 0.00 all arms) — **recall + cwr** only.
+- `lab_ready=false` until residual cells reach N>=5.
+- Historical P0-5c/d scores **unchanged**.
+
+## v0.5.9
+
+### Added
+- **H4-live** hard-slice live A/B via isolated `mimo run` sessions
+  (`xiaomi/mimo-v2.6-pro` / `xiaomi/mimo-v2.6-flash`, `independent_session=true`).
+- Trajectories `evals/agent-ab-h4/**` + stamp/score replay.
+
+### H4-live limits (honest)
+- Live A/B **noise not separated** (extra-noise ≈ 0 both arms) — primary signals
+  **recall + cwr**. **Do not** claim live noise advantage.
+- Per-cell real N is labeled; matrix may be partial (`lab_ready=false` until complete).
+- Historical P0-5c/d scores are **not** rewritten.
+
+### Citable
+- structure-fact / recall + cwr / hard scripted noise / package map partial
+
+### Not citable
+- live noise advantage · 生态 sound · full TS resolution · complete npm graph
+
 ## v0.5.8 (H1–H6 close-out)
 
 ### Added

@@ -1,0 +1,65 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": ["action: identify source files for a code change issue, input: isolated workdir repo listing/grep/read only, output: file_set.json + meta.json, audience: eval harness"],
+      "ok": true,
+      "summary": { "loaded_skill_id": null },
+      "note": "no matching skill; continued with plain listing/grep/read"
+    },
+    {
+      "tool": "bash",
+      "args": ["ls -la; echo ---; ls workdir"],
+      "ok": false,
+      "summary": {},
+      "note": "PowerShell shell: ls -la unsupported; cwd is already workdir"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force; recursive file count"],
+      "ok": true,
+      "summary": { "entries": ["workspace.json", "packages/", ".mimocode/"] },
+      "note": "workdir root layout"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content workspace.json; list packages files"],
+      "ok": true,
+      "summary": { "roots": ["registry", "service", "cli", "docs"], "file_count": 12 },
+      "note": "4-root workspace manifest"
+    },
+    {
+      "tool": "bash",
+      "args": ["dump contents of all 12 files under packages/"],
+      "ok": true,
+      "summary": { "read": "all source files across 4 roots" },
+      "note": "registry defines RegistryClient.fetch; service/order.service.ts calls .fetch; cli/docs only string mentions"
+    },
+    {
+      "tool": "bash",
+      "args": ["list cell dir (..) and grandparent"],
+      "ok": true,
+      "summary": { "cell_files": ["ISSUE.md", "RUNNER_CONTRACT.md", "workdir/"] },
+      "note": "confirmed brief dir vs workdir layout; did not open other cells"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content ../RUNNER_CONTRACT.md; Get-Content ../ISSUE.md"],
+      "ok": true,
+      "summary": { "contract": "agentgraph.eval_agent_ab_d.harness.v1" },
+      "note": "output schema only; no structure-fact labels present"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

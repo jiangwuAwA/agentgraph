@@ -1,0 +1,105 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/user.controller.ts",
+    "src/user.module.ts",
+    "src/user.repository.ts",
+    "src/user.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "seq": 1,
+      "tool": "agentgraph.index",
+      "args": ["--root", "."],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 15, "references": 25, "exact": 20, "heuristic": 5},
+      "note": "indexed isolated workdir as sole workspace root"
+    },
+    {
+      "seq": 2,
+      "tool": "agentgraph.blast_radius",
+      "args": ["UserRepository", "--root", "."],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_nodes": 10, "depth": 3},
+      "note": "sound window; impact reaches user.module.ts, user.service.ts, user.controller.ts"
+    },
+    {
+      "seq": 3,
+      "tool": "agentgraph.who_calls",
+      "args": ["UserRepository", "--root", "."],
+      "ok": true,
+      "summary": {"callers": 4, "implementor_count": 0},
+      "note": "import+registration refs in user.module.ts and user.service.ts; no implementors"
+    },
+    {
+      "seq": 4,
+      "tool": "agentgraph.who_calls",
+      "args": ["find", "--root", "."],
+      "ok": true,
+      "summary": {"callers": 1},
+      "note": "exact call site UserService.load -> userRepo.find at src/user.service.ts:9"
+    },
+    {
+      "seq": 5,
+      "tool": "agentgraph.who_calls",
+      "args": ["load", "--root", "."],
+      "ok": true,
+      "summary": {"callers": 1},
+      "note": "exact call site UserController.load -> users.load at src/user.controller.ts:10"
+    },
+    {
+      "seq": 6,
+      "tool": "agentgraph.related",
+      "args": ["UserRepository", "--root", "."],
+      "ok": true,
+      "summary": {"files": 3},
+      "note": "user.repository.ts definition; user.module.ts and user.service.ts importers"
+    },
+    {
+      "seq": 7,
+      "tool": "agentgraph.importers",
+      "args": ["src/user.repository.ts", "--root", "."],
+      "ok": true,
+      "summary": {"importers": 2},
+      "note": "user.module.ts:4 and user.service.ts:2 exact imports"
+    },
+    {
+      "seq": 8,
+      "tool": "agentgraph.find",
+      "args": ["UserRepository", "--root", "."],
+      "ok": true,
+      "summary": {"symbols": 1},
+      "note": "class UserRepository defined at src/user.repository.ts:2"
+    },
+    {
+      "seq": 9,
+      "tool": "agentgraph.callers",
+      "args": ["UserRepository", "--root", ".", "--exact-only"],
+      "ok": true,
+      "summary": {"callers": 2},
+      "note": "exact-only import edges confirm no health/unrelated coupling"
+    },
+    {
+      "seq": 10,
+      "tool": "agentgraph.stats",
+      "args": ["--root", "."],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 15, "references": 25},
+      "note": "full corpus is 6 ts files; 0 failed / 0 skipped"
+    },
+    {
+      "seq": 11,
+      "tool": "read",
+      "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"],
+      "ok": true,
+      "summary": {"files_read": 6},
+      "note": "manual confirmation of find-throws contract and that health/unrelated have no UserRepository dependency"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

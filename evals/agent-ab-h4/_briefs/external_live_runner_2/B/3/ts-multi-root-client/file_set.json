@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "9",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

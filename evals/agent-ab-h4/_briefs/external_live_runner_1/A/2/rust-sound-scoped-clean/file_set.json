@@ -1,0 +1,110 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["--workspace", "workspace.json", "index"],
+      "ok": true,
+      "summary": {
+        "roots": ["clean", "dirty"],
+        "clean": {"promise_tier": "ast_modeled", "subset_violations": 0},
+        "dirty": {"promise_tier": "disabled", "subset_violations": 3}
+      },
+      "note": "multi-root workspace index; dirty root has unsafe/transmute S-violations"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["--workspace", "workspace.json", "find", "batch_write"],
+      "ok": true,
+      "summary": {
+        "hits": 1,
+        "definition": "packages/clean/src/write.rs:2"
+      },
+      "note": "single definition of batch_write in clean root; no dirty definition"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["--workspace", "workspace.json", "who-calls", "batch_write"],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": false,
+        "promise_tier": "disabled",
+        "callers": ["packages/clean/src/lib.rs:3", "packages/clean/src/lib.rs:6"]
+      },
+      "note": "union window disabled by dirty S-violations; callers are clean-only exact edges"
+    },
+    {
+      "tool": "agentgraph.blast_radius",
+      "args": ["--workspace", "workspace.json", "blast-radius", "batch_write"],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "sound_candidates": ["clean (eligible)", "dirty (avoid)"],
+        "recommendation": "scoped sound on clean; do not claim union --sound"
+      },
+      "note": "recipe recommends scoped --sound --workspace-root clean; dirty unsafe disables union sound"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["--workspace", "workspace.json", "impact", "batch_write", "--sound", "--workspace-root", "clean"],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "impact": ["packages/clean/src/lib.rs:3", "packages/clean/src/lib.rs:6"]
+      },
+      "note": "scoped sound on clean root is eligible; true dependents only in clean"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": ["--workspace", "workspace.json", "related", "batch_write"],
+      "ok": true,
+      "summary": {
+        "files": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs"]
+      },
+      "note": "definition + reference files for review scoping"
+    },
+    {
+      "tool": "agentgraph.subset",
+      "args": ["--workspace", "workspace.json", "subset"],
+      "ok": true,
+      "summary": {
+        "in_subset": false,
+        "violations": [
+          "packages/dirty/src/lib.rs:5 unsafe",
+          "packages/dirty/src/lib.rs:5 transmute",
+          "packages/dirty/src/lib.rs:5 transmute"
+        ]
+      },
+      "note": "all S-violations live in dirty; clean root has 0 violations"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["--workspace", "workspace.json", "callers", "batch_write", "--exact-only"],
+      "ok": true,
+      "summary": {
+        "callers": ["packages/clean/src/lib.rs:3", "packages/clean/src/lib.rs:6"]
+      },
+      "note": "exact-only confirms clean-only true edges; dirty batch_write mentions are comment/name-collision noise"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/write.rs", "packages/clean/src/lib.rs", "packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {},
+      "note": "verified dirty batch_write mentions are comments/helpers only (batch_write_shadow, note()); no true definition/call edge to clean::batch_write"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

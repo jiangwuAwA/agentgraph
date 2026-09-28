@@ -1,0 +1,56 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py",
+    "app/plugins.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": ["explore codebase find files constructing and calling PluginRegistry.register"],
+      "ok": true,
+      "summary": {"matched": false},
+      "note": "no relevant skill; continued with listing/read/grep only (arm B)"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force"],
+      "ok": true,
+      "summary": {"entries": [".mimocode", "app"]},
+      "note": "workdir layout"
+    },
+    {
+      "tool": "grep",
+      "args": ["PluginRegistry|register"],
+      "ok": true,
+      "summary": {"matches": 7, "files": ["app/docs_strings.py", "app/bootstrap.py", "app/registry.py"]},
+      "note": "token scan across workdir"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content app/registry.py", "app/bootstrap.py", "app/plugins.py", "app/docs_strings.py"],
+      "ok": true,
+      "summary": {
+        "registry.py": "class PluginRegistry with register(name, factory)",
+        "bootstrap.py": "constructs PluginRegistry(); calls reg.register('metrics', MetricsPlugin)",
+        "plugins.py": "MetricsPlugin factory passed to register",
+        "docs_strings.py": "prose-only string constant; no construct/call"
+      },
+      "note": "read every app source file"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -Force ."],
+      "ok": true,
+      "summary": {"source_files": ["app/bootstrap.py", "app/docs_strings.py", "app/plugins.py", "app/registry.py"]},
+      "note": "confirmed no other sources outside app/"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

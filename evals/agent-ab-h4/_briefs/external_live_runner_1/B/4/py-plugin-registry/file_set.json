@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py",
+    "app/plugins.py"
+  ],
+  "tool_calls": [
+    {"tool": "list", "target": "."},
+    {"tool": "list", "target": "app/**"},
+    {"tool": "grep", "pattern": "PluginRegistry", "path": "."},
+    {"tool": "grep", "pattern": "register|PluginRegistry|bootstrap|validate", "path": "."},
+    {"tool": "grep", "pattern": "Plugin|registry|\\.register", "path": "."},
+    {"tool": "read", "target": "app/registry.py"},
+    {"tool": "read", "target": "app/bootstrap.py"},
+    {"tool": "read", "target": "app/plugins.py"},
+    {"tool": "read", "target": "app/docs_strings.py"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["code-understanding file-set identification for eval brief"], "ok": true, "summary": {}, "note": "no matching skill loaded; proceeded with walk/grep/read"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -Depth 3"], "ok": true, "summary": {}, "note": "walked workdir: workspace.json + packages/clean + packages/dirty"},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {}, "note": "multi-root: clean + dirty"},
+    {"tool": "read", "args": ["packages/clean/src/write.rs"], "ok": true, "summary": {}, "note": "true batch_write definition + internal call"},
+    {"tool": "read", "args": ["packages/clean/src/lib.rs"], "ok": true, "summary": {}, "note": "re-export + flush_all calls batch_write"},
+    {"tool": "read", "args": ["packages/dirty/src/lib.rs"], "ok": true, "summary": {}, "note": "unsafe transmute leaves S; batch_write only in comment/substring batch_write_shadow"},
+    {"tool": "read", "args": ["packages/dirty/src/shadow.rs"], "ok": true, "summary": {}, "note": "no true batch_write edge; grep noise only"},
+    {"tool": "grep", "args": ["batch_write", "workdir"], "ok": true, "summary": {}, "note": "true edges only in clean; dirty hits are comments/substring/string literal"},
+    {"tool": "bash", "args": ["Get-ChildItem current + parent dir"], "ok": true, "summary": {}, "note": "brief dir holds ISSUE.md + RUNNER_CONTRACT.md"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "output schema only; no labels seen"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

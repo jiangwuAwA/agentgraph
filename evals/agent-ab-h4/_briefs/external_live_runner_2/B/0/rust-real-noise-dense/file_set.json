@@ -1,0 +1,34 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["code-understanding file-set selection"], "ok": true, "summary": {}, "note": "no matching skill; proceeded directly"},
+    {"tool": "bash", "args": ["ls"], "ok": true, "summary": {}, "note": "listed brief cell dir: ISSUE.md, RUNNER_CONTRACT.md, workdir/"},
+    {"tool": "bash", "args": ["ls workdir"], "ok": false, "summary": {}, "note": "cwd is already the workdir; path not found"},
+    {"tool": "bash", "args": ["ls src; ls src -Recurse -Directory"], "ok": true, "summary": {"files": 6}, "note": "walk: src/ holds 6 .rs files, no subdirs"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"lines": 9}, "note": "crate root: pub mod wiring + pub use packet::Encode + pub use wire::send_packet"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"lines": 88}, "note": "trait Encode { fn encode(&self) -> Vec<u8> } + 12 impl Encode for ..."},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"lines": 17}, "note": "use crate::packet::Encode; real callers send_packet/dump_all/checksum call .encode()"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"lines": 20}, "note": "collision: encode_label fn, unrelated enum Encode (Counter/Gauge), encode_metric"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"lines": 12}, "note": "collision: encode_legacy helper + comment spam, no Encode trait link"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"lines": 31}, "note": "collision: Clone/Debug derives + encode_name_for_clone helper, no Encode edge"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File -Force"], "ok": true, "summary": {}, "note": "full file enumeration: only 6 sources + .mimocode metadata; no Cargo.toml/tests"},
+    {"tool": "grep", "args": ["encode|Encode"], "ok": true, "summary": {"matches": 54, "files": 6}, "note": "token scan: hits in all 6 files; separated trait/callers from collisions by reading"},
+    {"tool": "grep", "args": ["eval_agent_ab_d.(file_set|meta).v1", "D:/projects/agentgraph"], "ok": true, "summary": {}, "note": "locate harness schema definition (no other arms' outputs opened)"},
+    {"tool": "bash", "args": ["ls .."], "ok": true, "summary": {}, "note": "brief dir holds ISSUE.md + RUNNER_CONTRACT.md (own cell only)"},
+    {"tool": "read", "args": ["../RUNNER_CONTRACT.md"], "ok": true, "summary": {}, "note": "own-cell output contract: fields + honesty rules"},
+    {"tool": "read", "args": ["scripts/eval_agent_ab_d.py"], "ok": true, "summary": {}, "note": "schema/validation reference: brief-dir output path, banned keys, validation rules"},
+    {"tool": "grep", "args": ["file_set.json|meta.json|brief_dir|workdir", "scripts/eval_agent_ab_d.py"], "ok": true, "summary": {}, "note": "confirmed harness reads file_set.json/meta.json from brief dir"},
+    {"tool": "grep", "args": ["BAN|banned", "scripts/eval_agent_ab_d.py"], "ok": true, "summary": {}, "note": "banned file_set keys: noise_files/files_that_matter/forbidden_files — not used"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

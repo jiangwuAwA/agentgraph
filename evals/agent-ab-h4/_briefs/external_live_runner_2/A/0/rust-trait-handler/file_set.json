@@ -1,0 +1,64 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index"],
+      "ok": true,
+      "summary": {"files": 3, "symbols": 12, "references": 17},
+      "note": "indexed isolated workdir root (rust only)"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "render"],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 4, "window": "default"},
+      "note": "dyn call sites (render_dyn, dispatch, bootstrap) + impls HtmlHandler/JsonHandler"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "render"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_nodes": 7},
+      "note": "depth-3 impact over render; import edges pull lib.rs handler construction"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {"lines": 23},
+      "note": "trait Handler decl, HtmlHandler/JsonHandler impls of render, render_dyn dyn call"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {"lines": 13},
+      "note": "dyn call sites: dispatch (h.render) and bootstrap (map over Box<dyn Handler>)"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {"lines": 4},
+      "note": "independent incr() helper; no Handler/render usage"
+    },
+    {
+      "tool": "grep",
+      "args": ["render|Handler", "src"],
+      "ok": true,
+      "summary": {"files_with_hits": 3, "total_hits": 17},
+      "note": "confirm coverage; metrics.rs hit is only its doc comment"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

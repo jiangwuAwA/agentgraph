@@ -1,0 +1,35 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/api/src/lib.rs"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["blast_radius query rust multi-root normalize_id file_set.json meta.json"], "ok": true, "summary": {"loaded_skill_id": null}, "note": "no matching non-compose skill; proceeded directly"},
+    {"tool": "bash", "args": ["agentgraph --help"], "ok": true, "summary": {"commands": ["index", "blast-radius", "who-calls", "callers", "find", "impact"]}, "note": ""},
+    {"tool": "read", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["core", "api", "tools", "web"]}, "note": "multi-root manifest"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse packages"], "ok": true, "summary": {"rust_files": 8}, "note": "4 packages x 2 src files"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json index"], "ok": true, "summary": {"files": 8, "symbols": 13, "references": 10, "roots": 4}, "note": "shared store .agentgraph/index.db"},
+    {"tool": "read", "args": ["packages/core/src/id.rs", "packages/core/src/lib.rs"], "ok": true, "summary": {"definition": "src/id.rs:2 pub fn normalize_id", "in_crate_caller": "core::batch_key", "reexport": "pub use id::normalize_id"}, "note": ""},
+    {"tool": "bash", "args": ["agentgraph blast-radius normalize_id --json"], "ok": false, "summary": {"error": "unexpected argument --json"}, "note": "flag does not exist; CLI payloads are JSON by default"},
+    {"tool": "bash", "args": ["agentgraph blast-radius --help; agentgraph find --help; agentgraph callers --help"], "ok": true, "summary": {"flags": ["--workspace", "--workspace-root", "--sound"]}, "note": ""},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json blast-radius normalize_id"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "nodes": ["core/src/lib.rs:3", "core/src/lib.rs:6", "api/src/routes.rs:4", "tools/src/lib.rs:14", "api/src/lib.rs:4"]}, "note": "workspace union; depth-2 node api/src/lib.rs (handle -> lookup)"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json find normalize_id"], "ok": true, "summary": {"definitions": ["core:src/id.rs", "tools:src/lib.rs"]}, "note": "second definition = same-name local function in tools"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json blast-radius normalize_id --workspace-root core"], "ok": true, "summary": {"nodes": ["core/src/lib.rs:3", "core/src/lib.rs:6"]}, "note": "scoped to definition root"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers normalize_id --sound --workspace-root core"], "ok": true, "summary": {"mode": "sound", "subset_ok": true, "callers": 2}, "note": ""},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json who-calls normalize_id --workspace-root core"], "ok": true, "summary": {"implementor_count": 0, "callers": 2}, "note": ""},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers normalize_id --workspace-root api"], "ok": true, "summary": {"callers": ["src/routes.rs:4"], "qualifier": "core"}, "note": "true cross-crate consumer edge core::normalize_id"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers normalize_id --workspace-root tools"], "ok": true, "summary": {"callers": ["src/lib.rs:14"], "qualifier": null}, "note": "local name collision, not core consumer"},
+    {"tool": "bash", "args": ["agentgraph --workspace workspace.json callers normalize_id --workspace-root web"], "ok": true, "summary": {"callers": []}, "note": "comment-only mentions, zero edges"},
+    {"tool": "read", "args": ["packages/api/src/lib.rs", "packages/api/src/routes.rs", "packages/tools/src/lib.rs", "packages/tools/src/audit.rs", "packages/web/src/lib.rs", "packages/web/src/pages.rs"], "ok": true, "summary": {"api": "routes.rs calls core::normalize_id; lib.rs handle -> lookup (transitive)", "tools": "local normalize_id, different semantics, no core dep", "web": "comment-only mentions"}, "note": ""},
+    {"tool": "grep", "args": ["FILE_SET_SCHEMA|META_SCHEMA|validate_runner_outputs", "scripts/eval_agent_ab_d.py"], "ok": true, "summary": {"schemas": ["agentgraph.eval_agent_ab_d.file_set.v1", "agentgraph.eval_agent_ab_d.meta.v1"]}, "note": "harness metadata + output contract only, not fixture labels"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,471 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_2",
+  "task_id": "rust-cross-crate-blast",
+  "seed": 2,
+  "run_id": "external_live_runner_2-a-2",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_2/A/2/rust-cross-crate-blast",
+  "symbol": "normalize_id",
+  "model_note": "xiaomi/mimo-v2.6-flash",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 4,
+  "read_budget": 9,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 4,
+    "read_budget": 9,
+    "read_files": [
+      "workdir/workspace.json",
+      "workdir/packages/core/src/id.rs",
+      "workdir/packages/core/src/lib.rs",
+      "workdir/packages/api/src/routes.rs",
+      "workdir/packages/api/src/lib.rs",
+      "workdir/packages/tools/src/lib.rs",
+      "workdir/packages/tools/src/audit.rs",
+      "workdir/packages/web/src/lib.rs",
+      "workdir/packages/web/src/pages.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-cross-crate-blast",
+    "title": "Cross-crate normalize_id blast — stay on true dependents",
+    "language": "rust",
+    "issue": "core::normalize_id contract must change (trim + case rules). Using the multi-root workspace, find the true blast radius across packages. Prefer scoped queries on the definition root and true consumers; do not pull unrelated packages that merely share the symbol name or mention it in comments.",
+    "symbol": "normalize_id",
+    "expected_files": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "ISSUE.md"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "own brief pack only",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "RUNNER_CONTRACT.md"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "own-cell output schema (not a label)",
+      "seq": 2
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse workdir"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 8,
+        "roots": 4
+      },
+      "note": "isolated workdir tree: packages/{core,api,tools,web} + workspace.json",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "core",
+          "api",
+          "tools",
+          "web"
+        ]
+      },
+      "note": "multi-root manifest",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/core/src/id.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "line": 2
+      },
+      "note": "definition: pub fn normalize_id = trim + ascii_lowercase",
+      "seq": 5
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/core/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "lines": [
+          3,
+          6
+        ]
+      },
+      "note": "pub use id::normalize_id; batch_key calls it",
+      "seq": 6
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/api/src/routes.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "line": 4
+      },
+      "note": "core::normalize_id(raw) cross-crate call",
+      "seq": 7
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/api/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "line": 4
+      },
+      "note": "handle -> routes::lookup (depth-2 dependent)",
+      "seq": 8
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/tools/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "line": 9
+      },
+      "note": "own normalize_id def, different semantics, no core dep",
+      "seq": 9
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/tools/src/audit.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "downstream of tools' local normalize_id only",
+      "seq": 10
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/web/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "comment-only mention of normalize_id",
+      "seq": 11
+    },
+    {
+      "tool": "read",
+      "args": [
+        "workdir/packages/web/src/pages.rs"
+      ],
+      "ok": true,
+      "summary": {},
+      "note": "noise comment only",
+      "seq": 12
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json index"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 8,
+        "symbols": 13,
+        "refs": 10,
+        "subset_violations": 0,
+        "promise_tier": "ast_modeled"
+      },
+      "note": "shared store .agentgraph/index.db, root_id tagged",
+      "seq": 13
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json blast-radius normalize_id --workspace-root core --depth 3"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "nodes": 2,
+        "roots": [
+          "core"
+        ]
+      },
+      "note": "scoped on definition root: lib.rs:3 import + lib.rs:6 batch_key only",
+      "seq": 14
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json who-calls normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "roots": [
+          "api",
+          "core",
+          "tools"
+        ],
+        "qualifier_core_on": "api/src/routes.rs:4"
+      },
+      "note": "union row from tools has no core qualifier -> name collision candidate",
+      "seq": 15
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json find normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "definitions": 2,
+        "locations": [
+          "core/src/id.rs:2",
+          "tools/src/lib.rs:9"
+        ]
+      },
+      "note": "two distinct symbols share the token",
+      "seq": 16
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json impact normalize_id --depth 3 --limit 50"
+      ],
+      "ok": true,
+      "summary": {
+        "depth1": 4,
+        "depth2": 1,
+        "depth2_node": "api/src/lib.rs:4 handle->lookup"
+      },
+      "note": "transitive dependent under core::normalize_id",
+      "seq": 17
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json callers normalize_id --workspace-root core"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 2,
+        "paths": [
+          "src/lib.rs"
+        ]
+      },
+      "note": "definition-root callers",
+      "seq": 18
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json callers normalize_id --workspace-root api"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 1,
+        "qualifier": "core",
+        "path": "src/routes.rs"
+      },
+      "note": "true cross-crate consumer confirmed",
+      "seq": 19
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json callers normalize_id --workspace-root tools"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 1,
+        "qualifier": null,
+        "path": "src/lib.rs"
+      },
+      "note": "resolves to tools' own normalize_id (lib.rs:9) -> excluded",
+      "seq": 20
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json callers normalize_id --workspace-root web"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 0
+      },
+      "note": "comment-only package: no indexed refs",
+      "seq": 21
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json blast-radius normalize_id --depth 3 --limit 50"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "nodes": 5
+      },
+      "note": "union recipe; tools row filtered by qualifier/symbol-id evidence, web absent",
+      "seq": 22
+    }
+  ],
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/api/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_2",
+    "model_note": "xiaomi/mimo-v2.6-flash",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

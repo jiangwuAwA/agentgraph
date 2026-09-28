@@ -1,0 +1,113 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "api/handlers.go",
+    "store/store.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.cli",
+      "args": ["--version"],
+      "ok": true,
+      "summary": {"version": "0.5.8"},
+      "note": "availability check"
+    },
+    {
+      "tool": "agentgraph.cli",
+      "args": ["--help"],
+      "ok": true,
+      "summary": {"commands_listed": true},
+      "note": ""
+    },
+    {
+      "tool": "read",
+      "args": ["store/store.go"],
+      "ok": true,
+      "summary": {"lines": 36},
+      "note": "interface Repository/Cache Get + MemRepo/RedisCache impls"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go"],
+      "ok": true,
+      "summary": {"lines": 11},
+      "note": "LoadUser calls r.Get; SaveUser calls Put"
+    },
+    {
+      "tool": "read",
+      "args": ["cmd/main.go"],
+      "ok": true,
+      "summary": {"lines": 8},
+      "note": "bootstrap noise, no store import"
+    },
+    {
+      "tool": "read",
+      "args": ["internal/metrics.go"],
+      "ok": true,
+      "summary": {"lines": 6},
+      "note": "noise, no Repository dependency"
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "."],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 11, "references": 19, "languages": ["go"]},
+      "note": ""
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Get", "--json"],
+      "ok": false,
+      "summary": {"error": "unexpected argument --json"},
+      "note": "flag not supported by find"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "Get"],
+      "ok": true,
+      "summary": {"symbols": ["MemRepo.Get", "RedisCache.Get"]},
+      "note": "both defs in store/store.go"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "Get", "--json"],
+      "ok": false,
+      "summary": {"error": "unexpected argument --json"},
+      "note": "flag not supported"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "Get"],
+      "ok": true,
+      "summary": {"callers": ["api/handlers.go:6 (LoadUser)"], "implementor_count": 7, "implementors_paths": ["store/store.go"], "subset_ok": true, "window": "default"},
+      "note": "callers separated from implementors"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "Get"],
+      "ok": true,
+      "summary": {"impact_nodes": 4, "paths": ["api/handlers.go", "store/store.go"], "window": "sound", "subset_ok": true},
+      "note": "depth 3; no hits in cmd/ or internal/"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "--help"],
+      "ok": true,
+      "summary": {"checked_json_flag": false},
+      "note": "flag verification"
+    },
+    {
+      "tool": "grep",
+      "args": ["eval_agent_ab_d.py", "FILE_SET_SCHEMA|META_SCHEMA"],
+      "ok": true,
+      "summary": {"schemas_confirmed": true},
+      "note": "read output schema only; no labels/scored tables"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

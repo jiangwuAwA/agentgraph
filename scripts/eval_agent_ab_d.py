@@ -863,8 +863,18 @@ def validate_runner_outputs(
         if meta_obj.get("schema") and meta_obj.get("schema") != META_SCHEMA:
             errors.append(f"meta schema must be {META_SCHEMA}, got {meta_obj.get('schema')!r}")
     for key, want in (("runner_id", runner_id), ("arm", arm), ("seed", seed), ("task_id", task_id)):
-        if key in fs_obj and fs_obj.get(key) != want:
-            errors.append(f"file_set.{key} mismatch: {fs_obj.get(key)!r} != {want!r}")
+        if key not in fs_obj:
+            continue
+        got = fs_obj.get(key)
+        if key == "seed":
+            try:
+                got_n = int(got)
+            except (TypeError, ValueError):
+                got_n = got
+            if got_n != want:
+                errors.append(f"file_set.{key} mismatch: {got!r} != {want!r}")
+        elif got != want:
+            errors.append(f"file_set.{key} mismatch: {got!r} != {want!r}")
     if "file_set" not in fs_obj or not isinstance(fs_obj.get("file_set"), list):
         errors.append("file_set.json must contain file_set: list")
     if meta_obj.get("saw_labels_before_commit") not in {False, None}:
@@ -1163,7 +1173,15 @@ def stamp_from_brief(
     task_meta = json.loads((tdir / "task.json").read_text(encoding="utf-8"))
     labels = _task_labels(task_meta)
     files = list(fs_obj.get("file_set") or [])
-    calls = list(fs_obj.get("tool_calls") or [])
+    raw_calls = fs_obj.get("tool_calls")
+    if raw_calls is None:
+        calls = []
+    elif isinstance(raw_calls, list):
+        calls = [c for c in raw_calls if c is not None]
+    elif isinstance(raw_calls, dict):
+        calls = [raw_calls]
+    else:
+        calls = [{"tool": str(raw_calls), "args": [], "ok": True, "summary": {}, "note": ""}]
     kind = str(meta_obj.get("kind") or SCRIPTED_KIND)
     model_note = str(meta_obj.get("model_note") or "")
     independent = bool(meta_obj.get("independent_session"))

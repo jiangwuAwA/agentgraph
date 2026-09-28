@@ -1,0 +1,82 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "index"],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 15, "references": 25, "exact": 20, "heuristic": 5},
+      "note": "indexed isolated workdir root"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "find", "UserRepository"],
+      "ok": true,
+      "summary": {"defs": [{"path": "src/user.repository.ts", "kind": "class", "line": 2}]},
+      "note": "symbol definition"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "who-calls", "UserRepository"],
+      "ok": true,
+      "summary": {
+        "paths": ["src/user.module.ts", "src/user.service.ts"],
+        "edge_roles": ["call", "registration"],
+        "rules": ["ts.nest.module_providers", "ts.nest.ctor_inject"]
+      },
+      "note": "Nest DI wiring: module providers + UserService ctor inject"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "blast-radius", "UserRepository"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "paths": ["src/user.module.ts", "src/user.service.ts", "src/user.controller.ts"]
+      },
+      "note": "transitive neighborhood via UserService"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "impact", "UserRepository"],
+      "ok": true,
+      "summary": {"paths": ["src/user.module.ts", "src/user.service.ts", "src/user.controller.ts"]},
+      "note": "depth 1-2 dependents"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "callers", "find"],
+      "ok": true,
+      "summary": {"sites": [{"path": "src/user.service.ts", "line": 9, "enclosing": "UserService.load"}]},
+      "note": "sole behavioral caller of find"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--root", ".", "related", "UserRepository"],
+      "ok": true,
+      "summary": {"paths": ["src/user.repository.ts", "src/user.module.ts", "src/user.service.ts"]},
+      "note": "retrieval-scoped related files"
+    },
+    {
+      "tool": "read",
+      "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"],
+      "ok": true,
+      "summary": {"files_read": 6},
+      "note": "confirmed find throws; load wraps find; controller consumes load; module registers provider; health/unrelated are noise"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

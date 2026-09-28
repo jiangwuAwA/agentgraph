@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "target": "code review file selection multi-root TypeScript workspace"},
+    {"tool": "glob", "target": "**/*"},
+    {"tool": "bash", "target": "Get-ChildItem -Recurse -Force"},
+    {"tool": "grep", "target": "RegistryClient"},
+    {"tool": "grep", "target": "fetch"},
+    {"tool": "bash", "target": "Get-ChildItem -Recurse -Force -File"},
+    {"tool": "grep", "target": "createClient|from '@demo'|import"},
+    {"tool": "bash", "target": "Get-ChildItem packages -Recurse -File (read all sources)"},
+    {"tool": "bash", "target": "Get-Content workspace.json"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

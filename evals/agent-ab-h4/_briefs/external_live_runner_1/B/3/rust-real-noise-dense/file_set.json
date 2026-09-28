@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 3,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["Get-ChildItem -Force"], "ok": true, "summary": {"entries": "workdir: .mimocode, src"}, "note": "list workdir top level; confirm isolated cell"},
+    {"tool": "glob", "args": ["**/*.{rs,toml}"], "ok": true, "summary": {"files": ["src/clone_heavy.rs", "src/legacy.rs", "src/metrics.rs", "src/wire.rs", "src/packet.rs", "src/lib.rs"]}, "note": "enumerate Rust sources in workdir"},
+    {"tool": "grep", "args": ["encode|Encode", "*.rs"], "ok": true, "summary": {"matches": 54}, "note": "symbol token scan across all sources"},
+    {"tool": "grep", "args": ["mod |use |pub fn|pub trait|pub enum|pub struct|impl ", "*.rs"], "ok": true, "summary": {"matches": 49}, "note": "module/def surface scan"},
+    {"tool": "bash", "args": ["Get-Content src/*.rs"], "ok": true, "summary": {"files_read": 6}, "note": "full read of every .rs under workdir/src"},
+    {"tool": "bash", "args": ["Get-Content ../RUNNER_CONTRACT.md; Get-Content ../ISSUE.md"], "ok": true, "summary": {}, "note": "this cell's output schema + issue only; no labels, no other arms"},
+    {"tool": "write", "args": ["file_set.json"], "ok": true, "summary": {"files": 2}, "note": "commit into brief dir per contract"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

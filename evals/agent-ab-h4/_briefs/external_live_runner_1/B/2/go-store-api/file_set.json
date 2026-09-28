@@ -1,0 +1,57 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "go-store-api",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "store/store.go",
+    "api/handlers.go"
+  ],
+  "tool_calls": [
+    {
+      "tool": "glob",
+      "args": ["workdir/**/*"],
+      "ok": true,
+      "summary": {},
+      "note": "listed 4 go files + .mimocode noise"
+    },
+    {
+      "tool": "grep",
+      "args": ["Get|Repository|MemRepo|RedisCache", "workdir/**/*.go"],
+      "ok": true,
+      "summary": {},
+      "note": "14 matches; noise comments in cmd/internal"
+    },
+    {
+      "tool": "read",
+      "args": ["store/store.go"],
+      "ok": true,
+      "summary": {},
+      "note": "Repository.Get + Cache.Get; MemRepo.Get; RedisCache.Get"
+    },
+    {
+      "tool": "read",
+      "args": ["api/handlers.go"],
+      "ok": true,
+      "summary": {},
+      "note": "LoadUser calls r.Get(id) on store.Repository"
+    },
+    {
+      "tool": "read",
+      "args": ["cmd/main.go"],
+      "ok": true,
+      "summary": {},
+      "note": "noise: no Repository"
+    },
+    {
+      "tool": "read",
+      "args": ["internal/metrics.go"],
+      "ok": true,
+      "summary": {},
+      "note": "noise: no Repository"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,120 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "list",
+      "args": ["workdir/"],
+      "ok": true,
+      "summary": {"file_count": 18, "packages": ["app", "cli", "core", "legacy"]},
+      "note": "walked isolated workdir tree only"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "app", "legacy", "cli"]},
+      "note": "multi-root workspace; contract change is in core"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": {"class": "OrderHandler", "method": "execute(id: string): string", "pkg": "@demo/core"},
+      "note": "true target definition"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/useOrder.ts"],
+      "ok": true,
+      "summary": {"imports": "@demo/core/orderHandler", "calls": ["new OrderHandler()", "h.execute(id)"]},
+      "note": "true dependent via package name"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/legacy/src/utils/orderHandler.ts"],
+      "ok": true,
+      "summary": {"class": "OrderHandler", "pkg": "@demo/legacy"},
+      "note": "excluded: same class name, wrong package (name collision, not a dependent)"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/legacy/src/index.ts"],
+      "ok": true,
+      "summary": {"imports": "./utils/orderHandler"},
+      "note": "excluded: consumes legacy OrderHandler, not core"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"kind": "help_prose"},
+      "note": "excluded: name string in help prose, not a dependent"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/other.ts"],
+      "ok": true,
+      "summary": {"imports": "@demo/core/noise/noise0"},
+      "note": "excluded: unrelated noise consumer"
+    },
+    {
+      "tool": "grep",
+      "args": ["OrderHandler|execute\\(", "workdir"],
+      "ok": true,
+      "summary": {"matches": 18},
+      "note": "full-name and execute() sweep across workdir"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/src/noise/noise0.ts",
+        "packages/core/src/noise/noise1.ts",
+        "packages/core/src/noise/noise2.ts",
+        "packages/core/src/noise/noise3.ts",
+        "packages/core/src/noise/noise4.ts",
+        "packages/core/src/noise/noise5.ts",
+        "packages/core/src/noise/noise6.ts",
+        "packages/core/src/noise/noise7.ts"
+      ],
+      "ok": true,
+      "summary": {"classes": 8, "decoy_method": "execute()"},
+      "note": "excluded: decoy execute() on NoiseN classes, not OrderHandler"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/noise/bundle.ts"],
+      "ok": true,
+      "summary": {},
+      "note": "excluded: filler only"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/package.json",
+        "packages/app/package.json",
+        "packages/legacy/package.json",
+        "packages/cli/package.json"
+      ],
+      "ok": true,
+      "summary": {"names": ["@demo/core", "@demo/app", "@demo/legacy", "@demo/cli"]},
+      "note": "package-name consumption check"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/tsconfig.json"],
+      "ok": true,
+      "summary": {"paths": {"@/*": ["src/*"]}},
+      "note": "alias hints only; app import uses @demo/core package name"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

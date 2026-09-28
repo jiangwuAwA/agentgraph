@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "12",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

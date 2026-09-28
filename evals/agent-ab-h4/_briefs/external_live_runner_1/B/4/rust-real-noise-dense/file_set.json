@@ -1,0 +1,44 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 4,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "walk",
+      "args": ["."],
+      "ok": true,
+      "summary": {"entries": 8, "rust_sources": 6},
+      "note": "workdir inventory; only src/*.rs are reviewable sources"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/lib.rs",
+        "src/packet.rs",
+        "src/wire.rs",
+        "src/metrics.rs",
+        "src/legacy.rs",
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {"files_read": 6},
+      "note": "full contents; classified trait+implementors+callers vs name-collision noise"
+    },
+    {
+      "tool": "grep",
+      "args": ["encode|Encode", "workdir"],
+      "ok": true,
+      "summary": {"matches": 54},
+      "note": "encode sites verified; collisions isolated to metrics/legacy/clone_heavy"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

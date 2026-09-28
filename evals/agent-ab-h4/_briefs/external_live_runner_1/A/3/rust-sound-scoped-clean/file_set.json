@@ -1,0 +1,127 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force"],
+      "ok": true,
+      "summary": {"entries": [".mimocode", "packages", "workspace.json"]},
+      "note": "workdir layout"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content workspace.json"],
+      "ok": true,
+      "summary": {"roots": [{"id": "clean", "path": "packages/clean"}, {"id": "dirty", "path": "packages/dirty"}]},
+      "note": "two-root workspace manifest"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse packages"],
+      "ok": true,
+      "summary": {"files": ["packages/clean/src/lib.rs", "packages/clean/src/write.rs", "packages/dirty/src/lib.rs", "packages/dirty/src/shadow.rs"]},
+      "note": "4 source files"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"defines": ["flush_all"], "reexports": ["batch_write"], "calls": ["batch_write"]},
+      "note": "clean root entry; true dependent"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content packages/clean/src/write.rs"],
+      "ok": true,
+      "summary": {"defines": ["batch_write", "batch_write_verbose"], "calls": ["batch_write"]},
+      "note": "definition site under change + same-file caller batch_write_verbose"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content packages/dirty/src/lib.rs"],
+      "ok": true,
+      "summary": {"defines": ["dirty_entry", "batch_write_shadow"], "unsafe": true, "noise": ["comment 'batch_write lives here too'", "batch_write_shadow name"]},
+      "note": "dirty sibling; unsafe transmute; name collisions only — not a true batch_write dependent"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {"defines": ["shadow_write", "note"], "noise": ["comment/string mentioning batch_write"]},
+      "note": "no true batch_write definition/call edge"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--workspace", "workspace.json", "--workspace-db", ".agentgraph/index.db"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 9, "references": 6, "clean_subset_violations": 0, "dirty_subset_violations": 3, "clean_promise_tier": "ast_modeled", "dirty_promise_tier": "disabled"},
+      "note": "multi-root workspace index"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"hits": [{"qualified_name": "batch_write", "path": "src/write.rs", "root_id": "clean", "kind": "function"}]},
+      "note": "single true definition in clean root"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"callers": 2, "paths": ["src/lib.rs"], "root_id": "clean", "implementors": 0, "window": "default", "subset_ok": false},
+      "note": "import at lib.rs:3 + call flush_all at lib.rs:6; all in clean"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"impact_nodes": 2, "paths": ["src/lib.rs"], "subset_ok": false, "sound_candidates": ["clean eligible", "dirty disabled"], "recommendation": "scoped sound on clean; avoid dirty"},
+      "note": "union sound disabled by dirty unsafe; do not claim union sound"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["subset", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"in_subset": false, "violation_count": 3, "violations_root": "dirty", "kinds": ["unsafe", "transmute", "transmute"]},
+      "note": "S violated only in dirty (transmute/unsafe); clean has 0 violations"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["impact", "batch_write", "--sound", "--workspace", "workspace.json", "--workspace-root", "clean"],
+      "ok": true,
+      "summary": {"mode": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "nodes": 2, "paths": ["src/lib.rs"]},
+      "note": "scoped sound on clean root is honest; union --sound is not"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean", "--exact-only"],
+      "ok": true,
+      "summary": {"callers": 2, "confidence": "exact", "root_id": "clean"},
+      "note": "exact-only confirmation; no dirty rows"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"files": [{"path": "src/write.rs", "reason": "definition:function"}, {"path": "src/lib.rs", "reason": "reference:import"}]},
+      "note": "retrieval scoping confirms the two clean files"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "batch_write_verbose", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"hits": [{"qualified_name": "batch_write_verbose", "path": "src/write.rs", "root_id": "clean"}]},
+      "note": "same-file caller of batch_write lives in write.rs"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

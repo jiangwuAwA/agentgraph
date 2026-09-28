@@ -1,0 +1,150 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts",
+    "packages/service/src/order.controller.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File (workdir)"],
+      "ok": true,
+      "summary": { "roots": 4, "source_files": 8 },
+      "note": "workspace.json + 4 roots x 2 ts files"
+    },
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": { "roots": ["registry", "service", "cli", "docs"] },
+      "note": "multi-root manifest"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--version"],
+      "ok": true,
+      "summary": { "version": "0.5.8" },
+      "note": "CLI on PATH"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "files": 8, "symbols": 15, "refs": 9 },
+      "note": "single shared store tagged root_id"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["workspace", "status", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "index_seq": 4, "cli_refs": 0, "docs_refs": 0, "registry_refs": 3, "service_refs": 6 },
+      "note": "cli/docs have symbols but zero refs to RegistryClient"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/registry/src/client.ts"],
+      "ok": true,
+      "summary": { "defines": "RegistryClient.fetch(id): string" },
+      "note": "return-contract definition site"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/registry/src/index.ts"],
+      "ok": true,
+      "summary": { "reexports": ["RegistryClient", "createClient"] },
+      "note": "package barrel / public contract surface"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "RegistryClient", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "hits": 2, "root_ids": ["registry"] },
+      "note": "all definitions under registry root only"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "RegistryClient", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "window": "sound", "subset_ok": true, "impact_nodes": 7 },
+      "note": "recipe-selected sound window; honesty fields present"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["impact", "RegistryClient", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": { "nodes": 7, "depth": 3, "files": 4 },
+      "note": "depth-1 registry+service import/ctor edges; depth-2 reaches order.controller.ts via OrderService"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/service/src/order.service.ts"],
+      "ok": true,
+      "summary": { "consumes": "this.client.fetch(id)", "return_passthrough": true },
+      "note": "direct fetch-return dependent"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/service/src/order.controller.ts"],
+      "ok": true,
+      "summary": { "annotated_return": "string", "chain": "service result -> get()"},
+      "note": "transitive return-contract dependent (depth 2)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "fetch", "--workspace", "workspace.json", "--limit", "50"],
+      "ok": true,
+      "summary": { "sites": 1, "site": "packages/service/src/order.service.ts:6" },
+      "note": "single true call site of fetch"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "RegistryClient", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": { "callers": 4, "implementors": 0, "high_freq_name": false },
+      "note": "edges confined to registry+service roots"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "src/index.ts", "--workspace", "workspace.json", "--root", "packages/registry"],
+      "ok": true,
+      "summary": { "importers": 0 },
+      "note": "cross-root @demo/registry import resolved via package alias instead"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": { "mention": "string/comment prose only" },
+      "note": "noise root - excluded from file_set"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/main.ts"],
+      "ok": true,
+      "summary": { "mention": "help text string only" },
+      "note": "noise root - excluded from file_set"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/docs/src/overview.ts"],
+      "ok": true,
+      "summary": { "mention": "prose string only" },
+      "note": "noise root - excluded from file_set"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/docs/src/changelog.ts"],
+      "ok": true,
+      "summary": { "mention": "prose string only" },
+      "note": "noise root - excluded from file_set"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

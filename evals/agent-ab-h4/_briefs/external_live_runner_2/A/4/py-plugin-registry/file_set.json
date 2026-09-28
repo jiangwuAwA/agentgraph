@@ -1,0 +1,21 @@
+{
+  "task_id": "py-plugin-registry",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 4,
+  "file_set": [
+    "app/registry.py",
+    "app/bootstrap.py"
+  ],
+  "tool_calls": [
+    {
+      "tool": "12",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

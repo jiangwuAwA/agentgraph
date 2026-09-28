@@ -1,0 +1,150 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": [
+        "identify blast-radius file set via agentgraph CLI recipes + reads; outputs file_set.v1 + meta.v1"
+      ],
+      "ok": true,
+      "summary": {
+        "matched": false
+      },
+      "note": "no applicable skill loaded; proceeded with agentgraph CLI + reads (arm A)"
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -File .\\src"
+      ],
+      "ok": true,
+      "summary": {
+        "files": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"]
+      },
+      "note": "enumerated the isolated workdir source tree (3 rust files)"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {
+        "trait_def": "src/handlers.rs:3 Handler::render",
+        "impls": ["src/handlers.rs:10 HtmlHandler::render", "src/handlers.rs:16 JsonHandler::render"],
+        "dyn_call": "src/handlers.rs:22 render_dyn -> h.render()"
+      },
+      "note": "trait declaration, both impls, and one dyn call site in this file"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {
+        "dyn_calls": ["src/lib.rs:7 dispatch -> h.render()", "src/lib.rs:12 bootstrap -> h.render()"],
+        "import": "src/lib.rs:1 use crate::handlers::{Handler, HtmlHandler, JsonHandler}"
+      },
+      "note": "two dyn dispatch call sites plus trait import"
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {
+        "content": "pub fn incr(name: &str) -> usize"
+      },
+      "note": "no Handler/render dependency; excluded from file_set"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph index --root ."],
+      "ok": true,
+      "summary": {
+        "files": 3,
+        "symbols": 12,
+        "references": 17,
+        "exact": 13,
+        "heuristic": 4
+      },
+      "note": "built the local symbol index over the workdir"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find render --root ."],
+      "ok": true,
+      "summary": {
+        "definitions": [
+          "src/handlers.rs:3 Handler::render (trait)",
+          "src/handlers.rs:10 HtmlHandler::render (impl)",
+          "src/handlers.rs:16 JsonHandler::render (impl)"
+        ]
+      },
+      "note": "trait def + 2 implementor definitions, all in handlers.rs"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls render --root ."],
+      "ok": true,
+      "summary": {
+        "callers": [
+          "src/handlers.rs:22 render_dyn (dyn Handler)",
+          "src/lib.rs:7 dispatch (dyn Handler)",
+          "src/lib.rs:12 bootstrap (h)"
+        ],
+        "implementor_count": 4,
+        "subset_ok": true
+      },
+      "note": "recipe separates exact call sites from L1 implementor edges; no hits in metrics.rs"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph blast-radius render --root ."],
+      "ok": true,
+      "summary": {
+        "nodes": 7,
+        "depth": 2,
+        "window": "sound",
+        "subset_ok": true
+      },
+      "note": "cross-check; adds lib.rs:1 imports of HtmlHandler/JsonHandler at depth 2"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph importers src\\handlers.rs --root ."],
+      "ok": true,
+      "summary": {
+        "importers": ["src/lib.rs:1"]
+      },
+      "note": "module-level confirmation that only lib.rs pulls in handlers"
+    },
+    {
+      "tool": "grep",
+      "args": ["file_set.v1|chose_correct_workspace_root|lab_ready_claim", "scripts/"],
+      "ok": true,
+      "summary": {
+        "schemas": ["agentgraph.eval_agent_ab_d.file_set.v1", "agentgraph.eval_agent_ab_d.meta.v1"]
+      },
+      "note": "harness output-shape lookup only; no structure-fact labels or other cells' outputs opened"
+    },
+    {
+      "tool": "read",
+      "args": ["scripts/eval_agent_ab_h4_live.py:130-258"],
+      "ok": true,
+      "summary": {
+        "fields": [
+          "file_set.json: schema, task_id, runner_id, arm, seed, file_set, tool_calls, chose_correct_workspace_root, approx_tokens",
+          "meta.json: schema, task_id, runner_id, kind, model_note, independent_session, arm, seed, harness_version, saw_labels_before_commit, arm_isolated, read_budget, approx_tokens, lab_ready_claim"
+        ]
+      },
+      "note": "confirmed exact field names; harness relocates workdir/ outputs to the brief dir"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

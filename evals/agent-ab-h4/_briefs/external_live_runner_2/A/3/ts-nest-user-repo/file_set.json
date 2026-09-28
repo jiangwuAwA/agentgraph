@@ -1,0 +1,28 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -Depth 3"], "ok": true, "summary": {"source_files": 6}, "note": "listed isolated cell workdir"},
+    {"tool": "bash", "args": ["agentgraph --help"], "ok": true, "summary": {"recipes": ["blast-radius", "who-calls", "importers", "callers", "related"]}, "note": ""},
+    {"tool": "agentgraph", "args": ["index", "--root", "."], "ok": true, "summary": {"files": 6, "symbols": 15, "refs": 25, "root": "workdir"}, "note": "indexed this cell's workdir only"},
+    {"tool": "agentgraph", "args": ["blast-radius", "UserRepository", "--json"], "ok": false, "summary": {}, "note": "unexpected argument; retried without --json"},
+    {"tool": "agentgraph", "args": ["blast-radius", "UserRepository"], "ok": true, "summary": {"window": "sound", "subset_ok": true, "impact_paths": ["src/user.module.ts", "src/user.service.ts", "src/user.controller.ts"], "honesty": "not a complete runtime graph"}, "note": "auto sound window; depth-3 impact closure"},
+    {"tool": "agentgraph", "args": ["importers", "src/user.repository.ts"], "ok": true, "summary": {"importers": ["src/user.module.ts", "src/user.service.ts"]}, "note": "module-level import edges"},
+    {"tool": "agentgraph", "args": ["who-calls", "UserRepository"], "ok": true, "summary": {"callers": 4, "implementor_count": 0, "edge_roles": ["call", "registration"]}, "note": "Nest ctor_inject + module_providers evidence"},
+    {"tool": "agentgraph", "args": ["callers", "find"], "ok": true, "summary": {"sites": 1, "path": "src/user.service.ts:9", "enclosing": "UserService.load"}, "note": "direct call site of the changed method"},
+    {"tool": "agentgraph", "args": ["related", "UserRepository"], "ok": true, "summary": {"paths": ["src/user.repository.ts", "src/user.module.ts", "src/user.service.ts"]}, "note": ""},
+    {"tool": "read", "args": ["src/user.repository.ts", "src/user.service.ts", "src/user.controller.ts", "src/user.module.ts", "src/health.ts", "src/unrelated.ts"], "ok": true, "summary": {"review": 4, "noise": ["src/health.ts", "src/unrelated.ts"]}, "note": "health.ts/unrelated.ts self-declare unrelated concerns (health probe, metrics helper)"},
+    {"tool": "read", "args": ["scripts/eval_agent_ab_d.py (FILE_SET_SCHEMA/META_SCHEMA/contract/validate)"], "ok": true, "summary": {"schemas": ["agentgraph.eval_agent_ab_d.file_set.v1", "agentgraph.eval_agent_ab_d.meta.v1"]}, "note": "harness metadata + output contract only, not fixture labels"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,130 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-trait-handler",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/handlers.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph.index",
+      "args": ["index", "--root", "."],
+      "ok": true,
+      "summary": {
+        "files": 3,
+        "symbols": 12,
+        "references": 17,
+        "exact": 13,
+        "heuristic": 4
+      },
+      "note": "built L0 index of workdir"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["find", "render"],
+      "ok": true,
+      "summary": {
+        "hits": 3,
+        "qualified": ["Handler::render", "HtmlHandler::render", "JsonHandler::render"],
+        "paths": ["src/handlers.rs"]
+      },
+      "note": "trait method + same-file impls"
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": ["who-calls", "render"],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "callers": [
+          "src/handlers.rs:22 render_dyn (dyn Handler)",
+          "src/lib.rs:7 dispatch (dyn Handler)",
+          "src/lib.rs:12 bootstrap (Box<dyn Handler> iteration)"
+        ],
+        "implementor_count": 4,
+        "implementors": [
+          "src/handlers.rs:10 HtmlHandler::render (rs.di.impl_trait)",
+          "src/handlers.rs:16 JsonHandler::render (rs.di.impl_trait)",
+          "src/handlers.rs:22 dyn-dispatch candidates HtmlHandler/JsonHandler (rs.di.dyn_trait_method)"
+        ]
+      },
+      "note": "implementors separated from callers; both sets on handlers.rs/lib.rs only"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": ["blast-radius", "render"],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "depth": 3,
+        "paths": ["src/handlers.rs", "src/lib.rs"],
+        "note": "not a complete runtime graph"
+      },
+      "note": "impact depth-1 implementors + dyn call sites; depth-2 imports in lib.rs"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": ["related", "render"],
+      "ok": true,
+      "summary": {
+        "files": ["src/handlers.rs", "src/lib.rs"]
+      },
+      "note": "definition + importers; metrics.rs not related"
+    },
+    {
+      "tool": "agentgraph.callers",
+      "args": ["callers", "render", "--include-implementors"],
+      "ok": true,
+      "summary": {
+        "merged_rows": 7,
+        "paths": ["src/handlers.rs", "src/lib.rs"]
+      },
+      "note": "cross-check that no third file appears"
+    },
+    {
+      "tool": "grep",
+      "args": ["render|Handler|dyn "],
+      "ok": true,
+      "summary": {
+        "matches": 17,
+        "paths": ["src/handlers.rs", "src/lib.rs", "src/metrics.rs"]
+      },
+      "note": "metrics.rs only hit is a comment declaring no Handler/render dependency — excluded as noise"
+    },
+    {
+      "tool": "read",
+      "args": ["src/handlers.rs"],
+      "ok": true,
+      "summary": {
+        "role": "trait Handler::render definition + HtmlHandler/JsonHandler impls + render_dyn dyn call site"
+      },
+      "note": ""
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs"],
+      "ok": true,
+      "summary": {
+        "role": "dyn Handler call sites dispatch + bootstrap; imports HtmlHandler/JsonHandler"
+      },
+      "note": ""
+    },
+    {
+      "tool": "read",
+      "args": ["src/metrics.rs"],
+      "ok": true,
+      "summary": {
+        "role": "noise — no Handler/render dependency"
+      },
+      "note": "reviewed and excluded from file_set"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

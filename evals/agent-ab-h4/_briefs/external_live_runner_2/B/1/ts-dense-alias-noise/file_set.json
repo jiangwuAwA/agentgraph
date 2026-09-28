@@ -1,0 +1,22 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "8",
+      "args": [],
+      "ok": true,
+      "summary": {},
+      "note": ""
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

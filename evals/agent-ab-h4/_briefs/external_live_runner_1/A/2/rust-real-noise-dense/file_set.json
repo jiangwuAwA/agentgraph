@@ -1,0 +1,95 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--root", "."],
+      "ok": true,
+      "summary": {
+        "files": 6,
+        "symbols": 44,
+        "references": 38,
+        "exact": 26,
+        "heuristic": 12
+      },
+      "note": "local index built inside workdir only"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "encode", "--root", "."],
+      "ok": true,
+      "summary": {
+        "hits": 13,
+        "trait_def": "Encode::encode at src/packet.rs:3",
+        "impls": ["Header", "Body", "Footer", "Ack", "Nack", "Ping", "Pong", "Meta", "Chunk0", "Chunk1", "Chunk2", "Chunk3"]
+      },
+      "note": "trait method + 12 same-file impls; no hit in metrics/legacy/clone_heavy (those are name-adjacent, not exact encode)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "encode", "--root", "."],
+      "ok": true,
+      "summary": {
+        "callers": 3,
+        "caller_paths": ["src/wire.rs"],
+        "implementor_count": 12,
+        "implementor_paths": ["src/packet.rs"],
+        "high_freq_name": false,
+        "window": "default",
+        "subset_ok": true
+      },
+      "note": "implementors separated from callers; high-freq demotion not triggered (high_freq_name=false); real call sites only in wire.rs"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "encode", "--root", "."],
+      "ok": true,
+      "summary": {
+        "exact_call_sites": [
+          "src/wire.rs:5 send_packet (dyn Encode)",
+          "src/wire.rs:9 dump_all",
+          "src/wire.rs:15 checksum"
+        ]
+      },
+      "note": "all exact callers consume Encode::encode payload (len / xor-fold)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["impact", "encode", "--root", "."],
+      "ok": true,
+      "summary": {
+        "depth1": "12 implementors in src/packet.rs + 3 callers in src/wire.rs",
+        "depth2": "src/lib.rs:9 imports/calls send_packet (public re-export path)"
+      },
+      "note": "lib.rs is crate-root public API surface (pub use packet::Encode / wire::send_packet), not a name collision"
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/packet.rs",
+        "src/wire.rs",
+        "src/lib.rs",
+        "src/metrics.rs",
+        "src/legacy.rs",
+        "src/clone_heavy.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "true_structure": ["src/packet.rs", "src/wire.rs", "src/lib.rs"],
+        "excluded_noise": ["src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"]
+      },
+      "note": "metrics.rs holds unrelated Encode enum + encode_label/encode_metric; legacy.rs has encode_legacy + comment noise; clone_heavy.rs has encode_name_for_clone + Clone helpers — all name collisions, no Encode::encode edge"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

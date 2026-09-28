@@ -1,0 +1,150 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-nest-user-repo",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/user.repository.ts",
+    "src/user.service.ts",
+    "src/user.controller.ts",
+    "src/user.module.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": [
+        "Get-ChildItem -Recurse -Depth 3"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 6,
+        "note": "6 src files under src/"
+      },
+      "note": "workdir listing"
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": [
+        "index",
+        "--root",
+        "."
+      ],
+      "ok": true,
+      "summary": {
+        "files": 6,
+        "symbols": 15,
+        "refs": 25,
+        "exact": 20,
+        "heuristic": 5
+      },
+      "note": ""
+    },
+    {
+      "tool": "read",
+      "args": [
+        "src/user.repository.ts",
+        "src/user.service.ts",
+        "src/user.controller.ts",
+        "src/user.module.ts",
+        "src/health.ts",
+        "src/unrelated.ts"
+      ],
+      "ok": true,
+      "summary": {
+        "find_throws": true,
+        "consumers": [
+          "UserService",
+          "UserController",
+          "UserModule"
+        ],
+        "noise": [
+          "health.ts",
+          "unrelated.ts"
+        ]
+      },
+      "note": "Get-Content of all six source files"
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "UserRepository"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "impact_nodes": 10,
+        "depth": 3,
+        "paths": [
+          "src/user.service.ts",
+          "src/user.module.ts",
+          "src/user.controller.ts"
+        ]
+      },
+      "note": ""
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": [
+        "impact",
+        "UserRepository"
+      ],
+      "ok": true,
+      "summary": {
+        "dependents": 8,
+        "depth_max": 2
+      },
+      "note": ""
+    },
+    {
+      "tool": "agentgraph.who-calls",
+      "args": [
+        "who-calls",
+        "UserRepository"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 4,
+        "implementors": 0,
+        "high_freq_name": false,
+        "edges": [
+          "user.module.ts import+providers",
+          "user.service.ts import+ctor_inject"
+        ]
+      },
+      "note": ""
+    },
+    {
+      "tool": "agentgraph.blast-radius",
+      "args": [
+        "blast-radius",
+        "UserRepository",
+        "--format",
+        "json"
+      ],
+      "ok": false,
+      "summary": {
+        "error": "unexpected argument --format"
+      },
+      "note": "flag not supported on subcommand"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": [
+        "impact",
+        "UserRepository",
+        "--format",
+        "json"
+      ],
+      "ok": false,
+      "summary": {
+        "error": "unexpected argument --format"
+      },
+      "note": "flag not supported on subcommand"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

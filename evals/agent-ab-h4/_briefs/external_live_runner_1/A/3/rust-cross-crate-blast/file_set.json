@@ -1,0 +1,80 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/api/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "index"],
+      "ok": true,
+      "summary": {"files": 8, "symbols": 13, "references": 10, "roots": ["core", "api", "tools", "web"]},
+      "note": "multi-root workspace index built into shared store"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "find", "normalize_id"],
+      "ok": true,
+      "summary": {"definitions": 2, "roots": ["core", "tools"]},
+      "note": "definition at packages/core/src/id.rs:2 (root core); name collision at packages/tools/src/lib.rs:9 (root tools)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "blast-radius", "normalize_id"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "impact_rows": 5},
+      "note": "cross-root impact includes name-collision row in tools; disambiguated by qualifier + source reads"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "who-calls", "normalize_id"],
+      "ok": true,
+      "summary": {"callers": 4, "implementors": 0},
+      "note": "api routes row carries qualifier=core; tools row has no qualifier (local fn)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "--workspace-root", "core", "who-calls", "normalize_id"],
+      "ok": true,
+      "summary": {"callers": 2, "files": ["packages/core/src/lib.rs"]},
+      "note": "definition root: re-export id::normalize_id + batch_key call"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "--workspace-root", "api", "who-calls", "normalize_id"],
+      "ok": true,
+      "summary": {"callers": 1, "files": ["packages/api/src/routes.rs"], "qualifier": "core"},
+      "note": "true cross-crate consumer: core::normalize_id(raw) inside lookup"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "--workspace-root", "tools", "who-calls", "normalize_id"],
+      "ok": true,
+      "summary": {"callers": 1, "files": ["packages/tools/src/lib.rs"]},
+      "note": "excluded: call resolves to tools-local normalize_id (name collision, not core consumer)"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "impact", "normalize_id"],
+      "ok": true,
+      "summary": {"depth2": ["packages/api/src/lib.rs handle -> lookup"]},
+      "note": "transitive dependent of the changed contract through lookup output"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/id.rs", "packages/core/src/lib.rs", "packages/api/src/routes.rs", "packages/api/src/lib.rs", "packages/tools/src/lib.rs", "packages/tools/src/audit.rs", "packages/web/src/lib.rs", "packages/web/src/pages.rs"],
+      "ok": true,
+      "summary": {"rust_files_read": 8},
+      "note": "source verification: tools local normalize_id collision; web comment-only mentions"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

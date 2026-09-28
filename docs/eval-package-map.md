@@ -41,6 +41,22 @@ Reproduce: `cargo test --test workspace_package_alias --test workspace_package_d
 | `workspace_package_alias_links_cross_root_import` | meta + linking |
 | tsconfig / package.json / CLI priority tests | `discover_package_aliases` |
 
+## Operator monorepo smoke（公开 fixture / 非私有源码）
+
+本机 operator 抽检（**不**提交私有仓路径源码）：
+
+| 检查 | 结果 |
+|---|---|
+| public hard fixture `ts-multi-root-client`（含 `package.json`） | **pass** — `package_aliases` 含 `@demo/registry` 等 |
+| `importers @demo/registry` | **pass** — `order.service.ts` 行；`resolved=src/index.ts`（barrel） |
+| 重名包 fail-loud | **pass**（`tests/workspace_package_dup.rs`） |
+| 子路径 `@demo/registry/client` | **pass**（unit resolve） |
+| nestjs-starter `package.json` `name` | 可发现（单包名 `nest-typescript-starter`；无跨 root 包名冲突样本） |
+| exports conditions / node_modules | **gap**（保持 open） |
+| 真实脏 monorepo 全量抽检 | **blocked on private corpus** — 仅 operator 本地可跑；不进 CI、不贴源码 |
+
+结论：公开 fixture + hard fixture 已锁主要行为；真实脏 monorepo 证据仍 residual open。
+
 ## Post-fix note
 
 Recorded P0-5c/5d trajectory scores are **not** rewritten. Optional

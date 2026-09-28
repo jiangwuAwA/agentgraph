@@ -135,6 +135,7 @@ HARD_TASKS = (
     "rust-real-noise-dense",
     "rust-sound-scoped-clean",
     "ts-multi-root-client",
+    "ts-dense-alias-noise",
 )
 
 TASK_SELECTION_RATIONALE = {
@@ -198,7 +199,7 @@ def task_fixture_dir(root: Path, task_id: str) -> Path:
 
 def load_task_meta(root: Path, task_id: str) -> Dict[str, Any]:
     path = task_fixture_dir(root, task_id) / "task.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def is_author_model(model_note: str) -> bool:
@@ -454,7 +455,7 @@ def build_d_trajectory(
 ) -> Dict[str, Any]:
     cleaned_calls = []
     for i, c in enumerate(calls, start=1):
-        cc = dict(c)
+        cc = dict(c) if isinstance(c, dict) else {"tool": str(c), "args": [], "ok": True, "summary": {}, "note": ""}
         cc["seq"] = i
         cc["args"] = clean_args_d(cc.get("args") or [])
         cleaned_calls.append(cc)
@@ -831,14 +832,14 @@ def read_brief_outputs(bdir: Path) -> Tuple[Optional[Dict[str, Any]], Optional[D
         errors.append(f"missing file_set.json in {bdir}")
     else:
         try:
-            fs_obj = json.loads(fs_path.read_text(encoding="utf-8"))
+            fs_obj = json.loads(fs_path.read_text(encoding="utf-8-sig"))
         except Exception as e:  # noqa: BLE001
             errors.append(f"invalid file_set.json in {bdir}: {e}")
     if not meta_path.is_file():
         errors.append(f"missing meta.json in {bdir}")
     else:
         try:
-            meta_obj = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta_obj = json.loads(meta_path.read_text(encoding="utf-8-sig"))
         except Exception as e:  # noqa: BLE001
             errors.append(f"invalid meta.json in {bdir}: {e}")
     return fs_obj, meta_obj, errors
@@ -1845,7 +1846,7 @@ def _load_selection(traj_dir: Path) -> Optional[Dict[str, Any]]:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception:  # noqa: BLE001
         return None
 

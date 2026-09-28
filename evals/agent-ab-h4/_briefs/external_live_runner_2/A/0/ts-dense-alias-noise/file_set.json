@@ -1,0 +1,119 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["core", "app", "legacy", "cli"]},
+      "note": "4-root manifest; app consumes core via package name"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts"],
+      "ok": true,
+      "summary": {"exports": ["class OrderHandler"], "members": ["execute(id: string): string"]},
+      "note": "change site: core OrderHandler.execute contract"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/useOrder.ts"],
+      "ok": true,
+      "summary": {"imports": ["@demo/core/orderHandler"], "uses": ["new OrderHandler()", "h.execute(id)"]},
+      "note": "true cross-root dependent via package name"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/legacy/src/utils/orderHandler.ts"],
+      "ok": true,
+      "summary": {"exports": ["class OrderHandler"], "root": "legacy"},
+      "note": "same-name decoy class in a different package"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/legacy/src/index.ts"],
+      "ok": true,
+      "summary": {"imports": ["./utils/orderHandler"]},
+      "note": "depends on legacy OrderHandler, not core"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": {"kind": "help_prose_string", "mentions_execute": true},
+      "note": "string mention only — no symbol reference"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/app/src/other.ts"],
+      "ok": true,
+      "summary": {"imports": ["@demo/core/noise/noise0"]},
+      "note": "core consumer but unrelated to OrderHandler"
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph index --workspace workspace.json --workspace-db .agentgraph/ws.db --workspace-alias @demo/core=core --workspace-alias @demo/legacy=legacy --workspace-alias @demo/app=app --workspace-alias @demo/cli=cli"
+      ],
+      "ok": true,
+      "summary": {"files": 15, "symbols": 29, "references": 7, "package_alias": "@demo/core->core"},
+      "note": "multi-root single-store index; package-name alias map built"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json"],
+      "ok": true,
+      "summary": {"symbols": ["core:src/orderHandler.ts", "legacy:src/utils/orderHandler.ts"]},
+      "note": "two same-name classes; only core one is the target"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json"],
+      "ok": true,
+      "summary": {"rows": 4, "roots": ["app", "legacy"]},
+      "note": "union across roots; must be disambiguated by resolved target"
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph callers OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json --workspace-root app"
+      ],
+      "ok": true,
+      "summary": {"path": "src/useOrder.ts", "resolved": "@alias:@demo/core->core", "confidence": "exact"},
+      "note": "alias-resolved import + ctor call of the core class -> true dependent"
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph callers OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json --workspace-root legacy"
+      ],
+      "ok": true,
+      "summary": {"path": "src/index.ts", "resolved": "src/utils/orderHandler.ts", "confidence": "exact"},
+      "note": "relative same-package import -> name collision, not a dependent"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph blast-radius OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "depth": 1, "nodes": 4},
+      "note": "impact closure confirms no other OrderHandler nodes; cli/help.ts yields no edge"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls OrderHandler --workspace-db .agentgraph/ws.db --workspace workspace.json"],
+      "ok": true,
+      "summary": {"callers": 4, "implementors": 0, "high_freq_name": false},
+      "note": "no implementor edges; decoy execute() methods live on Noise0-7, unrelated"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

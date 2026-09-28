@@ -1,0 +1,78 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "workspace", "status"],
+      "ok": true,
+      "summary": { "roots": ["core", "app", "legacy", "cli"], "files": 30, "symbols": 58 },
+      "note": "workspace multi-root status"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "find", "OrderHandler"],
+      "ok": true,
+      "summary": { "defs": 2, "core_def": "packages/core/src/orderHandler.ts", "legacy_def": "packages/legacy/src/utils/orderHandler.ts" },
+      "note": "two same-named classes; core vs legacy name collision"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "who-calls", "OrderHandler"],
+      "ok": true,
+      "summary": { "callers": ["packages/app/src/useOrder.ts", "packages/legacy/src/index.ts"], "window": "default", "subset_ok": true },
+      "note": "legacy/index resolves to legacy's own OrderHandler (relative import), not core"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "blast-radius", "OrderHandler"],
+      "ok": true,
+      "summary": { "window": "sound", "subset_ok": true, "impact_files": ["packages/app/src/useOrder.ts", "packages/legacy/src/index.ts"] },
+      "note": "sound window; same name-collision split"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "who-calls", "execute"],
+      "ok": true,
+      "summary": { "call_sites": ["packages/app/src/useOrder.ts:5"] },
+      "note": "only true execute() call site is app useOrder h.execute(id); noise execute methods are decoys"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["--workspace", "workspace.json", "importers", "@demo/core/orderHandler"],
+      "ok": true,
+      "summary": { "importers": ["packages/app/src/useOrder.ts"] },
+      "note": "app consumes core via package name"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/orderHandler.ts", "packages/legacy/src/utils/orderHandler.ts", "packages/legacy/src/index.ts", "packages/app/src/useOrder.ts", "packages/app/src/other.ts", "packages/cli/src/help.ts"],
+      "ok": true,
+      "summary": { "core_orderHandler": "true target OrderHandler.execute", "legacy": "same class name wrong package", "help.ts": "name string prose only" },
+      "note": "confirmed true definition vs name-collision and help prose"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/core/src/noise/noise0.ts", "packages/core/src/noise/noise1.ts", "packages/core/src/noise/noise2.ts", "packages/core/src/noise/noise3.ts", "packages/core/src/noise/noise4.ts", "packages/core/src/noise/noise5.ts", "packages/core/src/noise/noise6.ts", "packages/core/src/noise/noise7.ts", "packages/core/src/noise/bundle.ts"],
+      "ok": true,
+      "summary": { "decoy_execute_classes": 8 },
+      "note": "Noise0-7 each have decoy execute(); not OrderHandler dependents"
+    },
+    {
+      "tool": "grep",
+      "args": ["OrderHandler|orderHandler|@demo/core", "workdir/**/*.ts"],
+      "ok": true,
+      "summary": { "matches": 8, "true_core_imports": ["packages/app/src/useOrder.ts"] },
+      "note": "exhaustive name scan; no other true dependents"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

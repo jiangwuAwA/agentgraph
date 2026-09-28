@@ -1,0 +1,439 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_1",
+  "task_id": "rust-sound-scoped-clean",
+  "seed": 0,
+  "run_id": "external_live_runner_1-a-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_1/A/0/rust-sound-scoped-clean",
+  "symbol": "batch_write",
+  "model_note": "xiaomi/mimo-v2.6-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 1
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 2,
+  "read_budget": 4,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 1
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 2,
+    "read_budget": 4,
+    "read_files": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs",
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-v2.6-pro",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-sound-scoped-clean",
+    "title": "Sound-disabled dirty sibling — scoped clean batch_write",
+    "language": "rust",
+    "issue": "clean::batch_write is under change. The workspace also has a dirty package with unsafe code that disables union sound. Do not claim union sound; recommend scoped sound on the clean root. Review set must stay on true clean dependents — dirty name collisions are noise for this symbol.",
+    "symbol": "batch_write",
+    "expected_files": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": [
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "roots": [
+          "clean",
+          "dirty"
+        ]
+      },
+      "note": "multi-root manifest; clean=packages/clean, dirty=packages/dirty",
+      "seq": 1
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": [
+          "flush_all"
+        ],
+        "refs": [
+          "write::batch_write re-export",
+          "batch_write call in flush_all"
+        ]
+      },
+      "note": "true clean dependent of clean::batch_write",
+      "seq": 2
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/clean/src/write.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": [
+          "batch_write",
+          "batch_write_verbose"
+        ]
+      },
+      "note": "definition site of clean::batch_write; batch_write_verbose also calls it in-file",
+      "seq": 3
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/lib.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": [
+          "dirty_entry",
+          "batch_write_shadow"
+        ],
+        "unsafe": true
+      },
+      "note": "NOISE: unsafe transmute leaves S; 'batch_write' only in comments + batch_write_shadow name collision",
+      "seq": 4
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/dirty/src/shadow.rs"
+      ],
+      "ok": true,
+      "summary": {
+        "defines": [
+          "shadow_write",
+          "note"
+        ]
+      },
+      "note": "NOISE: batch_write only in comment and a string literal; no true definition/call edge",
+      "seq": 5
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "index",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 4,
+        "symbols": 9,
+        "references": 6,
+        "clean_subset_violations": 0,
+        "dirty_subset_violations": 3,
+        "clean_promise_tier": "ast_modeled",
+        "dirty_promise_tier": "disabled"
+      },
+      "note": "union store; dirty unsafe disables union sound",
+      "seq": 6
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "find",
+        "batch_write",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "matches": 1,
+        "hit": "clean/src/write.rs:2 function batch_write"
+      },
+      "note": "single true definition, root_id=clean; no dirty definition",
+      "seq": 7
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "who-calls",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "default",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "callers": 2,
+        "paths": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ]
+      },
+      "note": "scoped to clean root",
+      "seq": 8
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "blast-radius",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "impact_nodes": 2
+      },
+      "note": "scoped sound window on clean; recommend scoped sound, not union sound",
+      "seq": 9
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "callers",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean",
+        "--include-dynamic"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 2,
+        "paths": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ]
+      },
+      "note": "exact import + exact call inside flush_all",
+      "seq": 10
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "callers",
+        "batch_write",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 2,
+        "paths": [
+          "src/lib.rs:3",
+          "src/lib.rs:6"
+        ],
+        "dirty_rows": 0
+      },
+      "note": "unscoped union still returns only clean rows; dirty has no true edge to this symbol",
+      "seq": 11
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "related",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean"
+      ],
+      "ok": true,
+      "summary": {
+        "files": [
+          "src/write.rs",
+          "src/lib.rs"
+        ]
+      },
+      "note": "definition:function + reference:import — matches review set",
+      "seq": 12
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "subset",
+        "--workspace",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "union_promise_tier": "disabled",
+        "in_subset": false,
+        "clean_sound_eligible": true,
+        "dirty_sound_eligible": false,
+        "dirty_violations": [
+          "unsafe",
+          "transmute",
+          "transmute"
+        ]
+      },
+      "note": "recommendation: scoped --sound on clean; avoid dirty — do NOT claim union sound",
+      "seq": 13
+    },
+    {
+      "tool": "agentgraph",
+      "args": [
+        "impact",
+        "batch_write",
+        "--workspace",
+        "workspace.json",
+        "--workspace-root",
+        "clean",
+        "--sound"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "subset_ok": true,
+        "promise_tier": "ast_modeled",
+        "impact_nodes": 2
+      },
+      "note": "scoped sound impact; honest ast_modeled tier, not ecosystem sound",
+      "seq": 14
+    },
+    {
+      "tool": "grep",
+      "args": [
+        "batch_write",
+        "packages/"
+      ],
+      "ok": true,
+      "summary": {
+        "clean_hits": 6,
+        "dirty_noise_hits": 6
+      },
+      "note": "dirty hits are comments/strings/batch_write_shadow only — name-collision noise excluded from review set",
+      "seq": 15
+    }
+  ],
+  "file_set": [
+    "packages/clean/src/lib.rs",
+    "packages/clean/src/write.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/clean/src/write.rs",
+      "packages/clean/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/dirty/src/lib.rs",
+      "packages/dirty/src/shadow.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/clean/src/lib.rs",
+      "packages/clean/src/write.rs"
+    ],
+    "file_set_size": 2,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-sound-scoped-clean/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-v2.6-pro",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

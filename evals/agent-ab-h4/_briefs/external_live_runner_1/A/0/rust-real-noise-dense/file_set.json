@@ -1,0 +1,85 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["list workdir tree"],
+      "ok": true,
+      "summary": {"files": 6},
+      "note": "corpus is src/*.rs under isolated workdir"
+    },
+    {
+      "tool": "read",
+      "args": ["src/lib.rs", "src/packet.rs", "src/wire.rs", "src/metrics.rs", "src/legacy.rs", "src/clone_heavy.rs"],
+      "ok": true,
+      "summary": {"files_read": 6},
+      "note": "read full corpus before committing"
+    },
+    {
+      "tool": "agentgraph.index",
+      "args": ["--root", "."],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 44, "references": 38, "exact": 26, "heuristic": 12},
+      "note": "single root = this cell workdir"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["encode", "--root", "."],
+      "ok": true,
+      "summary": {"hits": 13, "files": ["src/packet.rs"]},
+      "note": "trait method Encode::encode + 12 impl methods, all in src/packet.rs"
+    },
+    {
+      "tool": "agentgraph.find",
+      "args": ["Encode", "--root", "."],
+      "ok": true,
+      "summary": {"hits": 2, "trait": "src/packet.rs", "enum_collision": "src/metrics.rs"},
+      "note": "metrics::Encode enum is a name collision, not the packet trait"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["encode", "--root", "."],
+      "ok": true,
+      "summary": {"callers": 3, "implementor_count": 12, "high_freq_name": false},
+      "note": "callers all in src/wire.rs (exact); implementors all in src/packet.rs; no high-freq demotion for 'encode'"
+    },
+    {
+      "tool": "agentgraph.who_calls",
+      "args": ["Encode", "--root", "."],
+      "ok": true,
+      "summary": {"imports": ["src/lib.rs:8", "src/wire.rs:2"], "implementor_count": 0},
+      "note": "trait re-export in lib.rs and import in wire.rs"
+    },
+    {
+      "tool": "agentgraph.related",
+      "args": ["Encode", "--root", "."],
+      "ok": true,
+      "summary": {"ranked": ["src/metrics.rs", "src/packet.rs", "src/wire.rs", "src/lib.rs"]},
+      "note": "top-ranked metrics.rs is the enum collision; excluded from file_set"
+    },
+    {
+      "tool": "agentgraph.impact",
+      "args": ["encode", "--root", "."],
+      "ok": true,
+      "summary": {"depth1_implementors": 12, "depth1_calls": 3, "depth2": ["src/lib.rs:9"]},
+      "note": "blast radius confined to packet.rs + wire.rs; lib.rs only re-exports send_packet"
+    },
+    {
+      "tool": "read",
+      "args": ["../RUNNER_CONTRACT.md"],
+      "ok": true,
+      "summary": {},
+      "note": "output schema only; no structure-fact labels"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

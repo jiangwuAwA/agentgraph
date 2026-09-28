@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/packet.rs",
+    "src/wire.rs",
+    "src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "op": "list",
+      "detail": "Get-ChildItem recursive listing of workdir tree"
+    },
+    {
+      "tool": "grep",
+      "op": "search",
+      "detail": "pattern 'encode|Encode' over workdir (54 matches across 6 src files)"
+    },
+    {
+      "tool": "bash",
+      "op": "read",
+      "detail": "Get-Content full text of all src/*.rs"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

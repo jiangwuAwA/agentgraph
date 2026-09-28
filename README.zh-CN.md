@@ -56,6 +56,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → 离线 HTML + 诚实字段
 - 接通包 / MCP 宿主片段 —— [docs/onboarding.md](docs/onboarding.md) · [examples/mcp-claude.json](examples/mcp-claude.json)
 - flags / 窗口 / 配方全文 —— 下文 [查询](#查询) · [docs/agent-recipes.md](docs/agent-recipes.md)
 - Workspace 多根 —— [docs/workspace.md](docs/workspace.md)
+- 产品边界与可引用口径（v0.5.7 收束）— [docs/product-improvement-backlog.md](docs/product-improvement-backlog.md)
 - 宏旁路（默认 OFF）—— [docs/macro-sidecar.md](docs/macro-sidecar.md)
 - Sound 子集 / S 门 —— [docs/sound-subset.md](docs/sound-subset.md)
 - 噪声 / implementor —— [docs/noise-governance.md](docs/noise-governance.md)

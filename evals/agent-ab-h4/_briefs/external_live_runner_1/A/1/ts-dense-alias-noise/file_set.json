@@ -1,0 +1,25 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    "agentgraph index --workspace workspace.json",
+    "agentgraph find OrderHandler",
+    "agentgraph who-calls OrderHandler",
+    "agentgraph who-calls execute",
+    "agentgraph blast-radius OrderHandler",
+    "agentgraph find execute",
+    "agentgraph related OrderHandler",
+    "agentgraph --workspace workspace.json --workspace-root core callers OrderHandler",
+    "agentgraph --workspace workspace.json --workspace-root app callers OrderHandler",
+    "agentgraph --workspace workspace.json --workspace-root app callers execute"
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

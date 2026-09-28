@@ -1,0 +1,26 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.randomization.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution",
+  "seeds": [
+    {
+      "seed": 4,
+      "task_order": [
+        "rust-real-noise-dense",
+        "rust-cross-crate-blast",
+        "ts-multi-root-client",
+        "ts-dense-alias-noise",
+        "rust-sound-scoped-clean"
+      ],
+      "arm_order": [
+        "A",
+        "B"
+      ],
+      "runner_order": [
+        "external_live_runner_2"
+      ],
+      "method": "task-level randomization; arm order alternates by seed parity; order recorded before arm execution"
+    }
+  ]
+}

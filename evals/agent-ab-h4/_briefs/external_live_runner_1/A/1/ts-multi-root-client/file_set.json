@@ -1,0 +1,52 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-multi-root-client",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "packages/registry/src/client.ts",
+    "packages/registry/src/index.ts",
+    "packages/service/src/order.service.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json index"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json find RegistryClient"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json who-calls RegistryClient"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json who-calls fetch"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json blast-radius fetch"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json related RegistryClient"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json importers packages/registry/src/index.ts"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json impact RegistryClient"
+    },
+    {
+      "tool": "agentgraph_cli",
+      "command": "agentgraph --workspace workspace.json who-calls OrderService"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

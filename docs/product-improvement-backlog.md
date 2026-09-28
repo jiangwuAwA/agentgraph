@@ -148,7 +148,7 @@
 | `exports` conditions | **H1 partial closed**（`.`/`./sub` + 有限条件） |
 | `node_modules` 外部包 | **H2 honest closed**（module-only + `external_dependency`；非 full npm 图） |
 | 真实脏 monorepo 全量 | **H3 synthetic closed**；private corpus 仍 operator-only |
-| 更大 N live | **H4 blocked**（无 host LLM runner）；fixture 已扩；历史 score 不改写 |
+| 更大 N live | **H4-live partial (mimo run live runner; real N labeled; noise~0)**（无 host LLM runner）；fixture 已扩；历史 score 不改写 |
 | P2-3 L1 规则包 | **H5 closed eval-gated** — eval 不支持扩规则 |
 | CHANGELOG / push | **H6**（见 CHANGELOG.md） |
 

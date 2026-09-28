@@ -1,0 +1,100 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_2",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "skill_search",
+      "args": ["identify source files for Rust Encode::encode issue using agentgraph CLI"],
+      "ok": true,
+      "summary": {"loaded_skill_id": null},
+      "note": "no matching skill; proceeded with agentgraph CLI + reads"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force; Get-ChildItem src -Recurse"],
+      "ok": true,
+      "summary": {"files": ["src/clone_heavy.rs", "src/legacy.rs", "src/lib.rs", "src/metrics.rs", "src/packet.rs", "src/wire.rs"]},
+      "note": "single-root isolated workdir; 6 source files"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph index --root ."],
+      "ok": true,
+      "summary": {"files": 6, "symbols": 44, "references": 38, "exact": 26, "heuristic": 12},
+      "note": "indexed this cell workdir only"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph stats"],
+      "ok": true,
+      "summary": {"files": 6, "languages": ["rust"], "refs_by_confidence": {"exact": 26, "heuristic": 12}},
+      "note": "no skipped/failed/oversize files"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls encode --json"],
+      "ok": false,
+      "summary": {"error": "unexpected argument --json"},
+      "note": "flag not supported; retried without it"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph blast-radius encode --json"],
+      "ok": false,
+      "summary": {"error": "unexpected argument --json"},
+      "note": "flag not supported; retried without it"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls encode"],
+      "ok": true,
+      "summary": {"callers": 3, "caller_paths": ["src/wire.rs"], "implementors": 12, "implementor_paths": ["src/packet.rs"], "high_freq_name": false, "implementors_truncated": false, "window": "default", "subset_ok": true},
+      "note": "real call sites only in wire.rs; all 12 trait impls only in packet.rs; no high-freq demotion"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph blast-radius encode"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "depth": 3, "node_paths": ["src/packet.rs", "src/wire.rs", "src/lib.rs"], "note_edge": "src/lib.rs:9 import send_packet at depth 2"},
+      "note": "impact also surfaces lib.rs module/re-export structure"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers encode --limit 60"],
+      "ok": true,
+      "summary": {"callers": 3, "implementors": 12},
+      "note": "confirming caller/implementor split"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content all 6 src/*.rs"],
+      "ok": true,
+      "summary": {"files_read": 6},
+      "note": "packet.rs: trait Encode + 12 impls; wire.rs: 3 p.encode() call sites; lib.rs: mod decls + pub use packet::Encode / wire::send_packet; metrics.rs/legacy.rs/clone_heavy.rs self-label as Noise (Encode enum collision, encode_label, encode_legacy, encode_name_for_clone)"
+    },
+    {
+      "tool": "write",
+      "args": ["file_set.json"],
+      "ok": true,
+      "summary": {"file_set": ["src/lib.rs", "src/packet.rs", "src/wire.rs"]},
+      "note": "excluded collision/noise: metrics.rs, legacy.rs, clone_heavy.rs"
+    },
+    {
+      "tool": "write",
+      "args": ["meta.json"],
+      "ok": true,
+      "summary": {"kind": "live_llm_agent"},
+      "note": "committed outputs into this cell workdir"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

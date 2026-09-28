@@ -1,0 +1,24 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-real-noise-dense",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "src/lib.rs",
+    "src/packet.rs",
+    "src/wire.rs"
+  ],
+  "tool_calls": [
+    {"tool": "glob", "args": ["**/*"], "ok": true, "summary": {"files_found": 6}, "note": "workdir tree: src/{lib,packet,wire,metrics,legacy,clone_heavy}.rs"},
+    {"tool": "read", "args": ["src/lib.rs"], "ok": true, "summary": {"lines": 9}, "note": "crate root; pub use packet::Encode + wire::send_packet"},
+    {"tool": "read", "args": ["src/packet.rs"], "ok": true, "summary": {"lines": 88, "trait": "Encode", "implementors": 12}, "note": "trait Encode { fn encode(&self) -> Vec<u8> } + Header/Body/Footer/Ack/Nack/Ping/Pong/Meta/Chunk0-3"},
+    {"tool": "read", "args": ["src/wire.rs"], "ok": true, "summary": {"lines": 17, "call_sites": 3}, "note": "send_packet/dump_all/checksum call p.encode() on dyn Encode"},
+    {"tool": "read", "args": ["src/metrics.rs"], "ok": true, "summary": {"lines": 20}, "note": "collision: encode_label + unrelated Encode enum (Counter/Gauge) + encode_metric"},
+    {"tool": "read", "args": ["src/legacy.rs"], "ok": true, "summary": {"lines": 12}, "note": "noise: encode_legacy helper + comment spam, no packet Encode edge"},
+    {"tool": "read", "args": ["src/clone_heavy.rs"], "ok": true, "summary": {"lines": 31}, "note": "noise: Clone/Debug helpers + encode_name_for_clone, no Encode trait edge"},
+    {"tool": "grep", "args": ["[Ee]ncode", "workdir"], "ok": true, "summary": {"matches": 54}, "note": "confirmed trait/callers only in packet.rs+wire.rs(+lib re-export); collisions in metrics/legacy/clone_heavy"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

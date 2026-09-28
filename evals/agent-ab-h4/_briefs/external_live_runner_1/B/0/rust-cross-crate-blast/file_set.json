@@ -1,0 +1,27 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-cross-crate-blast",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "tool_calls": [
+    { "tool": "skill_search", "target": "blast-radius file_set grep", "result": "no_match" },
+    { "tool": "bash", "target": "list workdir" },
+    { "tool": "bash", "target": "workspace.json + packages/" },
+    { "tool": "bash", "target": "recursive file list" },
+    { "tool": "bash", "target": "relative path list" },
+    { "tool": "grep", "target": "normalize_id", "scope": "workdir" },
+    { "tool": "bash", "target": "file sizes" },
+    { "tool": "bash", "target": "full file list" },
+    { "tool": "bash", "target": "read all 8 source files" },
+    { "tool": "write", "target": "file_set.json" },
+    { "tool": "write", "target": "meta.json" }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

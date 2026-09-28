@@ -1,0 +1,21 @@
+{
+  "schema": "agentgraph.eval_agent_ab_h4.selection.v1",
+  "hard_tasks": [
+    "ts-dense-alias-noise",
+    "ts-multi-root-client",
+    "rust-real-noise-dense",
+    "rust-cross-crate-blast",
+    "rust-sound-scoped-clean"
+  ],
+  "runners": {
+    "external_live_runner_1": "xiaomi/mimo-v2.6-pro",
+    "external_live_runner_2": "xiaomi/mimo-v2.6-flash"
+  },
+  "seeds": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "note": "H4-live hard slice including ts-dense-alias-noise; live LLM via mimo run isolated sessions"
+}

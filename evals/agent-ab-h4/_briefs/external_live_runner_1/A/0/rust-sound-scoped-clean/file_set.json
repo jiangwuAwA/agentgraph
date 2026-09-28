@@ -1,0 +1,120 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "rust-sound-scoped-clean",
+  "runner_id": "external_live_runner_1",
+  "arm": "A",
+  "seed": 0,
+  "file_set": [
+    "packages/clean/src/write.rs",
+    "packages/clean/src/lib.rs"
+  ],
+  "tool_calls": [
+    {
+      "tool": "read",
+      "args": ["workspace.json"],
+      "ok": true,
+      "summary": {"roots": ["clean", "dirty"]},
+      "note": "multi-root manifest; clean=packages/clean, dirty=packages/dirty"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/lib.rs"],
+      "ok": true,
+      "summary": {"defines": ["flush_all"], "refs": ["write::batch_write re-export", "batch_write call in flush_all"]},
+      "note": "true clean dependent of clean::batch_write"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/clean/src/write.rs"],
+      "ok": true,
+      "summary": {"defines": ["batch_write", "batch_write_verbose"]},
+      "note": "definition site of clean::batch_write; batch_write_verbose also calls it in-file"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/dirty/src/lib.rs"],
+      "ok": true,
+      "summary": {"defines": ["dirty_entry", "batch_write_shadow"], "unsafe": true},
+      "note": "NOISE: unsafe transmute leaves S; 'batch_write' only in comments + batch_write_shadow name collision"
+    },
+    {
+      "tool": "read",
+      "args": ["packages/dirty/src/shadow.rs"],
+      "ok": true,
+      "summary": {"defines": ["shadow_write", "note"]},
+      "note": "NOISE: batch_write only in comment and a string literal; no true definition/call edge"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["index", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"files": 4, "symbols": 9, "references": 6, "clean_subset_violations": 0, "dirty_subset_violations": 3, "clean_promise_tier": "ast_modeled", "dirty_promise_tier": "disabled"},
+      "note": "union store; dirty unsafe disables union sound"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["find", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"matches": 1, "hit": "clean/src/write.rs:2 function batch_write"},
+      "note": "single true definition, root_id=clean; no dirty definition"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["who-calls", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean"],
+      "ok": true,
+      "summary": {"window": "default", "subset_ok": true, "promise_tier": "ast_modeled", "callers": 2, "paths": ["src/lib.rs:3", "src/lib.rs:6"]},
+      "note": "scoped to clean root"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean"],
+      "ok": true,
+      "summary": {"window": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "impact_nodes": 2},
+      "note": "scoped sound window on clean; recommend scoped sound, not union sound"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean", "--include-dynamic"],
+      "ok": true,
+      "summary": {"callers": 2, "paths": ["src/lib.rs:3", "src/lib.rs:6"]},
+      "note": "exact import + exact call inside flush_all"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["callers", "batch_write", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"callers": 2, "paths": ["src/lib.rs:3", "src/lib.rs:6"], "dirty_rows": 0},
+      "note": "unscoped union still returns only clean rows; dirty has no true edge to this symbol"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean"],
+      "ok": true,
+      "summary": {"files": ["src/write.rs", "src/lib.rs"]},
+      "note": "definition:function + reference:import — matches review set"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["subset", "--workspace", "workspace.json"],
+      "ok": true,
+      "summary": {"union_promise_tier": "disabled", "in_subset": false, "clean_sound_eligible": true, "dirty_sound_eligible": false, "dirty_violations": ["unsafe", "transmute", "transmute"]},
+      "note": "recommendation: scoped --sound on clean; avoid dirty — do NOT claim union sound"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["impact", "batch_write", "--workspace", "workspace.json", "--workspace-root", "clean", "--sound"],
+      "ok": true,
+      "summary": {"mode": "sound", "subset_ok": true, "promise_tier": "ast_modeled", "impact_nodes": 2},
+      "note": "scoped sound impact; honest ast_modeled tier, not ecosystem sound"
+    },
+    {
+      "tool": "grep",
+      "args": ["batch_write", "packages/"],
+      "ok": true,
+      "summary": {"clean_hits": 6, "dirty_noise_hits": 6},
+      "note": "dirty hits are comments/strings/batch_write_shadow only — name-collision noise excluded from review set"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

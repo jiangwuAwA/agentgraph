@@ -1,0 +1,29 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "ts-dense-alias-noise",
+  "runner_id": "external_live_runner_1",
+  "arm": "B",
+  "seed": 0,
+  "file_set": [
+    "packages/core/src/orderHandler.ts",
+    "packages/app/src/useOrder.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["Get-ChildItem workdir; Get-ChildItem .."], "ok": true, "summary": {"listed": ["workdir", "ISSUE.md", "RUNNER_CONTRACT.md"]}, "note": "walk cell layout"},
+    {"tool": "read", "args": ["RUNNER_CONTRACT.md"], "ok": true, "summary": {"schemas": ["file_set.v1", "meta.v1"]}, "note": "output contract"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse packages"], "ok": true, "summary": {"source_files": 21}, "note": "walk packages; ignored .mimocode/node_modules"},
+    {"tool": "bash", "args": ["workspace.json"], "ok": true, "summary": {"roots": ["core", "app", "legacy", "cli"]}, "note": "multi-root manifest"},
+    {"tool": "grep", "args": ["OrderHandler", "packages"], "ok": true, "summary": {"hits": 7}, "note": "symbol token across roots"},
+    {"tool": "grep", "args": ["execute", "packages"], "ok": true, "summary": {"hits": 12}, "note": "decoy execute() census"},
+    {"tool": "grep", "args": ["from |import |require", "packages"], "ok": true, "summary": {"imports": 3}, "note": "cross-package edges"},
+    {"tool": "read", "args": ["packages/core/src/orderHandler.ts"], "ok": true, "summary": {"defines": "OrderHandler.execute"}, "note": "true target definition"},
+    {"tool": "read", "args": ["packages/app/src/useOrder.ts"], "ok": true, "summary": {"import": "@demo/core/orderHandler", "calls": "h.execute"}, "note": "true dependent via package name"},
+    {"tool": "read", "args": ["packages/legacy/src/utils/orderHandler.ts", "packages/legacy/src/index.ts"], "ok": true, "summary": {"same_name": "OrderHandler", "root": "legacy"}, "note": "name-collision decoy, not core contract"},
+    {"tool": "read", "args": ["packages/cli/src/help.ts"], "ok": true, "summary": {"prose_only": true}, "note": "help string mentions OrderHandler.execute, not a dependent"},
+    {"tool": "read", "args": ["packages/core/src/noise/noise0.ts", "packages/core/src/noise/bundle.ts"], "ok": true, "summary": {"classes": ["Noise0"]}, "note": "decoy execute() on Noise* classes"},
+    {"tool": "read", "args": ["packages/app/src/other.ts"], "ok": true, "summary": {"import": "@demo/core/noise/noise0"}, "note": "noise consumer, not OrderHandler"},
+    {"tool": "read", "args": ["packages/core/package.json", "packages/core/tsconfig.json", "packages/app/package.json", "packages/legacy/package.json", "packages/cli/package.json"], "ok": true, "summary": {"core_name": "@demo/core"}, "note": "package-name alias is the real cross-root edge"}
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

@@ -1,0 +1,407 @@
+{
+  "schema": "agentgraph.eval_agent_ab.trajectory.v1",
+  "schema_alias": "agentgraph.eval_agent_ab.d.v1",
+  "protocol": "p0-5d-isolated-lab",
+  "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+  "policy": "A",
+  "policy_label": "P0-5d arm A — agentgraph recipes (+reads) in isolated session",
+  "kind": "live_llm_agent",
+  "arm": "A",
+  "runner_id": "external_live_runner_1",
+  "task_id": "rust-cross-crate-blast",
+  "seed": 0,
+  "run_id": "external_live_runner_1-a-0",
+  "fixture": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast",
+  "brief": "evals/agent-ab-d/_briefs/external_live_runner_1/A/0/rust-cross-crate-blast",
+  "symbol": "normalize_id",
+  "model_note": "xiaomi/mimo-v2.6-pro",
+  "independent_session": true,
+  "saw_labels_before_commit": false,
+  "tools_allowed": [
+    "agentgraph: index",
+    "agentgraph: blast-radius",
+    "agentgraph: who-calls",
+    "agentgraph: find",
+    "agentgraph: related",
+    "agentgraph: subset",
+    "read"
+  ],
+  "mcp_or_cli_calls": {
+    "count": 0,
+    "recipe_tools": [],
+    "grep_count": 0
+  },
+  "chose_correct_workspace_root": true,
+  "file_budget": 4,
+  "read_budget": 8,
+  "approx_tokens": null,
+  "metrics_ext": {
+    "mcp_or_cli_calls": {
+      "count": 0,
+      "recipe_tools": [],
+      "grep_count": 0
+    },
+    "chose_correct_workspace_root": true,
+    "file_budget": 4,
+    "read_budget": 8,
+    "read_files": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "approx_tokens": null,
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-v2.6-pro",
+    "independent_session": true,
+    "saw_labels_before_commit": false
+  },
+  "task_randomization": {
+    "seed": null,
+    "task_order": [],
+    "arm_order": [
+      "A",
+      "B"
+    ],
+    "runner_order": [],
+    "method": "missing randomization log"
+  },
+  "honesty": {
+    "live_llm_agent": true,
+    "scripted_tool_policy_agent": false,
+    "scripted_external_runner": false,
+    "private_corpus": false,
+    "not_public_benchmark_model": true,
+    "standardized_lab_harness": false,
+    "independent_session": true,
+    "saw_labels_before_commit": false,
+    "isolated_session": true,
+    "issue_only_brief": true,
+    "no_fabricated_llm_numbers": true,
+    "no_oversell_live_a_beats_b": true,
+    "lab_ready_claim": false,
+    "contamination_ban_list": [
+      "fixture task.json structure-fact labels (expected / noise / forbidden / workspace roots)",
+      "golden file sets or scored tables from any arm, seed, or runner",
+      "shared intermediate file-set files between arms",
+      "shared workdirs or .agentgraph index.db between arms",
+      "P0-5b / P0-5c trajectory scores visible to the decision path",
+      "fixture-author session context that already saw labels (forces lab_ready=false)",
+      "private monorepo / stock corpus paths",
+      "injected harness goldens into brief packs"
+    ],
+    "note": "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "contamination": "Issue-only brief; workdir has no task.json; decision path did not read structure-fact labels or other arms' outputs.",
+    "author_model_session": false,
+    "lab_eligible_runner": true
+  },
+  "task": {
+    "id": "rust-cross-crate-blast",
+    "title": "Cross-crate normalize_id blast — stay on true dependents",
+    "language": "rust",
+    "issue": "core::normalize_id contract must change (trim + case rules). Using the multi-root workspace, find the true blast radius across packages. Prefer scoped queries on the definition root and true consumers; do not pull unrelated packages that merely share the symbol name or mention it in comments.",
+    "symbol": "normalize_id",
+    "expected_files": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "noise_files": [
+      "packages/tools/src/lib.rs",
+      "packages/tools/src/audit.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_source": "expected.forbidden_files"
+  },
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json index"
+      ],
+      "ok": true,
+      "summary": {
+        "files": 8,
+        "symbols": 13,
+        "references": 10,
+        "roots": [
+          "core",
+          "api",
+          "tools",
+          "web"
+        ]
+      },
+      "note": "multi-root workspace index built from workspace.json",
+      "seq": 1
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json find normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "hits": 2,
+        "definitions": [
+          {
+            "root_id": "core",
+            "path": "src/id.rs",
+            "line": 2
+          },
+          {
+            "root_id": "tools",
+            "path": "src/lib.rs",
+            "line": 9
+          }
+        ]
+      },
+      "note": "two definitions: core is true contract site; tools is name collision",
+      "seq": 2
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json who-calls normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "caller_rows": 4,
+        "true_refs": [
+          {
+            "root_id": "api",
+            "path": "src/routes.rs",
+            "line": 4,
+            "qualifier": "core"
+          },
+          {
+            "root_id": "core",
+            "path": "src/lib.rs",
+            "line": 3,
+            "kind": "import"
+          },
+          {
+            "root_id": "core",
+            "path": "src/lib.rs",
+            "line": 6,
+            "enclosing": "batch_key"
+          }
+        ],
+        "noise_refs": [
+          {
+            "root_id": "tools",
+            "path": "src/lib.rs",
+            "line": 14,
+            "enclosing": "audit_label",
+            "why": "local name collision, not core consumer"
+          }
+        ]
+      },
+      "note": "tools row is local normalize_id collision; excluded per issue",
+      "seq": 3
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json blast-radius normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "window": "sound",
+        "subset_ok": true,
+        "depth1": [
+          "packages/api/src/routes.rs",
+          "packages/core/src/lib.rs",
+          "packages/tools/src/lib.rs (noise)"
+        ],
+        "depth2": [
+          "packages/api/src/lib.rs"
+        ]
+      },
+      "note": "depth-2 row is api handle -> routes::lookup -> core::normalize_id; tools excluded as name collision",
+      "seq": 4
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json impact normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 5,
+        "unique_files": 4
+      },
+      "note": "transitive impact confirms api/src/lib.rs at depth 2",
+      "seq": 5
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json --workspace-root core callers normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 2,
+        "files": [
+          "packages/core/src/lib.rs"
+        ]
+      },
+      "note": "scoped to definition root core: import re-export + batch_key call",
+      "seq": 6
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json --workspace-root api callers normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "rows": 1,
+        "files": [
+          "packages/api/src/routes.rs"
+        ],
+        "qualifier": "core"
+      },
+      "note": "scoped to true consumer root api: cross-crate core::normalize_id call",
+      "seq": 7
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json callers normalize_id --sound"
+      ],
+      "ok": true,
+      "summary": {
+        "mode": "sound",
+        "subset_ok": true
+      },
+      "note": "S-qualified walk over modeled edges",
+      "seq": 8
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json who-calls batch_key"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 0
+      },
+      "note": "batch_key has no further callers in corpus",
+      "seq": 9
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json who-calls lookup"
+      ],
+      "ok": true,
+      "summary": {
+        "callers": 1,
+        "at": "packages/api/src/lib.rs:4",
+        "enclosing": "handle"
+      },
+      "note": "transitive path handle -> lookup -> core::normalize_id",
+      "seq": 10
+    },
+    {
+      "tool": "bash",
+      "args": [
+        "agentgraph --workspace workspace.json related normalize_id"
+      ],
+      "ok": true,
+      "summary": {
+        "files": [
+          "packages/core/src/lib.rs",
+          "packages/core/src/id.rs",
+          "packages/api/src/routes.rs"
+        ]
+      },
+      "note": "retrieval-scoping ranking; direct reference set only",
+      "seq": 11
+    },
+    {
+      "tool": "read",
+      "args": [
+        "packages/core/src/id.rs",
+        "packages/core/src/lib.rs",
+        "packages/api/src/lib.rs",
+        "packages/api/src/routes.rs",
+        "packages/tools/src/lib.rs",
+        "packages/tools/src/audit.rs",
+        "packages/web/src/lib.rs",
+        "packages/web/src/pages.rs",
+        "workspace.json"
+      ],
+      "ok": true,
+      "summary": {
+        "definition": "core::normalize_id = raw.trim().to_ascii_lowercase()",
+        "cross_crate_call": "api routes.rs: core::normalize_id(raw)",
+        "internal_call": "core lib.rs batch_key -> normalize_id",
+        "transitive": "api lib.rs handle -> routes::lookup -> core::normalize_id",
+        "noise_name_collision": "tools lib.rs local normalize_id (replace _ with -)",
+        "noise_comments": "web lib.rs + web pages.rs comment-only mentions"
+      },
+      "note": "read-only verification of agentgraph edges; tools/web excluded as name collision and comment-only noise",
+      "seq": 12
+    }
+  ],
+  "file_set": [
+    "packages/api/src/lib.rs",
+    "packages/api/src/routes.rs",
+    "packages/core/src/id.rs",
+    "packages/core/src/lib.rs"
+  ],
+  "score": {
+    "expected_file_recall": 1.0,
+    "expected_hit": [
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/api/src/lib.rs"
+    ],
+    "expected_miss": [],
+    "extra_noise_files": [],
+    "extra_noise_count": 0,
+    "forbidden_files": [
+      "packages/tools/src/lib.rs",
+      "packages/web/src/lib.rs",
+      "packages/web/src/pages.rs"
+    ],
+    "forbidden_hit": [],
+    "forbidden_hit_count": 0,
+    "file_set": [
+      "packages/api/src/lib.rs",
+      "packages/api/src/routes.rs",
+      "packages/core/src/id.rs",
+      "packages/core/src/lib.rs"
+    ],
+    "file_set_size": 4,
+    "stamped": true,
+    "stamp_source": "fixtures/eval-agent-tasks-hard/rust-cross-crate-blast/task.json",
+    "stamp_offline": true
+  },
+  "extras": {
+    "runner_id": "external_live_runner_1",
+    "model_note": "xiaomi/mimo-v2.6-pro",
+    "arm": "A",
+    "rationale": "isolated runner decision path",
+    "protocol": "P0-5d isolated lab; issue-only briefs; independent session per (runner, arm, seed, task); labels stamped offline after commitment",
+    "isolated_slice": true
+  },
+  "notes": [
+    "P0-5d isolated cell — decision path from issue-only brief + workdir; structure-fact scores stamped offline after commitment. Not a product-superiority claim.",
+    "Arm A: isolated runner decision path"
+  ],
+  "errors": []
+}

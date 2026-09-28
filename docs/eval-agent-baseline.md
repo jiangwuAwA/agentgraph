@@ -771,3 +771,28 @@ cargo test --test agent_ab_d_eval
 ```
 
 Expected S1 gate outcome: `lab_ready=false` with gap list (no live matrix yet).
+
+
+## H4-live — hard-slice live A/B (incl. `ts-dense-alias-noise`)
+
+**Status:** live LLM runner path **connected** (`mimo run` isolated sessions).
+Matrix is **partial** — table reports **real recorded N**.
+
+### Runner + model_note
+
+| runner_id | model_note | independent_session | kind |
+|---|---|---|---|
+| `external_live_runner_1` | `xiaomi/mimo-v2.6-pro` | **true** | live_llm_agent |
+| `external_live_runner_2` | `xiaomi/mimo-v2.6-flash` | **true** | live_llm_agent (queued) |
+
+### Summary (recorded only; additive)
+
+| runner | arm | N (runs) | recall | extra-noise | cwr (t/f/na) | mcp_or_cli |
+|---|---|---|---|---|---|---|
+| mimo-v2.6-pro | A | 8 | **0.885** | **0.00** | 6/0/2 | 0.88 |
+| mimo-v2.6-pro | B | 5 | **0.900** | **0.00** | 4/0/1 | 0 |
+
+**Honest read:** noise ~0 / **not separated** — **no live noise advantage**.
+Primary signals **recall** + **cwr**. Per-cell N often 1–2 (target N≥5).
+`lab_ready=false`. `ts-dense-alias-noise` A recall 1.0 (N=2), B 1.0 (N=1), cwr=true.
+Historical P0-5c/d **unchanged**. Trajectories: `evals/agent-ab-h4/`.

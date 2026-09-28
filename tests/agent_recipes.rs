@@ -1342,7 +1342,6 @@ fn unit_decision_struct_fields() {
     assert_eq!(a, b);
 }
 
-
 #[test]
 fn i2_file_budget_stable_keys_on_blast_and_who_calls() {
     use std::process::{Command, Stdio};
@@ -1379,16 +1378,32 @@ fn i2_file_budget_stable_keys_on_blast_and_who_calls() {
         .stdin(Stdio::null())
         .output()
         .unwrap();
-    assert!(idx.status.success(), "{}", String::from_utf8_lossy(&idx.stderr));
+    assert!(
+        idx.status.success(),
+        "{}",
+        String::from_utf8_lossy(&idx.stderr)
+    );
 
     let blast = Command::new(bin)
-        .args(["--root", base.to_str().unwrap(), "blast-radius", "createOrder"])
+        .args([
+            "--root",
+            base.to_str().unwrap(),
+            "blast-radius",
+            "createOrder",
+        ])
         .stdin(Stdio::null())
         .output()
         .unwrap();
     assert!(blast.status.success());
-    let bv: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&blast.stdout)).unwrap();
-    for k in ["file_budget", "selected", "pruned", "pruned_count", "selection_reason"] {
+    let bv: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&blast.stdout)).unwrap();
+    for k in [
+        "file_budget",
+        "selected",
+        "pruned",
+        "pruned_count",
+        "selection_reason",
+    ] {
         assert!(bv.get(k).is_some(), "blast missing stable key {k}: {bv}");
     }
     assert!(bv["selected"].as_array().is_some());
@@ -1399,8 +1414,18 @@ fn i2_file_budget_stable_keys_on_blast_and_who_calls() {
         .output()
         .unwrap();
     assert!(who.status.success());
-    let wv: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&who.stdout)).unwrap();
-    for k in ["file_budget", "selected", "pruned", "pruned_count", "selection_reason"] {
-        assert!(wv.get(k).is_some(), "who_calls missing stable key {k}: {wv}");
+    let wv: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&who.stdout)).unwrap();
+    for k in [
+        "file_budget",
+        "selected",
+        "pruned",
+        "pruned_count",
+        "selection_reason",
+    ] {
+        assert!(
+            wv.get(k).is_some(),
+            "who_calls missing stable key {k}: {wv}"
+        );
     }
 }

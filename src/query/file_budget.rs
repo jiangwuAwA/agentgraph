@@ -185,7 +185,8 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
     }
 
     // Diversity: same-dir count demotion.
-    let mut dir_counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut dir_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     for path in best.keys() {
         let segs = path_segments(path);
         let dir = if segs.len() >= 2 {
@@ -265,10 +266,7 @@ pub fn candidates_from_nodes(nodes: &[Value]) -> Vec<FileCandidate> {
             .get("edge_role")
             .and_then(|r| r.as_str())
             .map(|s| s.to_string());
-        let depth = n
-            .get("depth")
-            .and_then(|d| d.as_u64())
-            .unwrap_or(0) as usize;
+        let depth = n.get("depth").and_then(|d| d.as_u64()).unwrap_or(0) as usize;
         let conf = n.get("confidence").and_then(|c| c.as_str()).unwrap_or("");
         let bonus = if conf == "exact" { 2.0 } else { 0.0 };
         out.push(FileCandidate {
@@ -344,8 +342,12 @@ mod tests {
             cand("src/orders/orderService.ts", "call", 1),
         ];
         let sel = select_files_budgeted(cs, 2);
-        assert!(sel.selected.contains(&"src/orders/createOrder.ts".to_string()));
-        assert!(sel.selected.contains(&"src/orders/orderService.ts".to_string()));
+        assert!(sel
+            .selected
+            .contains(&"src/orders/createOrder.ts".to_string()));
+        assert!(sel
+            .selected
+            .contains(&"src/orders/orderService.ts".to_string()));
         assert!(sel.pruned.iter().any(|p| p.contains("legacy")));
         assert!(sel.pruned.iter().any(|p| p.contains("admin")));
     }

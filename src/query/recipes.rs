@@ -22,13 +22,15 @@ use std::path::PathBuf;
 use anyhow::Result;
 use serde_json::{json, Value};
 
+use super::file_budget::{
+    candidates_from_nodes, candidates_from_rows, select_files_budgeted, DEFAULT_FILE_BUDGET,
+};
 use crate::index::store::Store;
 use crate::index::subset::{
     scoped_sound_by_root, scoped_sound_by_top_dir, select_sound_promise, top_dir_of_path,
     SoundAggregation, SoundScopeKind, SubsetViolation,
 };
 use crate::index::{union_impact, Indexer, UnionOptions};
-use super::file_budget::{candidates_from_nodes, candidates_from_rows, select_files_budgeted, DEFAULT_FILE_BUDGET};
 use crate::model::{is_high_freq_name, ConfidenceFilter, MacroSidecarStatus, ReferenceRecord};
 use crate::query::{build_callers_payload, CallersRoleMode};
 

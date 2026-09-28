@@ -1,0 +1,33 @@
+﻿{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 1,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/payments/refundCard.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/chargeCard.ts",
+    "src/admin/orderAdmin.ts",
+    "src/orders/orderMetrics.ts"
+  ],
+  "tool_calls": [
+    {"tool": "bash", "args": ["agentgraph blast-radius createOrder"], "ok": true, "summary": {"selected": ["src/orders/createOrder.ts", "src/orders/orderService.ts"], "pruned": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts"], "subset_ok": true, "window": "sound"}, "note": "sound window; selection_reason demoted_legacy_admin_common"},
+    {"tool": "bash", "args": ["agentgraph blast-radius chargeCard"], "ok": true, "summary": {"selected": ["src/payments/chargeCard.ts", "src/payments/refundCard.ts", "src/orders/orderService.ts"], "pruned": ["src/legacy/chargeCard.ts"], "subset_ok": true, "window": "sound"}, "note": "refundCard defines chargeCard (settlement batch)"},
+    {"tool": "bash", "args": ["agentgraph who-calls createOrder"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts"], "callers": 2}, "note": "import+call in OrderService.place"},
+    {"tool": "bash", "args": ["agentgraph who-calls chargeCard"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts"], "callers": 2}, "note": "import+call in OrderService.place"},
+    {"tool": "bash", "args": ["agentgraph find createOrder"], "ok": true, "summary": {"defs": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]}, "note": "3 definitions"},
+    {"tool": "bash", "args": ["agentgraph find chargeCard"], "ok": true, "summary": {"defs": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]}, "note": "3 definitions"},
+    {"tool": "bash", "args": ["agentgraph impact createOrder --limit 100"], "ok": true, "summary": {"impact_files": ["src/orders/orderService.ts"]}, "note": "callers only"},
+    {"tool": "bash", "args": ["agentgraph impact chargeCard --limit 100"], "ok": true, "summary": {"impact_files": ["src/orders/orderService.ts"]}, "note": "callers only"},
+    {"tool": "bash", "args": ["agentgraph importers src/orders/createOrder.ts", "agentgraph importers src/payments/chargeCard.ts"], "ok": true, "summary": {"importers": ["src/orders/orderService.ts"]}, "note": "module importers"},
+    {"tool": "bash", "args": ["agentgraph related createOrder --limit 20", "agentgraph related chargeCard --limit 20"], "ok": true, "summary": {"related_union": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts", "src/orders/orderService.ts", "src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]}, "note": "definition:function score 10 for each def site"},
+    {"tool": "grep", "args": ["createOrder|chargeCard", "src/"], "ok": true, "summary": {"mention_files": ["src/orders/orderMetrics.ts", "src/admin/orderAdmin.ts", "src/legacy/chargeCard.ts", "src/legacy/orderHandler.ts", "src/legacy/createOrder.ts", "src/payments/refundCard.ts", "src/payments/chargeCard.ts", "src/orders/createOrder.ts", "src/orders/orderService.ts"]}, "note": "textual mentions incl. comments; 9 files total"},
+    {"tool": "bash", "args": ["Get-Content src/orders/createOrder.ts", "src/payments/chargeCard.ts", "src/orders/orderService.ts", "src/payments/refundCard.ts", "src/legacy/*.ts", "src/admin/orderAdmin.ts", "src/orders/orderMetrics.ts"], "ok": true, "summary": {"read": 9}, "note": "verified define/import/call/document roles"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

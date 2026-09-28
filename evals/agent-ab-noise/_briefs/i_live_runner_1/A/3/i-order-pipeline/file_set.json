@@ -1,0 +1,77 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 3,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/orderHandler.ts",
+    "src/legacy/chargeCard.ts",
+    "src/payments/refundCard.ts",
+    "src/admin/orderAdmin.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["agentgraph find createOrder"],
+      "ok": true,
+      "summary": {"defs": 3, "paths": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]},
+      "note": "indexed symbol definitions of createOrder"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find chargeCard"],
+      "ok": true,
+      "summary": {"defs": 3, "paths": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]},
+      "note": "refundCard.ts exports chargeCard despite filename"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers createOrder"],
+      "ok": true,
+      "summary": {"hits": 2, "path": "src/orders/orderService.ts"},
+      "note": "import + call in OrderService.place"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers chargeCard"],
+      "ok": true,
+      "summary": {"hits": 2, "path": "src/orders/orderService.ts"},
+      "note": "import + call in OrderService.place"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph impact createOrder"],
+      "ok": true,
+      "summary": {"dependents": ["src/orders/orderService.ts"]},
+      "note": "no further transitive callers"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph impact chargeCard"],
+      "ok": true,
+      "summary": {"dependents": ["src/orders/orderService.ts"]},
+      "note": "no further transitive callers"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard"],
+      "ok": true,
+      "summary": {"matches": 9, "paths": ["src/orders/orderService.ts", "src/orders/createOrder.ts", "src/orders/orderMetrics.ts", "src/admin/orderAdmin.ts", "src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]},
+      "note": "text-level mentions including comment-only metrics helper"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File"],
+      "ok": true,
+      "summary": {"source_files": 63},
+      "note": "tree enumerated; only .ts sources under src/ plus package.json"
+    }
+  ],
+  "chose_correct_workspace_root": true,
+  "approx_tokens": null
+}

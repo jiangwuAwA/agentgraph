@@ -1,0 +1,99 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-cache-registry",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/cache/registry.ts",
+    "src/app/bootstrap.ts",
+    "src/admin/registry.ts",
+    "src/legacy/registry.ts",
+    "src/shared/registry.ts",
+    "src/api/registry.ts",
+    "src/app/registry.ts",
+    "src/cli/registry.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["agentgraph index --root ."],
+      "ok": true,
+      "summary": {
+        "files": 102,
+        "symbols": 115,
+        "references": 11
+      },
+      "note": "L0/L1 index built in workdir"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph find CacheRegistry --root ."],
+      "ok": true,
+      "summary": {
+        "defs": 10,
+        "kind": "class"
+      },
+      "note": "10 same-named CacheRegistry class definitions across admin/api/app/cache/cli/config/legacy/metrics/shared/util"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph callers CacheRegistry --root ."],
+      "ok": true,
+      "summary": {
+        "refs": 2,
+        "paths": ["src/app/bootstrap.ts"]
+      },
+      "note": "exact import+construct resolved to src/cache/registry.ts"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph impact CacheRegistry --root ."],
+      "ok": true,
+      "summary": {
+        "edges": 2
+      },
+      "note": "only bootstrap depends on CacheRegistry"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph related CacheRegistry --root ."],
+      "ok": true,
+      "summary": {
+        "files": 10
+      },
+      "note": "all definition:class rows, equal score"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph who-calls CacheRegistry --root ."],
+      "ok": true,
+      "summary": {
+        "selected": ["src/app/bootstrap.ts"],
+        "window": "default"
+      },
+      "note": "file_budget=8; honesty payload not a complete runtime graph"
+    },
+    {
+      "tool": "grep",
+      "args": ["CacheRegistry", "."],
+      "ok": true,
+      "summary": {
+        "files_with_class_name": 11,
+        "matches": 14
+      },
+      "note": "10 definitions + src/app/bootstrap.ts (import/construct/return type)"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -Include *.ts,*.json"],
+      "ok": true,
+      "summary": {
+        "read_all_source": true
+      },
+      "note": "read every workdir source file to classify defines/constructs/wraps/documents and separate same-name decoys + logCache helpers"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

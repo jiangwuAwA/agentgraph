@@ -1,3 +1,4 @@
+pub mod file_budget;
 pub mod recipes;
 
 use anyhow::Result;

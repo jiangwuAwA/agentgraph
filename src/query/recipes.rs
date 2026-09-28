@@ -28,6 +28,7 @@ use crate::index::subset::{
     SoundAggregation, SoundScopeKind, SubsetViolation,
 };
 use crate::index::{union_impact, Indexer, UnionOptions};
+use super::file_budget::{candidates_from_nodes, candidates_from_rows, select_files_budgeted, DEFAULT_FILE_BUDGET};
 use crate::model::{is_high_freq_name, ConfidenceFilter, MacroSidecarStatus, ReferenceRecord};
 use crate::query::{build_callers_payload, CallersRoleMode};
 
@@ -360,6 +361,7 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
         stale,
         scoped_sound,
     } = input;
+    let file_sel = select_files_budgeted(candidates_from_nodes(&nodes), DEFAULT_FILE_BUDGET);
     let mut v = json!({
         "tool": "blast_radius",
         "symbol": symbol,
@@ -370,6 +372,11 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
         "promise_tier": promise_tier,
         "promise_languages": languages,
         "nodes": nodes,
+        "file_budget": file_sel.file_budget,
+        "selected": file_sel.selected,
+        "pruned": file_sel.pruned,
+        "pruned_count": file_sel.pruned_count,
+        "selection_reason": file_sel.selection_reason,
         "include_macro": include_macro,
         "recommendation": window.recommendation,
         "note": RECIPE_NOTE,
@@ -505,6 +512,10 @@ pub fn build_who_calls_payload(
         )
     };
 
+    let mut file_rows: Vec<Value> = callers.clone();
+    file_rows.extend(implementors.iter().cloned());
+    let file_sel = select_files_budgeted(candidates_from_rows(&file_rows), DEFAULT_FILE_BUDGET);
+
     json!({
         "tool": "who_calls",
         "symbol": symbol,
@@ -518,6 +529,11 @@ pub fn build_who_calls_payload(
         "implementors": implementors,
         "implementor_count": implementor_count,
         "implementors_truncated": implementors_truncated,
+        "file_budget": file_sel.file_budget,
+        "selected": file_sel.selected,
+        "pruned": file_sel.pruned,
+        "pruned_count": file_sel.pruned_count,
+        "selection_reason": file_sel.selection_reason,
         "payload": payload,
         "recommendation": recommendation,
         "note": RECIPE_NOTE,
@@ -687,6 +703,21 @@ pub fn run_blast_radius(
         )?;
         hits.iter().map(|n| n.to_query_json()).collect()
     };
+    // I2: always include the symbol definition file as a top candidate.
+    if let Ok(defs) = store.find_symbol(&args.symbol, 20) {
+        for d in defs {
+            nodes.push(json!({
+                "name": d.name,
+                "path": d.path,
+                "line": d.start_line,
+                "kind": "define",
+                "depth": 0,
+                "confidence": "exact",
+                "edge_role": "define",
+                "at": format!("{}:{}", d.path, d.start_line),
+            }));
+        }
+    }
 
     if include_macro {
         if let Some(side) = indexer.open_macro_store()? {

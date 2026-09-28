@@ -3,6 +3,17 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.12
+
+### Added
+- **I2 precision file policy** on blast_radius / who_calls:
+  file_budget / selected / pruned / pruned_count / selection_reason (stable keys).
+  Default **少而准** (K=8); demote legacy/admin/common-name; same-dir diversity.
+
+### Eval (I-track, additive)
+- I2 live: A extra-noise **4.86** vs B **5.43** (delta ~0.57), recall equal — **budgeted** noise advantage, not ecosystem-wide.
+- **No** live noise advantage claim beyond this budgeted slice. Not 生态 sound.
+
 ## v0.5.11
 
 ### Added

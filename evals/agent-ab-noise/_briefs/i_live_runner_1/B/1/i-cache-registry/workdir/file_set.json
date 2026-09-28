@@ -1,0 +1,31 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-cache-registry",
+  "runner_id": "i_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/cache/registry.ts",
+    "src/app/bootstrap.ts",
+    "src/admin/registry.ts",
+    "src/admin/logger.ts",
+    "src/legacy/registry.ts",
+    "src/legacy/logger.ts",
+    "src/shared/registry.ts",
+    "src/shared/logger.ts"
+  ],
+  "tool_calls": [
+    {"tool": "skill_search", "args": ["find files defining a class by name across codebase for security review listing"], "ok": true, "summary": {}, "note": "no matching skill; listing/grep/read only"},
+    {"tool": "bash", "args": ["ls"], "ok": true, "summary": {}, "note": "workdir: src/ + package.json"},
+    {"tool": "grep", "args": ["CacheRegistry"], "ok": true, "summary": {"files_with_class_name": ["src/cache/registry.ts", "src/app/bootstrap.ts", "src/app/registry.ts", "src/admin/registry.ts", "src/legacy/registry.ts", "src/shared/registry.ts", "src/cli/registry.ts", "src/api/registry.ts", "src/util/registry.ts", "src/config/registry.ts", "src/metrics/registry.ts"]}, "note": "11 files contain class name; budget 8"},
+    {"tool": "bash", "args": ["Get-ChildItem -Recurse -File src"], "ok": true, "summary": {}, "note": "10 modules x ~11 file kinds"},
+    {"tool": "bash", "args": ["Get-Content src/cache/registry.ts src/app/bootstrap.ts src/admin/registry.ts src/legacy/registry.ts src/shared/registry.ts"], "ok": true, "summary": {"cache/registry": "real CacheRegistry wrapping TtlCache register/lookup", "bootstrap": "import+new CacheRegistry() from ../cache/registry", "admin/registry": "admin console CacheRegistry", "legacy/registry": "deprecated CacheRegistry + migration note (documents)", "shared/registry": "ops console snapshot CacheRegistry"}, "note": "define vs construct vs document identified"},
+    {"tool": "bash", "args": ["Get-Content src/cli/registry.ts src/api/registry.ts src/util/registry.ts src/config/registry.ts src/metrics/registry.ts src/cache/ttlCache.ts"], "ok": true, "summary": {}, "note": "other CacheRegistry classes are identical read-only snapshot stubs"},
+    {"tool": "grep", "args": ["logCache|ttlCache|TtlCache|boot"], "ok": true, "summary": {}, "note": "logCache logger helper in every module; sole construction site is app/bootstrap.ts"},
+    {"tool": "grep", "args": ["Cache"], "ok": true, "summary": {}, "note": "no hidden CacheRegistry mentions beyond the 11 files"},
+    {"tool": "bash", "args": ["Get-Content src/admin/logger.ts src/legacy/logger.ts src/shared/logger.ts src/cache/logger.ts"], "ok": true, "summary": {}, "note": "logger helpers = logCache(event) stubs"},
+    {"tool": "grep", "args": ["from .*registry|new CacheRegistry|logCache\\("], "ok": true, "summary": {}, "note": "sole constructor is bootstrap; loggers standalone"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

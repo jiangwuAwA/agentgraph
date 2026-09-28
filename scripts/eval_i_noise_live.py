@@ -95,6 +95,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 def build_prompt(task: str, arm: str, seed: int, runner: str, model: str, issue: str) -> str:
     policy = (
         "ARM A: use agentgraph CLI (on PATH) plus reads. "
+        "Prefer blast_radius / who-calls `selected[]` (file_budget K) and avoid `pruned[]` files. "
         if arm == "A"
         else "ARM B: do NOT use agentgraph. Use listing / reading / grep only. "
     )

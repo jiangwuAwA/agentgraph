@@ -6,95 +6,106 @@
   "seed": 0,
   "file_set": [
     "src/orders/createOrder.ts",
-    "src/payments/chargeCard.ts",
     "src/orders/orderService.ts",
-    "src/legacy/createOrder.ts",
-    "src/legacy/chargeCard.ts",
-    "src/legacy/orderHandler.ts",
+    "src/payments/chargeCard.ts",
     "src/payments/refundCard.ts",
+    "src/orders/orderMetrics.ts",
     "src/admin/orderAdmin.ts"
   ],
   "tool_calls": [
     {
-      "tool": "agentgraph find",
-      "args": ["createOrder"],
+      "tool": "bash",
+      "args": ["agentgraph find createOrder"],
       "ok": true,
       "summary": {
-        "definitions": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]
+        "matches": [
+          "src/legacy/createOrder.ts",
+          "src/legacy/orderHandler.ts",
+          "src/orders/createOrder.ts"
+        ]
       },
-      "note": "3 createOrder definition sites"
+      "note": "three createOrder definitions; orders/ is the canonical async one"
     },
     {
-      "tool": "agentgraph find",
-      "args": ["chargeCard"],
+      "tool": "bash",
+      "args": ["agentgraph find chargeCard"],
       "ok": true,
       "summary": {
-        "definitions": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]
+        "matches": [
+          "src/legacy/chargeCard.ts",
+          "src/payments/chargeCard.ts",
+          "src/payments/refundCard.ts"
+        ]
       },
-      "note": "3 chargeCard definition sites; refundCard.ts exports chargeCard"
+      "note": "three chargeCard definitions; payments/chargeCard.ts is the canonical async one"
     },
     {
-      "tool": "agentgraph callers",
-      "args": ["createOrder"],
+      "tool": "bash",
+      "args": ["agentgraph who-calls createOrder"],
       "ok": true,
       "summary": {
-        "callers": ["src/orders/orderService.ts"]
+        "selected": ["src/orders/orderService.ts"],
+        "window": "default",
+        "subset_ok": true
       },
-      "note": "import + call from OrderService.place"
+      "note": "import + call inside OrderService.place"
     },
     {
-      "tool": "agentgraph callers",
-      "args": ["chargeCard"],
+      "tool": "bash",
+      "args": ["agentgraph who-calls chargeCard"],
       "ok": true,
       "summary": {
-        "callers": ["src/orders/orderService.ts"]
+        "selected": ["src/orders/orderService.ts"],
+        "window": "default",
+        "subset_ok": true
       },
-      "note": "import + call from OrderService.place"
+      "note": "import + call inside OrderService.place"
     },
     {
-      "tool": "agentgraph impact",
-      "args": ["createOrder"],
+      "tool": "bash",
+      "args": ["agentgraph blast-radius createOrder"],
       "ok": true,
-      "summary": {},
-      "note": "no transitive dependents beyond orderService.ts"
+      "summary": {
+        "selected": ["src/orders/createOrder.ts", "src/orders/orderService.ts"],
+        "pruned": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts"],
+        "window": "sound",
+        "file_budget": 8
+      },
+      "note": "selection_reason: precision_budget_8 demoted_legacy_admin_common; legacy paths pruned"
     },
     {
-      "tool": "agentgraph impact",
-      "args": ["chargeCard"],
+      "tool": "bash",
+      "args": ["agentgraph blast-radius chargeCard"],
       "ok": true,
-      "summary": {},
-      "note": "no transitive dependents beyond orderService.ts"
-    },
-    {
-      "tool": "agentgraph importers",
-      "args": ["src/orders/createOrder.ts", "src/payments/chargeCard.ts"],
-      "ok": true,
-      "summary": {},
-      "note": "only orderService.ts imports the canonical modules"
-    },
-    {
-      "tool": "agentgraph related",
-      "args": ["createOrder", "chargeCard"],
-      "ok": true,
-      "summary": {},
-      "note": "confirmed definition cluster + orderService"
+      "summary": {
+        "selected": [
+          "src/payments/chargeCard.ts",
+          "src/payments/refundCard.ts",
+          "src/orders/orderService.ts"
+        ],
+        "pruned": ["src/legacy/chargeCard.ts"],
+        "window": "sound",
+        "file_budget": 8
+      },
+      "note": "refundCard.ts also defines chargeCard (settlement helper); legacy/chargeCard.ts pruned"
     },
     {
       "tool": "grep",
-      "args": ["createOrder|chargeCard", "src/"],
+      "args": ["createOrder|chargeCard", "."],
       "ok": true,
       "summary": {
-        "matches": 14,
-        "files": 9
+        "mention_only_files": ["src/orders/orderMetrics.ts", "src/admin/orderAdmin.ts"]
       },
-      "note": "text scan found admin/metrics mentioners beyond symbol graph; adjacent stub files (exportCsv, paymentAdmin, reportUtil, orderConfig, paymentConfig, *Index) do not mention the symbols"
+      "note": "metrics helper + admin audit export mention both symbols; kept per issue categories (not in pruned[])"
     },
     {
       "tool": "read",
-      "args": ["src/orders/orderService.ts", "src/admin/orderAdmin.ts", "src/orders/orderMetrics.ts"],
+      "args": ["src/orders/orderService.ts", "src/orders/createOrder.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts", "src/orders/orderMetrics.ts", "src/admin/orderAdmin.ts", "src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/legacy/chargeCard.ts"],
       "ok": true,
-      "summary": {},
-      "note": "confirmed call sites and documenter content; dropped orderMetrics.ts (comment-only mention) under 8-file cap"
+      "summary": {
+        "confirmed": "definitions and mentions verified by content"
+      },
+      "note": "legacy trio pruned by blast_radius and excluded under ARM A (avoid pruned[]); precision over coverage"
     }
   ],
   "chose_correct_workspace_root": true,

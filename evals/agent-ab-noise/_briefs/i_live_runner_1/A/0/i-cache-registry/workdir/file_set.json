@@ -10,54 +10,115 @@
     "src/legacy/registry.ts",
     "src/admin/registry.ts",
     "src/shared/registry.ts",
-    "src/app/registry.ts",
     "src/api/registry.ts",
+    "src/app/registry.ts",
     "src/cli/registry.ts"
   ],
   "tool_calls": [
     {
-      "tool": "bash",
-      "args": ["agentgraph index --root ."],
+      "tool": "agentgraph",
+      "args": ["index", "--root", "."],
       "ok": true,
-      "summary": { "files": 102, "symbols": 115, "refs": 11 },
-      "note": "full index of workdir"
+      "summary": {"files": 102, "symbols": 115, "references": 11},
+      "note": "built local index in workdir"
     },
     {
-      "tool": "bash",
-      "args": ["agentgraph find CacheRegistry --root ."],
+      "tool": "agentgraph",
+      "args": ["find", "CacheRegistry", "--root", "."],
       "ok": true,
-      "summary": { "class_defs": 10 },
-      "note": "10 CacheRegistry class definitions across src/*"
+      "summary": {"defs": 10},
+      "note": "10 class defs across module registry.ts files"
     },
     {
-      "tool": "bash",
-      "args": ["agentgraph callers CacheRegistry --root . --include-dynamic"],
+      "tool": "agentgraph",
+      "args": ["who-calls", "CacheRegistry", "--root", "."],
       "ok": true,
-      "summary": { "refs": 2, "resolved": "src/cache/registry.ts" },
-      "note": "only src/app/bootstrap.ts imports+constructs CacheRegistry"
+      "summary": {"selected": ["src/app/bootstrap.ts"], "file_budget": 8},
+      "note": "only constructor/import site is app/bootstrap.ts"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["blast-radius", "CacheRegistry", "--root", "."],
+      "ok": true,
+      "summary": {
+        "selected": [
+          "src/app/bootstrap.ts",
+          "src/api/registry.ts",
+          "src/app/registry.ts",
+          "src/cache/registry.ts",
+          "src/cli/registry.ts",
+          "src/config/registry.ts",
+          "src/metrics/registry.ts",
+          "src/shared/registry.ts"
+        ],
+        "pruned": ["src/util/registry.ts", "src/admin/registry.ts", "src/legacy/registry.ts"]
+      },
+      "note": "selected[] preferred for budget fill; brief requires admin/legacy/shared despite pruned[]"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["related", "CacheRegistry", "--root", "."],
+      "ok": true,
+      "summary": {"files": 10},
+      "note": "all definition files score 10"
+    },
+    {
+      "tool": "agentgraph",
+      "args": ["importers", "src/cache/registry.ts", "--root", "."],
+      "ok": true,
+      "summary": {"importers": ["src/app/bootstrap.ts"]},
+      "note": "sole importer"
     },
     {
       "tool": "grep",
-      "args": ["CacheRegistry", "**/*"],
+      "args": ["CacheRegistry", "workdir"],
       "ok": true,
-      "summary": { "files_with_class_name": 11 },
-      "note": "11 files contain the class name; loggers do not"
+      "summary": {"files_with_name": 11},
+      "note": "11 TS files contain class name; package.json has cache-registry package name only"
     },
     {
       "tool": "read",
-      "args": ["src/cache/registry.ts", "src/app/bootstrap.ts", "src/legacy/registry.ts", "src/admin/registry.ts", "src/shared/registry.ts", "src/cache/logger.ts"],
+      "args": ["src/cache/registry.ts"],
       "ok": true,
-      "summary": { "cache_registry": "defines class, wraps TtlCache", "bootstrap": "constructs instance", "legacy": "deprecated def", "admin": "admin console def", "shared": "ops snapshot def", "logger": "logCache only, no class name" },
-      "note": "verified define/construct/wrap/document roles"
+      "summary": {"defines": "CacheRegistry", "wraps": "TtlCache"},
+      "note": "primary runtime registry"
     },
     {
-      "tool": "bash",
-      "args": ["agentgraph impact CacheRegistry --root . --include-dynamic"],
+      "tool": "read",
+      "args": ["src/app/bootstrap.ts"],
       "ok": true,
-      "summary": { "edges": 2 },
-      "note": "no further wrappers beyond bootstrap"
+      "summary": {"constructs": "new CacheRegistry()"},
+      "note": "import from ../cache/registry + construct"
+    },
+    {
+      "tool": "read",
+      "args": ["src/legacy/registry.ts"],
+      "ok": true,
+      "summary": {"defines": "CacheRegistry", "role": "deprecated migration"},
+      "note": "brief-required legacy registry"
+    },
+    {
+      "tool": "read",
+      "args": ["src/admin/registry.ts"],
+      "ok": true,
+      "summary": {"defines": "CacheRegistry", "role": "admin console"},
+      "note": "brief-required admin registry"
+    },
+    {
+      "tool": "read",
+      "args": ["src/shared/registry.ts"],
+      "ok": true,
+      "summary": {"defines": "CacheRegistry", "role": "ops snapshot"},
+      "note": "brief-required shared registry"
+    },
+    {
+      "tool": "read",
+      "args": ["src/cache/logger.ts", "src/shared/logger.ts", "src/legacy/logger.ts", "src/admin/logger.ts"],
+      "ok": true,
+      "summary": {"mentions_CacheRegistry": false},
+      "note": "logger helpers only export logCache; no class-name occurrence — treated as brief noise"
     }
   ],
-  "chose_correct_workspace_root": null,
+  "chose_correct_workspace_root": true,
   "approx_tokens": null
 }

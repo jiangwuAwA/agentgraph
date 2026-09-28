@@ -191,6 +191,20 @@ Helpers: `agentgraph::viz::graph_tool` (`run_graph_html`,
 - **Macro sidecar:** optional, per-root, not sound. `callers --with-macro`
   unions candidates only after `macro status` shows `sidecar_exists=true`.
 
+
+### I2 precision file budget (default 少而准)
+
+`blast_radius` and `who_calls` always include:
+
+| key | meaning |
+|---|---|
+| file_budget | default K (8) |
+| selected | top-K files after ranking (exact call / registration first; legacy/admin/common-name demoted; same-dir diversity) |
+| pruned / pruned_count | overflow files parked |
+| selection_reason | stable audit string |
+
+**Default product stance:** prefer selected[] for review. For full dump use larger `--limit` / `--noisy`. Precision ranking, **not** soundness.
+
 ### Perf guidance (Agents)
 
 On multi-root stores, prefer **scoped** queries (`--workspace-root` / MCP

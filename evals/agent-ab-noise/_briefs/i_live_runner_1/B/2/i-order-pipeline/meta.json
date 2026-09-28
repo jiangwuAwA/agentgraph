@@ -3,7 +3,7 @@
   "task_id": "i-order-pipeline",
   "runner_id": "i_live_runner_1",
   "arm": "B",
-  "seed": 0,
+  "seed": 2,
   "kind": "live_llm_agent",
   "model_note": "xiaomi/mimo-v2.6-pro",
   "independent_session": true,

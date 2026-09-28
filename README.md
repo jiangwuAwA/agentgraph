@@ -47,7 +47,7 @@ agentgraph graph <sym> --depth 2    # MCP: graph → offline HTML + honesty fiel
 | **subset_ok** | Per-root / per-path S gate for modeled edges | **Not** ecosystem sound; **not** production sound |
 | **note** | Always present on recipe / graph payloads | `note` = **not a complete runtime graph** |
 
-**Agents:** read `window`, `subset_ok`, and `recommendation` before acting. Scoped sound may be available on a clean workspace root even when the global window is off — see [docs/agent-recipes.md](docs/agent-recipes.md).
+**Agents:** read `window`, `subset_ok`, and `recommendation` before acting. Default file policy is **少而准** (`file_budget`/`selected`/`pruned` on blast_radius/who_calls) — use `--noisy` / larger limit for a full dump. Scoped sound may be available on a clean workspace root even when the global window is off — see [docs/agent-recipes.md](docs/agent-recipes.md).
 
 **More:** [docs/onboarding.md](docs/onboarding.md) (5-min install → MCP `blast_radius`) · [docs/agent-recipes.md](docs/agent-recipes.md) · [docs/agent-playbook/index.html](docs/agent-playbook/index.html)
 

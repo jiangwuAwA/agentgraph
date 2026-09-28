@@ -1341,3 +1341,66 @@ fn unit_decision_struct_fields() {
     let b = a.clone();
     assert_eq!(a, b);
 }
+
+
+#[test]
+fn i2_file_budget_stable_keys_on_blast_and_who_calls() {
+    use std::process::{Command, Stdio};
+
+    let base = std::env::temp_dir().join(format!(
+        "agentgraph-i2-keys-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let src = base.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(
+        src.join("core.ts"),
+        "export function createOrder(id: string): string { return id; }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        src.join("svc.ts"),
+        "import { createOrder } from './core';\nexport function place(): void { createOrder('x'); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        src.join("legacy_createOrder.ts"),
+        "export function createOrder(id: string): string { return 'legacy:' + id; }\n",
+    )
+    .unwrap();
+
+    let bin = env!("CARGO_BIN_EXE_agentgraph");
+    let idx = Command::new(bin)
+        .args(["--root", base.to_str().unwrap(), "index", "--force"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(idx.status.success(), "{}", String::from_utf8_lossy(&idx.stderr));
+
+    let blast = Command::new(bin)
+        .args(["--root", base.to_str().unwrap(), "blast-radius", "createOrder"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(blast.status.success());
+    let bv: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&blast.stdout)).unwrap();
+    for k in ["file_budget", "selected", "pruned", "pruned_count", "selection_reason"] {
+        assert!(bv.get(k).is_some(), "blast missing stable key {k}: {bv}");
+    }
+    assert!(bv["selected"].as_array().is_some());
+
+    let who = Command::new(bin)
+        .args(["--root", base.to_str().unwrap(), "who-calls", "createOrder"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(who.status.success());
+    let wv: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&who.stdout)).unwrap();
+    for k in ["file_budget", "selected", "pruned", "pruned_count", "selection_reason"] {
+        assert!(wv.get(k).is_some(), "who_calls missing stable key {k}: {wv}");
+    }
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "B",
+  "seed": 2,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/chargeCard.ts",
+    "src/legacy/orderHandler.ts",
+    "src/admin/orderAdmin.ts",
+    "src/orders/orderMetrics.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File"],
+      "ok": true,
+      "summary": {"files_listed": 58},
+      "note": "enumerate workdir tree; ignored .agentgraph/.mimocode artifacts"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard", "workdir"],
+      "ok": true,
+      "summary": {"matches": 14, "files": 9},
+      "note": "primary symbol scan"
+    },
+    {
+      "tool": "grep",
+      "args": ["from ['\"].*(createOrder|chargeCard|orderHandler|refundCard)", "workdir"],
+      "ok": true,
+      "summary": {"matches": 2, "files": 1},
+      "note": "import/call sites; only src/orders/orderService.ts"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard", "package.json"],
+      "ok": true,
+      "summary": {"matches": 0},
+      "note": "no package-level mention"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard|orderHandler|refundCard|legacy", "src/**/*Index.ts"],
+      "ok": true,
+      "summary": {"matches": 0},
+      "note": "no barrel re-exports of these symbols"
+    },
+    {
+      "tool": "read",
+      "args": ["src/orders/createOrder.ts", "src/payments/chargeCard.ts", "src/orders/orderService.ts", "src/legacy/*.ts", "src/admin/orderAdmin.ts", "src/orders/orderMetrics.ts", "src/payments/refundCard.ts"],
+      "ok": true,
+      "summary": {"files_read": 9},
+      "note": "verified define vs comment-only vs name-collision decoy"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -15,7 +15,7 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::parser;
@@ -28,6 +28,381 @@ use crate::model::{IndexStats, WorkspaceIndexResult, WorkspaceRootInfo, Workspac
 pub struct WorkspaceRoot {
     pub id: String,
     pub path: PathBuf,
+}
+
+// ---------------------------------------------------------------------------
+// Workspace package-name alias map (next-cut A)
+//
+// Partial package map for cross-root imports such as
+// `import { RegistryClient } from "@demo/registry"`.
+// **Not** full TypeScript module resolution / monorepo build graph.
+// ---------------------------------------------------------------------------
+
+/// Meta key storing the discovered alias map as JSON.
+pub const PACKAGE_ALIASES_META_KEY: &str = "workspace_package_aliases";
+
+/// One package specifier → workspace root mapping.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct PackageAliasEntry {
+    /// Workspace `root_id` that owns this package.
+    pub root_id: String,
+    /// Root-relative barrel/entry file when known (`src/index.ts`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+    /// Workspace root path (absolute or workspace-relative) when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_path: Option<String>,
+    /// Discovery source: `cli` | `package.json` | `tsconfig_paths`.
+    #[serde(default)]
+    pub source: String,
+}
+
+/// package specifier → alias entry (deterministic key order for meta JSON).
+pub type PackageAliasMap = BTreeMap<String, PackageAliasEntry>;
+
+/// Parse `--workspace-alias <pkg>=<root_id_or_path>`.
+pub fn parse_alias_flag(flag: &str) -> Result<(String, String)> {
+    let (pkg, target) = flag.split_once('=').with_context(|| {
+        format!("--workspace-alias expects <pkg>=<root_id_or_path>, got {flag}")
+    })?;
+    let pkg = pkg.trim();
+    let target = target.trim();
+    if pkg.is_empty() || target.is_empty() {
+        bail!("--workspace-alias expects non-empty <pkg>=<root_id_or_path>, got {flag}");
+    }
+    Ok((pkg.to_string(), target.to_string()))
+}
+
+/// Serialize alias map for `meta.workspace_package_aliases`.
+pub fn package_aliases_to_meta(map: &PackageAliasMap) -> String {
+    serde_json::to_string(map).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Deserialize alias map from meta (missing/invalid → empty).
+pub fn package_aliases_from_meta(raw: Option<&str>) -> PackageAliasMap {
+    let Some(text) = raw else {
+        return PackageAliasMap::new();
+    };
+    serde_json::from_str(text).unwrap_or_default()
+}
+
+fn read_package_json_name(root: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(root.join("package.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("name")
+        .and_then(|n| n.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Common barrel/entry candidates under a package root (root-relative).
+pub fn discover_barrel_entry(root: &Path) -> Option<String> {
+    const CANDIDATES: &[&str] = &[
+        "src/index.ts",
+        "src/index.tsx",
+        "src/index.js",
+        "src/index.mjs",
+        "src/main.ts",
+        "index.ts",
+        "index.js",
+        "lib/index.js",
+        "lib/index.d.ts",
+        "dist/index.js",
+    ];
+    CANDIDATES
+        .iter()
+        .find(|c| root.join(c).is_file())
+        .map(|s| s.to_string())
+}
+
+/// Read `compilerOptions.paths` from a tsconfig.json (very small subset).
+fn read_tsconfig_paths(tsconfig: &Path) -> Option<Vec<(String, Vec<String>)>> {
+    let text = std::fs::read_to_string(tsconfig).ok()?;
+    // Strip // comments (common in tsconfig) before JSON parse.
+    let cleaned: String = text
+        .lines()
+        .map(|l| {
+            if let Some(i) = l.find("//") {
+                // Keep URLs (https://)
+                if l[..i].contains("://") {
+                    l.to_string()
+                } else {
+                    l[..i].to_string()
+                }
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let v: serde_json::Value = serde_json::from_str(&cleaned).ok()?;
+    let paths = v
+        .get("compilerOptions")
+        .and_then(|c| c.get("paths"))
+        .and_then(|p| p.as_object())?;
+    let mut out = Vec::new();
+    for (pkg, targets) in paths {
+        let list: Vec<String> = match targets {
+            serde_json::Value::Array(a) => a
+                .iter()
+                .filter_map(|t| t.as_str())
+                .map(|s| s.trim().to_string())
+                .collect(),
+            serde_json::Value::String(s) => vec![s.trim().to_string()],
+            _ => continue,
+        };
+        if !list.is_empty() {
+            out.push((pkg.clone(), list));
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn norm_path_str(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
+}
+
+fn strip_dot_slash(s: &str) -> &str {
+    s.trim_start_matches("./")
+}
+
+/// Map a tsconfig path target onto `(root_id, root-relative entry)`.
+fn map_tsconfig_target(
+    target: &str,
+    roots: &[WorkspaceRoot],
+    tsconfig_dir: &Path,
+) -> Option<PackageAliasEntry> {
+    let target_owned = target.replace('\\', "/");
+    let cleaned_owned = strip_dot_slash(target_owned.trim()).to_string();
+    let cleaned = cleaned_owned.as_str();
+    // Prefer matching against recorded workspace roots (longest path prefix wins).
+    let mut best: Option<(usize, String, String)> = None; // (prefix_len, root_id, entry)
+    for r in roots {
+        let rp = norm_path_str(&r.path);
+        let rp_trim = rp.trim_end_matches('/');
+        // Absolute root path vs workspace-relative target: also try basename chain.
+        let candidates = [
+            cleaned.to_string(),
+            format!(
+                "{}/{}",
+                rp_trim
+                    .rsplit('/')
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("/"),
+                cleaned
+            ),
+        ];
+        for cand in &candidates {
+            if let Some(rest) = cand.strip_prefix(&format!("{rp_trim}/")) {
+                let score = rp_trim.len();
+                if best.as_ref().map(|(s, _, _)| score > *s).unwrap_or(true) {
+                    best = Some((score, r.id.clone(), rest.to_string()));
+                }
+            }
+        }
+        // Basename-relative: target `packages/registry/src/index.ts`, root ends with that dir.
+        let root_base = Path::new(&rp_trim)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !root_base.is_empty() {
+            if let Some(pos) = cleaned.find(&format!("/{root_base}/")) {
+                let after = &cleaned[pos + root_base.len() + 1..];
+                let score = rp_trim.len() - 1;
+                if best.as_ref().map(|(s, _, _)| score > *s).unwrap_or(true) {
+                    best = Some((score, r.id.clone(), after.to_string()));
+                }
+            }
+            if cleaned.starts_with(&format!("{root_base}/")) {
+                let after = &cleaned[root_base.len() + 1..];
+                let score = rp_trim.len() - 2;
+                if best.as_ref().map(|(s, _, _)| score > *s).unwrap_or(true) {
+                    best = Some((score, r.id.clone(), after.to_string()));
+                }
+            }
+        }
+    }
+    if let Some((_, root_id, entry)) = best {
+        let root = roots.iter().find(|r| r.id == root_id)?;
+        return Some(PackageAliasEntry {
+            root_id,
+            entry: Some(entry),
+            root_path: Some(norm_path_str(&root.path)),
+            source: "tsconfig_paths".to_string(),
+        });
+    }
+    // Relative to tsconfig dir on disk.
+    let abs = if Path::new(cleaned).is_absolute() {
+        PathBuf::from(cleaned)
+    } else {
+        tsconfig_dir.join(cleaned)
+    };
+    for r in roots {
+        if abs.starts_with(&r.path) {
+            let rest = abs
+                .strip_prefix(&r.path)
+                .ok()
+                .map(|p| norm_path_str(Path::new(p)))?;
+            return Some(PackageAliasEntry {
+                root_id: r.id.clone(),
+                entry: Some(rest),
+                root_path: Some(norm_path_str(&r.path)),
+                source: "tsconfig_paths".to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn fill_missing_entry(entry: &mut PackageAliasEntry, roots: &[WorkspaceRoot]) {
+    if entry.entry.is_some() {
+        return;
+    }
+    let root_path = entry
+        .root_path
+        .clone()
+        .or_else(|| {
+            roots
+                .iter()
+                .find(|r| r.id == entry.root_id)
+                .map(|r| norm_path_str(&r.path))
+        })
+        .map(PathBuf::from);
+    if let Some(rp) = root_path {
+        if let Some(barrel) = discover_barrel_entry(&rp) {
+            entry.entry = Some(barrel);
+        }
+        if entry.root_path.is_none() {
+            entry.root_path = Some(norm_path_str(&rp));
+        }
+    }
+}
+
+fn resolve_cli_alias_target(pkg: &str, target: &str, roots: &[WorkspaceRoot]) -> PackageAliasEntry {
+    let t = target.replace('\\', "/");
+    // Direct root_id match.
+    if let Some(r) = roots
+        .iter()
+        .find(|r| r.id == t || r.id == strip_dot_slash(&t))
+    {
+        return PackageAliasEntry {
+            root_id: r.id.clone(),
+            entry: None,
+            root_path: Some(norm_path_str(&r.path)),
+            source: "cli".to_string(),
+        };
+    }
+    // Path match (relative or absolute).
+    for r in roots {
+        let rp = norm_path_str(&r.path);
+        let rp_trim = rp.trim_end_matches('/');
+        let t_trim = t.trim_end_matches('/');
+        if rp_trim == t_trim
+            || rp_trim.ends_with(&format!("/{t_trim}"))
+            || t_trim.ends_with(&format!("/{rp_trim}"))
+            || strip_dot_slash(&t) == strip_dot_slash(rp_trim)
+        {
+            return PackageAliasEntry {
+                root_id: r.id.clone(),
+                entry: None,
+                root_path: Some(rp),
+                source: "cli".to_string(),
+            };
+        }
+        // Basename equality (packages/registry vs registry)
+        let base = Path::new(rp_trim)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if base == t_trim || base == strip_dot_slash(t_trim) {
+            return PackageAliasEntry {
+                root_id: r.id.clone(),
+                entry: None,
+                root_path: Some(rp),
+                source: "cli".to_string(),
+            };
+        }
+    }
+    // Unknown target: keep as raw root_id (operator escape hatch).
+    let _ = pkg;
+    PackageAliasEntry {
+        root_id: t,
+        entry: None,
+        root_path: None,
+        source: "cli".to_string(),
+    }
+}
+
+/// Discover package aliases for a multi-root workspace.
+///
+/// Priority (highest wins per package): CLI `--workspace-alias` >
+/// `tsconfig.paths` > each root's `package.json` `name`.
+/// Entry barrels are filled from disk when missing.
+/// **Honesty:** partial package map — not full TypeScript resolution.
+pub fn discover_package_aliases(
+    roots: &[WorkspaceRoot],
+    cli_aliases: &[(String, String)],
+) -> PackageAliasMap {
+    let mut map: PackageAliasMap = PackageAliasMap::new();
+
+    // 1) package.json name per root (lowest explicit priority).
+    for r in roots {
+        if let Some(name) = read_package_json_name(&r.path) {
+            map.entry(name).or_insert_with(|| PackageAliasEntry {
+                root_id: r.id.clone(),
+                entry: None,
+                root_path: Some(norm_path_str(&r.path)),
+                source: "package.json".to_string(),
+            });
+        }
+    }
+
+    // 2) tsconfig paths (explicit — preferred over package.json guess).
+    let mut tsconfig_dirs: Vec<PathBuf> = Vec::new();
+    for r in roots {
+        tsconfig_dirs.push(r.path.clone());
+        if let Some(parent) = r.path.parent() {
+            tsconfig_dirs.push(parent.to_path_buf());
+            if let Some(gp) = parent.parent() {
+                tsconfig_dirs.push(gp.to_path_buf());
+            }
+        }
+    }
+    tsconfig_dirs.sort();
+    tsconfig_dirs.dedup();
+    for dir in tsconfig_dirs {
+        let ts = dir.join("tsconfig.json");
+        if let Some(paths) = read_tsconfig_paths(&ts) {
+            for (pkg, targets) in paths {
+                for target in &targets {
+                    if let Some(entry) = map_tsconfig_target(target, roots, &dir) {
+                        // tsconfig beats package.json; CLI applied later.
+                        map.insert(pkg.clone(), entry);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3) CLI escape hatch wins.
+    for (pkg, target) in cli_aliases {
+        map.insert(pkg.clone(), resolve_cli_alias_target(pkg, target, roots));
+    }
+
+    // Fill missing barrels from disk.
+    for entry in map.values_mut() {
+        fill_missing_entry(entry, roots);
+    }
+    map
 }
 
 /// Manifest JSON: `{ "roots": [ {"id","path"}, … ] }` or a bare array of paths.
@@ -317,11 +692,27 @@ pub fn single_root_filter(ids: &[String]) -> Option<&str> {
 }
 
 /// Index every workspace root into one shared store.
+///
+/// `cli_aliases` are `--workspace-alias` pairs (`pkg=root_id|path`).
+/// Aliases are discovered (CLI > tsconfig paths > package.json name) and
+/// stored in `meta.workspace_package_aliases`; package-name import refs are
+/// then linked to the mapped root barrel/file (partial package map).
 pub fn index_workspace(
     roots: &[WorkspaceRoot],
     db_path: &Path,
     force: bool,
     warnings: &[String],
+) -> Result<WorkspaceIndexResult> {
+    index_workspace_with_aliases(roots, db_path, force, warnings, &[])
+}
+
+/// Same as [`index_workspace`] with explicit CLI package aliases.
+pub fn index_workspace_with_aliases(
+    roots: &[WorkspaceRoot],
+    db_path: &Path,
+    force: bool,
+    warnings: &[String],
+    cli_aliases: &[(String, String)],
 ) -> Result<WorkspaceIndexResult> {
     if roots.is_empty() {
         bail!("workspace index requires at least one root");
@@ -329,9 +720,17 @@ pub fn index_workspace(
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // Next-cut A: discover + persist workspace package aliases before extract.
+    let package_aliases = discover_package_aliases(roots, cli_aliases);
     // Open once to write workspace meta before per-root index (also migrates schema).
     {
         let store = Store::open(db_path)?;
+        if !package_aliases.is_empty() {
+            store.set_meta(
+                PACKAGE_ALIASES_META_KEY,
+                &package_aliases_to_meta(&package_aliases),
+            )?;
+        }
         let meta: Vec<WorkspaceRootInfo> = roots
             .iter()
             .map(|r| WorkspaceRootInfo {
@@ -389,6 +788,13 @@ pub fn index_workspace(
             store.set_write_root(&root.id);
         }
         let stats: IndexStats = indexer.index_as(force, &root.id)?;
+        // After each root, re-link package imports so cross-root edges resolve
+        // as soon as the mapped barrel/symbols exist in the shared store.
+        if !package_aliases.is_empty() {
+            if let Ok(mut st) = Store::open(db_path) {
+                let _ = st.link_package_imports(&package_aliases);
+            }
+        }
         for lang in &stats.languages {
             if !languages.contains(lang) {
                 languages.push(lang.clone());
@@ -433,7 +839,7 @@ pub fn index_workspace(
 
     // Refresh meta with final per-root counts (merge: do not drop sibling roots).
     {
-        let store = Store::open(db_path)?;
+        let mut store = Store::open(db_path)?;
         let mut merged = store.workspace_roots_meta().unwrap_or_default();
         for r in &per_root {
             if let Some(slot) = merged.iter_mut().find(|m| m.id == r.id) {
@@ -473,6 +879,10 @@ pub fn index_workspace(
             .cloned()
             .collect();
         store.set_workspace_roots_meta(&per_root)?;
+        // Final link pass after all roots (idempotent; fills late barrels).
+        if !package_aliases.is_empty() {
+            let _ = store.link_package_imports(&package_aliases)?;
+        }
     }
 
     // Totals from the store (not sum of per-root stats, which are global counts
@@ -490,9 +900,15 @@ pub fn index_workspace(
         references: totals.references,
         languages: totals.languages,
         warnings: warnings.to_vec(),
+        package_aliases: if package_aliases.is_empty() {
+            None
+        } else {
+            Some(package_aliases)
+        },
         note: "single SQLite store + root_id; paths are root-relative; \
                queries without --workspace-root union all roots (rows tagged root_id); \
                macro sidecar remains per-root under <root>/.agentgraph/index.macro.db; \
+               package aliases = partial package map (not full TS resolution); \
                not a cross-root type merge"
             .to_string(),
     })
@@ -575,6 +991,10 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
         }
     }
     let (sidecar_exists, sidecar_stale) = crate::index::cheap_sidecar_flags_multi(&sidecar_roots);
+    let package_aliases = store
+        .get_meta(PACKAGE_ALIASES_META_KEY)?
+        .map(|raw| package_aliases_from_meta(Some(&raw)))
+        .unwrap_or_default();
 
     Ok(WorkspaceStatus {
         db_path: db_path.to_string_lossy().into_owned(),
@@ -587,7 +1007,8 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
                --sound + workspace: subset_ok is per selected root (union = weakest root); \
                macro sidecar is per-root at <root>/.agentgraph/index.macro.db; \
                sound_candidates list scoped --sound roots eligible first; \
-               baseline_stale / sidecar_* are honesty flags (no auto-refresh)"
+               baseline_stale / sidecar_* are honesty flags (no auto-refresh); \
+               package_aliases = partial package map (not full TS resolution)"
             .to_string(),
         index_seq,
         promise_tier,
@@ -598,5 +1019,10 @@ pub fn workspace_status(db_path: &Path) -> Result<WorkspaceStatus> {
         baseline_stale,
         sidecar_exists,
         sidecar_stale,
+        package_aliases: if package_aliases.is_empty() {
+            None
+        } else {
+            Some(package_aliases)
+        },
     })
 }

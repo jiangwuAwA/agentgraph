@@ -583,6 +583,18 @@ re-exports now mint findable `module` symbols + import refs
 scores were stamped **before** this extract fix and are **not**
 retroactively rewritten — re-run harness if you need post-fix numbers.
 
+**Behavior update note (next-cut A — cross-root package alias):**
+Workspace package-name imports (`import { RegistryClient } from "@demo/registry"`)
+now resolve through a **partial package map** discovered at index time
+(CLI `--workspace-alias`, tsconfig `paths`, package.json `name`). See
+[workspace.md](workspace.md). Multi-root `find` / `callers` / `related` /
+`importers` can show the cross-root package import connected to the registry
+definition/re-export. **Historical stamped eval scores are unchanged** —
+trajectory files under `evals/agent-ab*` were committed before this product
+behavior and are **not** rewritten. Optional post-fix rerun (operator track)
+may produce higher recall on multi-root package-import tasks; do not mix
+pre-fix stamps with post-fix claims in the same table.
+
 **Honest reading:** live isolated **A vs B** on these fixtures separates on
 **expected-file recall** and **workspace-root correctness** (cwr), **not** on
 extra-noise (both live arms ~0 noise — fixtures are small/self-labely for

@@ -529,6 +529,150 @@ impl Store {
         Ok(v)
     }
 
+    /// Workspace package alias map from meta (empty when classic single-root).
+    pub fn package_aliases_meta(&self) -> Result<super::workspace::PackageAliasMap> {
+        let raw = self.get_meta(super::workspace::PACKAGE_ALIASES_META_KEY)?;
+        Ok(super::workspace::package_aliases_from_meta(raw.as_deref()))
+    }
+
+    /// Persist workspace package aliases (partial package map).
+    pub fn set_package_aliases_meta(&self, map: &super::workspace::PackageAliasMap) -> Result<()> {
+        self.set_meta(
+            super::workspace::PACKAGE_ALIASES_META_KEY,
+            &super::workspace::package_aliases_to_meta(map),
+        )
+    }
+
+    /// Link package-name import refs to the mapped workspace root barrel/file.
+    ///
+    /// Additive: sets `refs.resolved` for `kind='import'` rows whose `module`
+    /// equals a known package (or `package/…` subpath). Returns update count.
+    /// **Not** full TypeScript resolution — partial package map only.
+    pub fn link_package_imports(
+        &mut self,
+        aliases: &super::workspace::PackageAliasMap,
+    ) -> Result<usize> {
+        if aliases.is_empty() {
+            return Ok(0);
+        }
+        let roots = self.workspace_roots_meta().unwrap_or_default();
+        let mut updated = 0usize;
+        for (pkg, entry) in aliases {
+            let root_path = entry.root_path.clone().or_else(|| {
+                roots
+                    .iter()
+                    .find(|r| r.id == entry.root_id)
+                    .map(|r| r.path.clone())
+            });
+            let root_rel_entry = entry.entry.clone().or_else(|| {
+                root_path
+                    .as_deref()
+                    .map(std::path::Path::new)
+                    .and_then(super::workspace::discover_barrel_entry)
+            });
+            // Prefer workspace-relative display path when root_path looks relative.
+            let display: Option<String> = match (&root_path, &root_rel_entry) {
+                (Some(rp), Some(e)) => {
+                    let rp_n = rp.replace('\\', "/");
+                    let e_n = e.replace('\\', "/");
+                    if rp_n.contains(':') || rp_n.starts_with('/') {
+                        // Absolute: keep root-relative entry for display.
+                        Some(e_n)
+                    } else {
+                        Some(format!("{}/{e_n}", rp_n.trim_end_matches('/')))
+                    }
+                }
+                (_, Some(e)) => Some(e.clone()),
+                (Some(_), None) => Some(format!("@alias:{pkg}→{}", entry.root_id)),
+                (None, None) => Some(format!("@alias:{pkg}→{}", entry.root_id)),
+            };
+            let n = self.conn.execute(
+                "UPDATE refs SET resolved = ?1
+                 WHERE kind = 'import'
+                   AND (module = ?2 OR module LIKE ?3)",
+                params![display, pkg, format!("{pkg}/%")],
+            )?;
+            updated += n;
+        }
+        if updated > 0 {
+            self.cache.borrow_mut().clear();
+        }
+        Ok(updated)
+    }
+
+    /// Importers of a package specifier via workspace aliases (module match
+    /// and/or resolved barrel path). Partial package map — not full TS resolution.
+    pub fn importers_of_package(
+        &self,
+        package: &str,
+        limit: usize,
+    ) -> Result<Vec<ReferenceRecord>> {
+        let aliases = self.package_aliases_meta()?;
+        let mut stmt = self.conn.prepare(
+            "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
+             FROM refs
+             WHERE kind = 'import'
+               AND (module = ?1 OR module LIKE ?2)
+             ORDER BY root_id, path, line
+             LIMIT ?3",
+        )?;
+        let like = format!("{package}/%");
+        let rows = stmt.query_map(params![package, like, limit as i64], map_ref)?;
+        let mut out: Vec<ReferenceRecord> = rows.collect::<Result<Vec<_>, _>>()?;
+        if out.len() < limit {
+            // Also match refs whose resolved points at the package barrel.
+            if let Some(hit) = crate::index::resolve::resolve_package_import(package, &aliases) {
+                let mut extra_needed = limit - out.len();
+                let mut patterns: Vec<String> = Vec::new();
+                if let Some(wf) = &hit.workspace_file {
+                    patterns.push(wf.clone());
+                }
+                if let Some(e) = &hit.entry {
+                    patterns.push(e.clone());
+                }
+                patterns.push(format!("@alias:{}→{}", hit.package, hit.root_id));
+                for pat in patterns {
+                    if extra_needed == 0 {
+                        break;
+                    }
+                    let mut stmt2 = self.conn.prepare(
+                        "SELECT name, kind, path, line, enclosing, module, resolved, qualifier, confidence, evidence, root_id
+                         FROM refs
+                         WHERE kind = 'import' AND resolved = ?1
+                         ORDER BY root_id, path, line
+                         LIMIT ?2",
+                    )?;
+                    let rows2 = stmt2.query_map(params![pat, extra_needed as i64], map_ref)?;
+                    for r in rows2 {
+                        let rec = r?;
+                        if !out
+                            .iter()
+                            .any(|x| x.path == rec.path && x.line == rec.line && x.name == rec.name)
+                        {
+                            out.push(rec);
+                            extra_needed = extra_needed.saturating_sub(1);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Files that define a symbol, with root_id (for package-alias related scoring).
+    pub fn symbol_definition_roots(&self, name: &str) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT path, root_id FROM symbols WHERE name = ?1 OR qualified_name = ?1",
+        )?;
+        let rows = stmt.query_map(params![name], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            ))
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     pub fn dispatch_dirty(&self) -> Result<bool> {
         Ok(self.get_meta("dispatch_dirty")?.as_deref() == Some("1"))
     }
@@ -2099,6 +2243,34 @@ impl Store {
             e.0 += 1;
             if e.1.is_empty() {
                 e.1 = format!("reference:{}", r.kind.as_str());
+            }
+        }
+
+        // Next-cut A: cross-root package alias — when `name` is defined under a
+        // workspace root that has a package alias, count that package's importers
+        // as related files so blast/related file sets span roots.
+        if let Ok(aliases) = self.package_aliases_meta() {
+            if !aliases.is_empty() {
+                let defs = self.symbol_definition_roots(name).unwrap_or_default();
+                let defining_roots: std::collections::HashSet<String> = defs
+                    .iter()
+                    .map(|(_, rid)| rid.clone())
+                    .filter(|r| !r.is_empty())
+                    .collect();
+                for (pkg, entry) in &aliases {
+                    if !defining_roots.contains(&entry.root_id) {
+                        continue;
+                    }
+                    if let Ok(imps) = self.importers_of_package(pkg, limit * 10) {
+                        for r in imps {
+                            let e = scores.entry(r.path.clone()).or_insert((0, String::new()));
+                            e.0 += 2;
+                            if e.1.is_empty() {
+                                e.1 = format!("package_import:{pkg}");
+                            }
+                        }
+                    }
+                }
             }
         }
 

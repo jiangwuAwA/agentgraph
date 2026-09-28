@@ -1,5 +1,7 @@
-//! Module-path resolution for relative imports (TS/JS/Python/Go/Rust).
+//! Module-path resolution for relative imports (TS/JS/Python/Go/Rust)
+//! plus workspace package-name aliases (partial package map — not full TS resolution).
 
+use super::workspace::PackageAliasMap;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
@@ -275,4 +277,123 @@ pub fn resolve_rust_use(
 #[allow(dead_code)]
 fn _last_segment_export() {
     let _ = last_segment("a.b");
+}
+
+// ---------------------------------------------------------------------------
+// Package-name import → workspace alias (next-cut A)
+//
+// Partial package map: explicit sources only (CLI / tsconfig paths /
+// package.json name). Not full TypeScript module resolution.
+// ---------------------------------------------------------------------------
+
+/// Split a package specifier into `(package_name, optional_subpath)`.
+///
+/// `@demo/registry` → (`@demo/registry`, None)
+/// `@demo/registry/client` → (`@demo/registry`, Some("client"))
+/// `lodash/get` → (`lodash`, Some("get"))
+/// `./relative` / `../relative` are not package specifiers → (`./relative`, None)
+pub fn split_package_specifier(spec: &str) -> (&str, Option<&str>) {
+    let s = spec.trim();
+    if s.is_empty() || s.starts_with('.') || s.starts_with('/') {
+        return (s, None);
+    }
+    if let Some(rest) = s.strip_prefix('@') {
+        // scoped package: @scope/name[/sub]
+        let mut it = rest.splitn(3, '/');
+        let scope = it.next().unwrap_or("");
+        let name = it.next().unwrap_or("");
+        let sub = it.next();
+        if scope.is_empty() || name.is_empty() {
+            return (s, None);
+        }
+        let pkg_len = 1 + scope.len() + 1 + name.len(); // @scope/name
+        let pkg = &s[..pkg_len.min(s.len())];
+        (pkg, sub.filter(|x| !x.is_empty()))
+    } else {
+        match s.split_once('/') {
+            Some((pkg, sub)) if !pkg.is_empty() && !sub.is_empty() && !pkg.contains('.') => {
+                // Unscoped: require the first segment to look like a package name
+                // (no dots — avoids treating host/path Go-style or file paths as pkgs).
+                (pkg, Some(sub))
+            }
+            Some((pkg, sub)) if !pkg.is_empty() && !sub.is_empty() && pkg.contains('@') => {
+                (pkg, Some(sub))
+            }
+            Some((pkg, sub)) if !pkg.is_empty() && sub.is_empty() => (pkg, None),
+            _ => {
+                // Bare package or dotted unscoped name (`lodash`, `node:fs` handled elsewhere).
+                (s, None)
+            }
+        }
+    }
+}
+
+/// Result of resolving a package specifier through workspace aliases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageResolveHit {
+    /// Package name that matched (subpath stripped).
+    pub package: String,
+    /// Mapped workspace `root_id`.
+    pub root_id: String,
+    /// Root-relative barrel/entry when known.
+    pub entry: Option<String>,
+    /// Workspace-relative file when `root_path` + `entry` are known
+    /// (`packages/registry/src/index.ts`).
+    pub workspace_file: Option<String>,
+}
+
+/// Resolve a package import specifier via the workspace package alias map.
+///
+/// Returns `None` for relative imports and unknown packages.
+/// When only `root_id` is known (no entry/file), still returns a hit so
+/// queries can connect the import to the mapped workspace root.
+pub fn resolve_package_import(
+    specifier: &str,
+    aliases: &PackageAliasMap,
+) -> Option<PackageResolveHit> {
+    let (pkg, _sub) = split_package_specifier(specifier);
+    if pkg.is_empty() || pkg.starts_with('.') || pkg.starts_with('/') {
+        return None;
+    }
+    let entry = aliases.get(pkg)?;
+    let workspace_file = match (&entry.root_path, &entry.entry) {
+        (Some(rp), Some(e)) => {
+            let rp = rp.replace('\\', "/").trim_end_matches('/').to_string();
+            // Absolute root paths still produce a short workspace-ish display
+            // using the last two segments when they look like `packages/<id>`.
+            let display_root = if Path::new(&rp).is_absolute() {
+                let parts: Vec<&str> = rp.split('/').filter(|p| !p.is_empty()).collect();
+                if parts.len() >= 2 {
+                    format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
+                } else {
+                    parts.last().map(|s| s.to_string()).unwrap_or(rp)
+                }
+            } else {
+                rp
+            };
+            let e = e.replace('\\', "/").trim_start_matches('/').to_string();
+            Some(format!("{display_root}/{e}"))
+        }
+        _ => None,
+    };
+    Some(PackageResolveHit {
+        package: pkg.to_string(),
+        root_id: entry.root_id.clone(),
+        entry: entry.entry.clone(),
+        workspace_file,
+    })
+}
+
+/// Build the `refs.resolved` display value for a package import hit.
+///
+/// Prefers workspace-relative barrel path, then root-relative entry, then
+/// `@alias:<pkg>→<root_id>` so the import remains queryable by root.
+pub fn package_resolve_display(hit: &PackageResolveHit) -> String {
+    if let Some(wf) = &hit.workspace_file {
+        return wf.clone();
+    }
+    if let Some(e) = &hit.entry {
+        return e.clone();
+    }
+    format!("@alias:{}→{}", hit.package, hit.root_id)
 }

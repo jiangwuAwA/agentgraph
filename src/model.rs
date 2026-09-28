@@ -511,6 +511,9 @@ pub struct WorkspaceStatus {
     /// P5: cheap macro-sidecar fingerprint-stale flag.
     #[serde(default)]
     pub sidecar_stale: bool,
+    /// Next-cut A: workspace package-name alias map (partial package map).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_aliases: Option<crate::index::workspace::PackageAliasMap>,
 }
 
 /// Result of `index --workspace` / `--workspace-root`.
@@ -526,6 +529,9 @@ pub struct WorkspaceIndexResult {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub note: String,
+    /// Next-cut A: discovered workspace package aliases (partial package map).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_aliases: Option<crate::index::workspace::PackageAliasMap>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

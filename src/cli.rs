@@ -31,6 +31,11 @@ pub struct Cli {
     /// Explicit shared workspace SQLite path (overrides manifest/first-root defaults).
     #[arg(long, global = true)]
     pub workspace_db: Option<PathBuf>,
+    /// Workspace package-name alias (repeatable): `--workspace-alias <pkg>=<root_id>`
+    /// or `--workspace-alias <pkg>=<path>`. Example: `--workspace-alias @demo/registry=registry`.
+    /// Partial package map for cross-root imports — **not** full TypeScript resolution.
+    #[arg(long = "workspace-alias", value_name = "PKG=ROOT", global = true)]
+    pub workspace_alias: Vec<String>,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -579,6 +584,11 @@ pub fn run(cli: Cli) -> Result<()> {
     };
     let workspace_flag = cli.workspace.clone();
     let workspace_roots = cli.workspace_root.clone();
+    let workspace_alias_flags = cli.workspace_alias.clone();
+    let mut cli_package_aliases: Vec<(String, String)> = Vec::new();
+    for flag in &workspace_alias_flags {
+        cli_package_aliases.push(crate::index::workspace::parse_alias_flag(flag)?);
+    }
     let workspace_db_flag = cli.workspace_db.clone();
     let workspace_mode =
         workspace_flag.is_some() || workspace_db_flag.is_some() || !workspace_roots.is_empty();
@@ -661,8 +671,13 @@ pub fn run(cli: Cli) -> Result<()> {
                 for w in &warnings {
                     eprintln!("warn: {w}");
                 }
-                let result =
-                    crate::index::workspace::index_workspace(&roots, &db_path, force, &warnings)?;
+                let result = crate::index::workspace::index_workspace_with_aliases(
+                    &roots,
+                    &db_path,
+                    force,
+                    &warnings,
+                    &cli_package_aliases,
+                )?;
                 println!("{}", serde_json::to_string_pretty(&result)?);
                 return Ok(());
             }
@@ -1042,13 +1057,18 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Importers { path, limit } => {
             let store = indexer.open_store()?;
             store.ensure_indexed()?;
-            // Accept abs paths under root, `./rel`, and Windows backslashes.
+            // Accept abs paths under root, `./rel`, Windows backslashes, and
+            // package specifiers (`@demo/registry`) via workspace aliases.
             let lookup = crate::index::parser::rel_path_under_root(
                 std::path::Path::new(&path),
                 &indexer.root,
             )
             .unwrap_or_else(|| path.replace('\\', "/"));
-            let hits = store.importers_of_file(&lookup, limit)?;
+            let mut hits = store.importers_of_file(&lookup, limit)?;
+            if hits.is_empty() {
+                // Package-name form: `@scope/name` / unscoped package via alias map.
+                hits = store.importers_of_package(&lookup, limit)?;
+            }
             println!("{}", serde_json::to_string_pretty(&hits)?);
         }
         Commands::Enrich { limit } => {

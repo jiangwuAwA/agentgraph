@@ -13,6 +13,12 @@ Related: [onboarding.md](onboarding.md) (5-min install → MCP `blast_radius`),
 [agent-goldens.md](agent-goldens.md) (P1-3 golden suites — stable-key release gate),
 [ci-blast-radius-demo.md](ci-blast-radius-demo.md) (P2-2 CI blast-radius comment **demo**).
 
+**Live matrix honesty (fixed external sentence):** 隔离 live 矩阵
+`lab_ready=true`；主信号=召回与 cwr；**live 噪声本切片未分离**；非生态
+sound。Scripted rows remain tool-policy agents (not live LLM). Package
+aliases on workspace stores are a **partial package map, not full TS
+resolution** — see [workspace.md](workspace.md).
+
 ---
 
 ## One-click scoped sound (P4)

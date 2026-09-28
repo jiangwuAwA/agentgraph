@@ -178,17 +178,16 @@
 2. ~~`fixtures/**/.agentgraph/index.db` 二进制索引~~ — **done**：根 `.gitignore` 增加 `**/.agentgraph/`；本地 fixture 索引目录已删除（勿再提交）。
 3. Session 任务面板 ID（T7–T18）与文档 P0-x 编号不一致 — **以本文档为准**。
 4. Workspace **union callers** CLI 含 spawn 时 p95 可到秒级（文档已标非 SLO）— Agent 侧**优先 root filter 或 MCP**；已写入 eval-agent-tasks / recipes。
+5. **真实 monorepo package map eval（非阻塞 residual）** — next-cut A 已交付 workspace **partial package alias**（CLI `--workspace-alias` / tsconfig paths / package.json `name`；见 [workspace.md](workspace.md)）。Hard fixture `ts-multi-root-client` 已带 `packages/*/package.json` + e2e 锁（`hard_fixture_package_json_enables_cross_root_link`）。仍在 open 的 residual：在**真实脏 monorepo**上评测包图覆盖率（exports conditions、`node_modules`、嵌套 workspace 包、重名包），以及 post-fix 评测轨迹 optional rerun。**禁止**把 partial package map 写成 full TS resolution / 生态 sound。
 
 ---
 
 ## 建议执行顺序
 
 ```text
-（已 shipped）P0-1…P0-4, P0-5/5b/5c, P1-1…P1-4, P2-1/2/4
-  → P0-5d 真隔离 live 对照 — **shipped**（`lab_ready=true`；叙事限 recall/cwr）
-  → 下一刀候选：multi-root 路径别名/re-export 召回缺口；或打 `v0.5.4` 锁定评测面
-  → P2-3 L1 规则（eval-gated）
-  → （并行可选）multi-root 路径别名/re-export 召回缺口
+（已 shipped）P0-1…P0-4, P0-5/5b/5c/5d, P1-1…P1-4, P2-1/2/4
+  → next-cut A cross-root package alias — **shipped**（partial package map；见 workspace.md）
+  → residual（非阻塞）：真实 monorepo package map eval；live 噪声分离 / 更大 N
   → P2-3 L1 规则（eval-gated）
 ```
 

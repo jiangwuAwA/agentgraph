@@ -201,3 +201,11 @@ Related: [agent-recipes.md](agent-recipes.md), [sound-subset.md](sound-subset.md
 [eval-agent-baseline.md](eval-agent-baseline.md) (**P0-5** scripted tool-policy
 A/B/C + offline trajectory replay — still **not** live LLM agents; **P0-5c**
 multi-runner hard slice in the same doc).
+
+**Behavior update note (next-cut A):** multi-root package-name imports
+(`@demo/registry` → registry root) now use a **partial package map**
+(CLI `--workspace-alias` / tsconfig paths / package.json `name`) — see
+[workspace.md](workspace.md). **Historical stamped scores in this doc and in
+`evals/agent-ab*` are unchanged** (not rewritten after the extract/alias
+fixes). Optional post-fix harness rerun is an operator track; do not mix
+pre-fix stamps with post-fix numbers in one table.

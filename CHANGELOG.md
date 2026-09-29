@@ -3,6 +3,13 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.6.1
+
+### S-FILL (stock operator; no private source)
+- unsafe L0 covered by generic extract; stock 88 sites / 24 files.
+- expand sidecar: event-engine + auth; 442 symbols / 1590 refs; with-macro dedup OK.
+- Expand is **not** sound; `--sound` ignores sidecar.
+
 ## v0.6.0
 
 ### Added (R-track — runtime recall)

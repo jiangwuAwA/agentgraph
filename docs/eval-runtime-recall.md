@@ -98,3 +98,26 @@ python scripts/eval_runtime_recall.py --trace target/rr_trace.jsonl \\
   --gap fixtures/eval-runtime-recall/gap_ledger.json
 cargo test --test runtime_recall
 ```
+
+
+## S-FILL (stock operator) — unsafe L0 + expand sidecar
+
+Private stock corpus is **operator-only** (never committed).
+
+### 1. unsafe L0
+- Extract: generic call walk records calls inside `unsafe { }` / `unsafe fn` (`tests/rust_unsafe_calls.rs`).
+- Stock: **88** unsafe sites / **24** files; call names in index: flock 17, geteuid 20, dup 4, from_raw_fd 11, fcntl 7.
+- No systematic extract hole for unsafe blocks.
+
+### 2. expand sidecar
+- `cargo expand --lib --offline` after temp-commenting criterion dev-deps (restored).
+- Shadow sibling: `stock-trading-app-expanded-sfill` (operator-local).
+- event-engine + auth expanded; repository expand failed on storage compile errors.
+- PowerShell `>` wrote UTF-16 — converted to UTF-8 (else language=unknown, 0 symbols).
+- Sidecar: **442 symbols / 1590 refs**; `impact --with-macro` dedup `kept_sidecar=1`.
+
+### 3. R-track
+- No stock runtime trace this cut. Expand raises candidate surface; `--with-macro` not sound; `--sound` ignores sidecar.
+
+### 4. Discipline
+- No private source / expand artifacts in agentgraph. Not production zero-miss.

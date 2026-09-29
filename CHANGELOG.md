@@ -3,6 +3,16 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.13
+
+### Added
+- **I3 precision policy:** default K=5; hard-decoy dir prune; dir max2; pure-decoy cap1;
+  definition from import resolved (drops same-name decoy defs).
+
+### Eval (I-track, additive)
+- I3 live: A extra-noise **1.43** vs B **2.18** (delta ~0.75; peak 1.2); precision **0.71 vs 0.56**; recall A >= B.
+- **Budgeted** noise advantage only. Not H4 / not 生态 sound. Historical scores unchanged.
+
 ## v0.5.12
 
 ### Added

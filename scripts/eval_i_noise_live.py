@@ -96,9 +96,11 @@ def run_product_arm_a(runner: str, arm: str, seed: int, task: str, timeout: int)
     symbol = SYMBOLS.get(task, "main")
     env = os.environ.copy()
     env["PATH"] = str(AG.parent) + os.pathsep + env.get("PATH", "")
-    subprocess.run([str(AG), "--root", str(workdir), "index", "--force"], capture_output=True, env=env)
+    ws = workdir / "workspace.json"
+    root_args = ["--workspace", str(ws)] if ws.is_file() else ["--root", str(workdir)]
+    subprocess.run([str(AG), *root_args, "index", "--force"], capture_output=True, env=env)
     out = subprocess.run(
-        [str(AG), "--root", str(workdir), "blast-radius", symbol, "--depth", "3"],
+        [str(AG), *root_args, "blast-radius", symbol, "--depth", "3"],
         capture_output=True,
         env=env,
     )

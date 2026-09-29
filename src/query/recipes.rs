@@ -30,7 +30,7 @@ use crate::index::subset::{
     scoped_sound_by_root, scoped_sound_by_top_dir, select_sound_promise, top_dir_of_path,
     SoundAggregation, SoundScopeKind, SubsetViolation,
 };
-use crate::index::{union_impact, Indexer, UnionOptions};
+use crate::index::Indexer;
 use crate::model::{is_high_freq_name, ConfidenceFilter, MacroSidecarStatus, ReferenceRecord};
 use crate::query::{build_callers_payload, CallersRoleMode};
 
@@ -706,26 +706,82 @@ pub fn run_blast_radius(
         )?;
         hits.iter().map(|n| n.to_query_json()).collect()
     };
-    // I2/I3: definition file from import `resolved` (true home), else one find_symbol hit.
+    // I2/I3/I5: definition home -- prefer non-decoy find_symbol root.
     {
-        let mut def_paths: Vec<String> = nodes
-            .iter()
-            .filter_map(|n| n.get("resolved").and_then(|p| p.as_str()))
-            .map(|s| s.to_string())
-            .collect();
-        def_paths.sort();
-        def_paths.dedup();
-        if def_paths.is_empty() {
-            if let Ok(defs) = store.find_symbol(&args.symbol, 20) {
-                if let Some(d) = defs.first() {
+        let mut def_paths: Vec<String> = Vec::new();
+        if let Ok(defs) = store.find_symbol(&args.symbol, 20) {
+            let not_decoy = |d: &crate::model::SymbolRecord| {
+                let l = d.path.to_ascii_lowercase();
+                !crate::query::file_budget::is_hard_decoy_root(&d.root_id)
+                    && !(l.contains("/legacy/")
+                        || l.contains("/admin/")
+                        || l.contains("/mock/")
+                        || l.contains("/demo/")
+                        || l.contains("/noise/")
+                        || l.contains("/utils/"))
+            };
+            let sym_l = args.symbol.to_ascii_lowercase();
+            let affinity = |d: &crate::model::SymbolRecord| -> i32 {
+                let l = d.path.to_ascii_lowercase();
+                let mut score = 0i32;
+                if not_decoy(d) {
+                    score += 4;
+                }
+                if let Some(parent) = std::path::Path::new(&d.path).parent() {
+                    if let Some(dir) = parent.file_name().and_then(|s| s.to_str()) {
+                        let dir_l = dir.to_ascii_lowercase();
+                        if dir_l.len() >= 3 && sym_l.contains(&dir_l) {
+                            score += 6;
+                        }
+                    }
+                }
+                if l.contains("/api/") || l.contains("/cli/") || l.contains("/shared/") {
+                    score -= 3;
+                }
+                score
+            };
+            if let Some(d) = defs.iter().max_by_key(|d| affinity(d)) {
+                if affinity(d) > 0 {
                     def_paths.push(d.path.clone());
                 }
             }
         }
+        if def_paths.is_empty() {
+            let mut resolved: Vec<String> = nodes
+                .iter()
+                .filter_map(|n| n.get("resolved").and_then(|p| p.as_str()))
+                .map(|s| s.to_string())
+                .collect();
+            resolved.retain(|p| {
+                let l = p.to_ascii_lowercase();
+                !(l.contains("/legacy/")
+                    || l.contains("/admin/")
+                    || l.contains("/mock/")
+                    || l.contains("/demo/")
+                    || l.contains("/noise/")
+                    || l.contains("/utils/"))
+            });
+            resolved.sort();
+            resolved.dedup();
+            def_paths = resolved;
+        }
         for dpath in def_paths {
+            let mut rid = String::new();
+            if let Ok(roots) = store.workspace_roots_meta() {
+                for r in &roots {
+                    if std::path::Path::new(&r.path).join(&dpath).is_file() {
+                        rid = r.id.clone();
+                        break;
+                    }
+                }
+            }
+            if crate::query::file_budget::is_hard_decoy_root(&rid) {
+                continue;
+            }
             nodes.push(json!({
                 "name": args.symbol,
                 "path": dpath,
+                "root_id": rid,
                 "line": 0,
                 "kind": "define",
                 "depth": 0,
@@ -733,37 +789,6 @@ pub fn run_blast_radius(
                 "edge_role": "define",
                 "at": "definition",
             }));
-        }
-    }
-
-    if include_macro {
-        if let Some(side) = indexer.open_macro_store()? {
-            let status = indexer.macro_status()?;
-            let opts = UnionOptions {
-                dedup: true,
-                ignore_sidecar: false,
-            };
-            let (layout, _map, _present) = indexer.macro_crate_layout()?;
-            let side_hits = side.impact_filtered(
-                &args.symbol,
-                args.depth,
-                args.limit,
-                ConfidenceFilter::Default,
-            )?;
-            let expanded_root = status
-                .expanded_root
-                .clone()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| indexer.root.clone());
-            let (rows, _stats) = union_impact(
-                nodes,
-                &side_hits,
-                &expanded_root,
-                &indexer.root,
-                &layout,
-                opts,
-            );
-            nodes = rows;
         }
     }
 
@@ -795,6 +820,60 @@ pub fn run_blast_radius(
             }
         }
     }
+
+    // I5: rewrite root-relative node paths to workspace-relative.
+    if let Ok(roots) = store.workspace_roots_meta() {
+        let map: std::collections::HashMap<String, String> = roots
+            .iter()
+            .map(|r| (r.id.clone(), r.path.clone()))
+            .collect();
+        for n in nodes.iter_mut() {
+            let Some(obj) = n.as_object_mut() else {
+                continue;
+            };
+            let rid = obj
+                .get("root_id")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string();
+            let Some(path) = obj
+                .get("path")
+                .and_then(|p| p.as_str())
+                .map(|s| s.to_string())
+            else {
+                continue;
+            };
+            if path.starts_with("packages/") {
+                continue;
+            }
+            let rp_owned: Option<String> = map.get(&rid).cloned().or_else(|| {
+                for rp in map.values() {
+                    if std::path::Path::new(rp).join(&path).is_file() {
+                        return Some(rp.clone());
+                    }
+                }
+                None
+            });
+            if let Some(rp) = rp_owned.as_deref() {
+                let rp_n = rp.replace('\\', "/");
+                let display_root = if let Some(idx) = rp_n.find("packages/") {
+                    rp_n[idx..].trim_end_matches('/').to_string()
+                } else if rp_n.contains(':') || rp_n.starts_with('/') {
+                    let parts: Vec<&str> = rp_n.split('/').filter(|p| !p.is_empty()).collect();
+                    if parts.len() >= 2 {
+                        format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1])
+                    } else {
+                        rp_n
+                    }
+                } else {
+                    rp_n.trim_end_matches('/').to_string()
+                };
+                let rel = path.trim_start_matches('/');
+                obj.insert("path".into(), json!(format!("{display_root}/{rel}")));
+            }
+        }
+    }
+
     Ok(build_blast_radius_payload(BlastRadiusPayloadInput {
         symbol: args.symbol.clone(),
         depth: args.depth,

@@ -39,7 +39,52 @@ const LOW_PRIORITY_DIRS: &[&str] = &[
 ];
 
 /// I3: hard decoy dirs — pruned unless unique exact call site.
-fn is_hard_decoy_dir(path: &str) -> bool {
+/// I5: hard-decoy workspace root ids.
+pub fn is_hard_decoy_root(root_id: &str) -> bool {
+    let r = root_id.to_ascii_lowercase();
+    matches!(
+        r.as_str(),
+        "legacy"
+            | "admin"
+            | "deprecated"
+            | "demo"
+            | "demos"
+            | "mock"
+            | "mocks"
+            | "fake"
+            | "fakes"
+            | "seed"
+            | "seeds"
+            | "noise"
+            | "cli"
+            | "docs"
+    )
+}
+
+fn is_hard_decoy_dir(path: &str, root_id: &str) -> bool {
+    if is_hard_decoy_root(root_id) {
+        return true;
+    }
+    let r = root_id.to_ascii_lowercase();
+    if matches!(
+        r.as_str(),
+        "legacy"
+            | "admin"
+            | "deprecated"
+            | "demo"
+            | "demos"
+            | "mock"
+            | "mocks"
+            | "fake"
+            | "fakes"
+            | "seed"
+            | "seeds"
+            | "noise"
+            | "cli"
+            | "docs"
+    ) {
+        return true;
+    }
     let segs = path_segments(path);
     segs[..segs.len().saturating_sub(1)].iter().any(|s| {
         let low = s.to_ascii_lowercase();
@@ -100,6 +145,7 @@ pub struct FileCandidate {
     pub score: f64,
     pub edge_role: Option<String>,
     pub depth: usize,
+    pub root_id: String,
 }
 
 /// Budgeted file selection result (stable keys).
@@ -161,8 +207,19 @@ pub fn path_penalty(path: &str) -> f64 {
     if COMMON_BASENAMES.contains(&base.as_str()) {
         pen += 10.0;
     }
+    if is_barrel_noise(path) {
+        pen += 6.0;
+    }
     pen
 }
+fn decoy_root_penalty(root_id: &str) -> f64 {
+    let r = root_id.to_ascii_lowercase();
+    match r.as_str() {
+        "legacy" | "admin" | "cli" | "docs" | "demo" | "mock" | "noise" => 12.0,
+        _ => 0.0,
+    }
+}
+
 fn edge_role_score(role: Option<&str>) -> f64 {
     // I3 rank: exact call site > registration > definition > implementor.
     match role {
@@ -189,11 +246,31 @@ pub fn score_candidate(c: &FileCandidate) -> f64 {
     let role = edge_role_score(c.edge_role.as_deref());
     let d = depth_score(c.depth);
     let pen = path_penalty(&c.path);
-    c.score + role + d - pen
+    c.score + role + d - pen - decoy_root_penalty(&c.root_id)
 }
 
 /// Rank + prune files to `budget`. Diversity: same directory keeps at most 2
 /// representatives (others get extra demotion before sort).
+/// I5: reject non-file display paths (`@alias:...`).
+fn is_real_source_path(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    if p.contains("@alias:") {
+        return false;
+    }
+    if p.starts_with('@') {
+        return false;
+    }
+    true
+}
+
+/// I5: barrel/re-export index/main files demoted.
+fn is_barrel_noise(path: &str) -> bool {
+    let base_owned = path.replace('\\', "/");
+    let base = base_owned.rsplit('/').next().unwrap_or("");
+    let stem = strip_ext(base).to_ascii_lowercase();
+    stem == "index" || stem == "main" || stem == "mod"
+}
+
 pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> FileSelection {
     let budget = budget.max(1);
     if candidates.is_empty() {
@@ -206,7 +283,7 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         };
     }
 
-    let mut best: std::collections::BTreeMap<String, (f64, bool)> =
+    let mut best: std::collections::BTreeMap<String, (f64, bool, String)> =
         std::collections::BTreeMap::new();
     for c in &candidates {
         let s = score_candidate(c);
@@ -216,14 +293,16 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         ) && c.depth <= 1;
         let e = best
             .entry(c.path.replace('\\', "/"))
-            .or_insert((s, exact_call));
+            .or_insert((s, exact_call, c.root_id.clone()));
         if s > e.0 {
-            *e = (s, exact_call);
+            *e = (s, exact_call, c.root_id.clone());
         }
     }
 
-    let mut scored: Vec<(String, f64, bool)> =
-        best.into_iter().map(|(p, (s, e))| (p, s, e)).collect();
+    let mut scored: Vec<(String, f64, bool, String)> = best
+        .into_iter()
+        .map(|(p, (s, e, rid))| (p, s, e, rid))
+        .collect();
     scored.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -236,8 +315,12 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         std::collections::BTreeMap::new();
     let mut decoy_selected = 0usize;
 
-    for (path, _s, exact_call) in &scored {
-        if is_hard_decoy_dir(path) && !(*exact_call && selected.is_empty()) {
+    for (path, _s, exact_call, rid) in &scored {
+        if !is_real_source_path(path) {
+            pruned.push(path.clone());
+            continue;
+        }
+        if is_hard_decoy_dir(path, rid) && !(*exact_call && selected.is_empty()) {
             pruned.push(path.clone());
             continue;
         }
@@ -260,8 +343,8 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         let base = strip_ext(&basename(path)).to_ascii_lowercase();
         let best_for_base = scored
             .iter()
-            .filter(|(p, _, _)| strip_ext(&basename(p)).to_ascii_lowercase() == base)
-            .map(|(p, s, _)| (p.clone(), *s))
+            .filter(|(p, _, _, _)| strip_ext(&basename(p)).to_ascii_lowercase() == base)
+            .map(|(p, s, _, _)| (p.clone(), *s))
             .max_by(|a, b| {
                 a.1.partial_cmp(&b.1)
                     .unwrap_or(std::cmp::Ordering::Equal)
@@ -321,11 +404,17 @@ pub fn candidates_from_nodes(nodes: &[Value]) -> Vec<FileCandidate> {
         let depth = n.get("depth").and_then(|d| d.as_u64()).unwrap_or(0) as usize;
         let conf = n.get("confidence").and_then(|c| c.as_str()).unwrap_or("");
         let bonus = if conf == "exact" { 2.0 } else { 0.0 };
+        let root_id = n
+            .get("root_id")
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string();
         out.push(FileCandidate {
             path,
             score: bonus,
             edge_role: role,
             depth,
+            root_id,
         });
     }
     out
@@ -349,11 +438,17 @@ pub fn candidates_from_rows(rows: &[Value]) -> Vec<FileCandidate> {
             .map(|s| s.to_string());
         let conf = n.get("confidence").and_then(|c| c.as_str()).unwrap_or("");
         let bonus = if conf == "exact" { 2.0 } else { 0.0 };
+        let root_id = n
+            .get("root_id")
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string();
         out.push(FileCandidate {
             path,
             score: bonus,
             edge_role: role,
             depth: 1,
+            root_id,
         });
     }
     out
@@ -369,6 +464,7 @@ mod tests {
             score: 0.0,
             edge_role: Some(role.to_string()),
             depth,
+            root_id: String::new(),
         }
     }
 

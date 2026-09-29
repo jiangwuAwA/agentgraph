@@ -917,3 +917,28 @@ Full delta ~0.50 (hard alias noise). Not in main claim.
 
 **Citable:** 「在预算化 unlabeled 任务上噪音更少」— I-track measured **delta=2.5**.
 **No** H4 / easy self-label / ecosystem extrapolation.
+
+
+## I5 — hard/full extra-noise (product default vs live B)
+
+### Product (v0.5.15)
+
+1. Prune non-file display paths (@alias tokens).
+2. Demote barrel/re-export index/main/mod.
+3. Hard-decoy root_id never selected.
+4. Definition home: non-decoy find_symbol + symbol-dir affinity.
+5. One-hop import targets; workspace packages/ path rewrite.
+6. K=5 / selected<=4 unchanged.
+
+### Split tables (additive; evals/agent-ab-i4/)
+
+| slice | A noise | B noise | delta (B-A) | A recall | B recall | delta>=1 | rec_ok |
+|---|---|---|---|---|---|---|---|
+| **I-track** | **0.00** | 2.50 | **2.50** | 1.000 | 0.833 | **yes** | yes |
+| **hard** | **0.00** | **0.00** | **0.00** | 1.000 | 0.875 | no (floor) | yes |
+| **full** | **0.00** | 1.25 | **1.25** | 1.000 | 0.854 | **yes** | yes |
+
+**Honest:** hard delta=0 because both arms already have extra-noise=0 (floor). I-track and full meet delta>=1.
+
+**Citable:** 「在预算化 unlabeled 任务上噪音更少」(I-track delta=2.5; full delta=1.25).
+**No** H4 / easy self-label / ecosystem extrapolation.

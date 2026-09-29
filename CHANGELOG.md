@@ -3,6 +3,16 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.15
+
+### Added
+- **I5 precision:** prune @alias tokens; barrel demote; decoy root_id prune;
+  symbol-dir definition affinity; one-hop deps; workspace packages/ path rewrite.
+
+### Eval (additive splits)
+- I-track delta=2.5; full delta=**1.25**; hard delta=0 (both arms noise 0 — floor).
+- Budgeted slice only. Not H4 / not 生态 sound.
+
 ## v0.5.14
 
 ### Added

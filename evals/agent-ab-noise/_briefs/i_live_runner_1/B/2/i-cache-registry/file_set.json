@@ -7,49 +7,20 @@
   "file_set": [
     "src/cache/registry.ts",
     "src/app/bootstrap.ts",
-    "src/admin/registry.ts",
     "src/legacy/registry.ts",
-    "src/shared/registry.ts",
-    "src/app/registry.ts",
-    "src/api/registry.ts",
-    "src/cli/registry.ts"
+    "src/admin/registry.ts",
+    "src/shared/registry.ts"
   ],
   "tool_calls": [
-    {
-      "tool": "bash",
-      "args": ["Get-ChildItem -Recurse -Force -File"],
-      "ok": true,
-      "summary": {"files": 113},
-      "note": "listed isolated workdir tree"
-    },
-    {
-      "tool": "grep",
-      "args": ["CacheRegistry"],
-      "ok": true,
-      "summary": {"matches": 14, "files": 11},
-      "note": "every occurrence of the class name"
-    },
-    {
-      "tool": "grep",
-      "args": ["Registry|cacheRegistry|cache_registry"],
-      "ok": true,
-      "summary": {"matches": 14},
-      "note": "no additional naming variants"
-    },
-    {
-      "tool": "grep",
-      "args": ["Cache", "*logger*"],
-      "ok": true,
-      "summary": {"matches": 10},
-      "note": "logger helpers are logCache(event) stubs; no CacheRegistry identifier"
-    },
-    {
-      "tool": "bash",
-      "args": ["Get-ChildItem -Recurse -File -Include *.ts,*.json | Get-Content"],
-      "ok": true,
-      "summary": {"read_all_sources": true},
-      "note": "full-file read to classify define/construct/wrap/document"
-    }
+    {"tool": "list", "args": ["."], "ok": true, "summary": {"files": 110}, "note": "workdir tree under src/"},
+    {"tool": "grep", "args": ["CacheRegistry"], "ok": true, "summary": {"matches": 14, "files": 11}, "note": "class-name occurrences"},
+    {"tool": "read", "args": ["src/cache/registry.ts"], "ok": true, "summary": {"defines": "CacheRegistry"}, "note": "canonical runtime definition over TtlCache"},
+    {"tool": "read", "args": ["src/app/bootstrap.ts"], "ok": true, "summary": {"constructs": "new CacheRegistry()"}, "note": "import + construction"},
+    {"tool": "read", "args": ["src/legacy/registry.ts"], "ok": true, "summary": {"defines": "CacheRegistry"}, "note": "deprecated migration registry"},
+    {"tool": "read", "args": ["src/admin/registry.ts"], "ok": true, "summary": {"defines": "CacheRegistry"}, "note": "admin console registry"},
+    {"tool": "read", "args": ["src/shared/registry.ts"], "ok": true, "summary": {"defines": "CacheRegistry"}, "note": "shared snapshot registry"},
+    {"tool": "read", "args": ["src/cache/logger.ts"], "ok": true, "summary": {"exports": "logCache"}, "note": "logger helper; no CacheRegistry reference"},
+    {"tool": "read", "args": ["src/shared/logger.ts"], "ok": true, "summary": {"exports": "logCache"}, "note": "logger helper; no CacheRegistry reference"}
   ],
   "chose_correct_workspace_root": null,
   "approx_tokens": null

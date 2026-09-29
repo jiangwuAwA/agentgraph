@@ -72,7 +72,7 @@
       "src/legacy/orderHandler.ts",
       "src/admin/orderAdmin.ts"
     ],
-    "file_budget": 8,
+    "file_budget": 5,
     "notes_extra": "Audit wording intentionally invites over-collection. Only files_that_matter are true product dependents."
   },
   "recommended_tools": [

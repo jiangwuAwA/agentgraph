@@ -5,71 +5,168 @@
   "arm": "A",
   "seed": 3,
   "file_set": [
+    "src/orders/orderService.ts",
     "src/orders/createOrder.ts",
     "src/payments/chargeCard.ts",
-    "src/orders/orderService.ts",
     "src/legacy/createOrder.ts",
-    "src/legacy/orderHandler.ts",
-    "src/legacy/chargeCard.ts",
-    "src/payments/refundCard.ts",
-    "src/admin/orderAdmin.ts"
+    "src/legacy/chargeCard.ts"
   ],
   "tool_calls": [
     {
       "tool": "bash",
-      "args": ["agentgraph find createOrder"],
+      "args": ["agentgraph", "stats"],
       "ok": true,
-      "summary": {"defs": 3, "paths": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]},
-      "note": "indexed symbol definitions of createOrder"
+      "summary": {"files": 56, "symbols": 129, "references": 83, "refs_by_confidence": [["exact", 83]]},
+      "note": "workdir already indexed; L0 exact-only refs"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph find chargeCard"],
+      "args": ["agentgraph", "find", "createOrder"],
       "ok": true,
-      "summary": {"defs": 3, "paths": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]},
-      "note": "refundCard.ts exports chargeCard despite filename"
+      "summary": {
+        "definitions": [
+          "src/legacy/createOrder.ts",
+          "src/legacy/orderHandler.ts",
+          "src/orders/createOrder.ts"
+        ]
+      },
+      "note": "three createOrder function defs (legacy draft, legacy handler, current)"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph callers createOrder"],
+      "args": ["agentgraph", "find", "chargeCard"],
       "ok": true,
-      "summary": {"hits": 2, "path": "src/orders/orderService.ts"},
-      "note": "import + call in OrderService.place"
+      "summary": {
+        "definitions": [
+          "src/legacy/chargeCard.ts",
+          "src/payments/chargeCard.ts",
+          "src/payments/refundCard.ts"
+        ]
+      },
+      "note": "three chargeCard function defs (legacy settlement, current, refund-side copy)"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph callers chargeCard"],
+      "args": ["agentgraph", "callers", "createOrder"],
       "ok": true,
-      "summary": {"hits": 2, "path": "src/orders/orderService.ts"},
-      "note": "import + call in OrderService.place"
+      "summary": {"sites": ["src/orders/orderService.ts"], "kinds": ["import", "call"]},
+      "note": "import ./createOrder + call in OrderService.place"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph impact createOrder"],
+      "args": ["agentgraph", "callers", "chargeCard"],
       "ok": true,
-      "summary": {"dependents": ["src/orders/orderService.ts"]},
-      "note": "no further transitive callers"
+      "summary": {"sites": ["src/orders/orderService.ts"], "kinds": ["import", "call"]},
+      "note": "import ../payments/chargeCard + call in OrderService.place"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph impact chargeCard"],
+      "args": ["agentgraph", "who-calls", "createOrder"],
       "ok": true,
-      "summary": {"dependents": ["src/orders/orderService.ts"]},
-      "note": "no further transitive callers"
-    },
-    {
-      "tool": "grep",
-      "args": ["createOrder|chargeCard"],
-      "ok": true,
-      "summary": {"matches": 9, "paths": ["src/orders/orderService.ts", "src/orders/createOrder.ts", "src/orders/orderMetrics.ts", "src/admin/orderAdmin.ts", "src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]},
-      "note": "text-level mentions including comment-only metrics helper"
+      "summary": {"selected": ["src/orders/orderService.ts"], "pruned": [], "file_budget": 5, "subset_ok": true},
+      "note": "recipe selected[] (callers window); no implementor flood"
     },
     {
       "tool": "bash",
-      "args": ["Get-ChildItem -Recurse -File"],
+      "args": ["agentgraph", "who-calls", "chargeCard"],
       "ok": true,
-      "summary": {"source_files": 63},
-      "note": "tree enumerated; only .ts sources under src/ plus package.json"
+      "summary": {"selected": ["src/orders/orderService.ts"], "pruned": [], "file_budget": 5, "subset_ok": true},
+      "note": "recipe selected[] (callers window); no implementor flood"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "blast-radius", "createOrder"],
+      "ok": true,
+      "summary": {
+        "selected": ["src/orders/orderService.ts", "src/orders/createOrder.ts"],
+        "pruned": [],
+        "window": "sound",
+        "subset_ok": true
+      },
+      "note": "product selected[] = define + caller"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "blast-radius", "chargeCard"],
+      "ok": true,
+      "summary": {
+        "selected": ["src/orders/orderService.ts", "src/payments/chargeCard.ts"],
+        "pruned": [],
+        "window": "sound",
+        "subset_ok": true
+      },
+      "note": "product selected[] = define + caller"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "related", "createOrder"],
+      "ok": true,
+      "summary": {
+        "top": [
+          "src/legacy/createOrder.ts",
+          "src/legacy/orderHandler.ts",
+          "src/orders/createOrder.ts",
+          "src/orders/orderService.ts"
+        ]
+      },
+      "note": "product retrieval ranks all createOrder definition sites"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "related", "chargeCard"],
+      "ok": true,
+      "summary": {
+        "top": [
+          "src/legacy/chargeCard.ts",
+          "src/payments/chargeCard.ts",
+          "src/payments/refundCard.ts",
+          "src/orders/orderService.ts"
+        ]
+      },
+      "note": "product retrieval ranks all chargeCard definition sites"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "importers", "src/orders/createOrder.ts"],
+      "ok": true,
+      "summary": {"importers": ["src/orders/orderService.ts"]},
+      "note": "sole importer"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "importers", "src/payments/chargeCard.ts"],
+      "ok": true,
+      "summary": {"importers": ["src/orders/orderService.ts"]},
+      "note": "sole importer"
+    },
+    {
+      "tool": "bash",
+      "args": ["agentgraph", "importers", "src/legacy/createOrder.ts", "src/legacy/chargeCard.ts", "src/legacy/orderHandler.ts", "src/payments/refundCard.ts"],
+      "ok": true,
+      "summary": {"importers": []},
+      "note": "all legacy/refund-side defs are orphans: zero import edges"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content", "src/orders/orderService.ts", "src/orders/createOrder.ts", "src/payments/chargeCard.ts"],
+      "ok": true,
+      "summary": {
+        "imports": {
+          "src/orders/orderService.ts": ["./createOrder", "../payments/chargeCard"],
+          "src/orders/createOrder.ts": [],
+          "src/payments/chargeCard.ts": []
+        }
+      },
+      "note": "direct imports of selected files resolve into the already-selected defs"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-Content", "src/legacy/createOrder.ts", "src/legacy/chargeCard.ts", "src/legacy/orderHandler.ts", "src/payments/refundCard.ts"],
+      "ok": true,
+      "summary": {
+        "notes": "legacy/createOrder + legacy/orderHandler are near-identical draft paths; legacy/chargeCard + payments/refundCard are near-identical settlement paths"
+      },
+      "note": "named historical paths kept; odd-name duplicates (orderHandler, refundCard) left out under 5-file precision budget"
     }
   ],
   "chose_correct_workspace_root": true,

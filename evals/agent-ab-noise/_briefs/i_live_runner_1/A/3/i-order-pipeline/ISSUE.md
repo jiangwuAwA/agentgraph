@@ -11,5 +11,5 @@ We are auditing every place that participates in order creation or card charging
 
 ## Constraints
 
-- Return **at most 8 files** in `file_set`.
+- Return **at most 5 files** in `file_set`.
 - Prefer precision over coverage.

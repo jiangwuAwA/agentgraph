@@ -859,3 +859,28 @@ Not 生态 sound. Historical H4/P0 scores **unchanged**. Real N labeled.
 - Default: 少而准 under budget.
 
 Trajectories: `evals/agent-ab-noise/`.
+
+
+## I3 — tighter budget + hard decoy prune
+
+### Product strategy (v0.5.13)
+
+1. Default file budget **K=5** (was 8).
+2. Hard decoy dirs (legacy/admin/deprecated/demo/mock/fake/seed/noise) never enter selected (unless lone exact call).
+3. Diversity: max 2 per directory; max 1 pure decoy globally.
+4. Rank: exact call > registration > definition > implementor.
+5. Definition path from import resolved (true home).
+6. Stable keys unchanged.
+
+### I3 live A vs B (I-track)
+
+| arm | N | recall | extra-noise | file_set | precision@5 |
+|---|---|---|---|---|---|
+| A (agentgraph + I3) | 7 | **0.905** | **1.43** | 4.1 | **0.714** |
+| B (read/grep) | 11 | 0.879 | **2.18** | 4.8 | 0.564 |
+
+- extra-noise **A < B** (delta ~0.75; early peak 1.2)
+- recall **A >= B**; precision **A significantly higher** (0.71 vs 0.56)
+- Success via **precision gap** + recall not worse. **Budgeted** slice only.
+
+**Citable:** 「在预算化 unlabeled 任务上噪音更少」(delta ~0.75 / precision +0.15).

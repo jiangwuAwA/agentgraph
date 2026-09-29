@@ -1,0 +1,74 @@
+{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "B",
+  "seed": 1,
+  "file_set": [
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts",
+    "src/orders/orderService.ts",
+    "src/legacy/createOrder.ts",
+    "src/legacy/chargeCard.ts"
+  ],
+  "tool_calls": [
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Force"],
+      "ok": true,
+      "summary": {"entries": 4, "dirs": ["src", ".agentgraph", ".mimocode"]},
+      "note": "workdir root listing"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File"],
+      "ok": true,
+      "summary": {"files": 62},
+      "note": "full recursive file inventory"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard"],
+      "ok": true,
+      "summary": {"matches": 14, "files": 9},
+      "note": "primary symbol scan"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard|CreateOrder|ChargeCard|create_order|charge_card|orderHandler|refundCard"],
+      "ok": true,
+      "summary": {"matches": 14, "files": 9},
+      "note": "extended alias/case scan; no extra files"
+    },
+    {
+      "tool": "grep",
+      "args": ["from ['\\\"].*(createOrder|chargeCard|orderHandler|refundCard|orderService)"],
+      "ok": true,
+      "summary": {"matches": 2, "files": 1},
+      "note": "import-edge scan; only orderService imports the symbols"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File -Filter *.ts | Get-Content"],
+      "ok": true,
+      "summary": {"files_read": 58},
+      "note": "read every TS source to classify define/call vs comment-only mentions"
+    },
+    {
+      "tool": "read",
+      "args": ["package.json"],
+      "ok": true,
+      "summary": {"bytes": 50},
+      "note": "no createOrder/chargeCard references"
+    },
+    {
+      "tool": "grep",
+      "args": ["createOrder|chargeCard|orderHandler|refundCard|place\\(", "*.json,*.md,*.txt,*.toml"],
+      "ok": true,
+      "summary": {"matches": 0},
+      "note": "non-TS doc/config scan; empty"
+    }
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

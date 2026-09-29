@@ -34,7 +34,7 @@ RUNNERS = {
     "i_live_runner_2": "xiaomi/mimo-v2.6-flash",
 }
 ARMS = ("A", "B")
-FILE_BUDGET = 8
+FILE_BUDGET = 5
 
 
 def brief_dir(runner: str, arm: str, seed: int, task: str) -> Path:
@@ -95,7 +95,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
 def build_prompt(task: str, arm: str, seed: int, runner: str, model: str, issue: str) -> str:
     policy = (
         "ARM A: use agentgraph CLI (on PATH) plus reads. "
-        "Prefer blast_radius / who-calls `selected[]` (file_budget K) and avoid `pruned[]` files. "
+        "file_set = product selected[] PLUS files those selected files directly import. NEVER add pruned[] or grep-only hits. Max 5 files. "
         if arm == "A"
         else "ARM B: do NOT use agentgraph. Use listing / reading / grep only. "
     )

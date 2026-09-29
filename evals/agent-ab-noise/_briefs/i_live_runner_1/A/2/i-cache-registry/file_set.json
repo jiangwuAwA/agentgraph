@@ -5,93 +5,71 @@
   "arm": "A",
   "seed": 2,
   "file_set": [
-    "src/cache/registry.ts",
     "src/app/bootstrap.ts",
-    "src/admin/registry.ts",
-    "src/legacy/registry.ts",
-    "src/shared/registry.ts",
-    "src/api/registry.ts",
-    "src/app/registry.ts",
-    "src/cli/registry.ts"
+    "src/cache/registry.ts",
+    "src/cache/ttlCache.ts"
   ],
   "tool_calls": [
     {
       "tool": "bash",
-      "args": ["agentgraph index --root ."],
+      "args": ["agentgraph", "index"],
       "ok": true,
-      "summary": {
-        "files": 102,
-        "symbols": 115,
-        "references": 11
-      },
-      "note": "L0/L1 index built in workdir"
+      "summary": {"files": 102, "symbols": 115, "references": 11},
+      "note": "built L0 index of workdir"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph find CacheRegistry --root ."],
+      "args": ["agentgraph", "find", "CacheRegistry"],
       "ok": true,
-      "summary": {
-        "defs": 10,
-        "kind": "class"
-      },
-      "note": "10 same-named CacheRegistry class definitions across admin/api/app/cache/cli/config/legacy/metrics/shared/util"
+      "summary": {"definitions": 10},
+      "note": "10 class defs across admin/api/app/cache/cli/config/legacy/metrics/shared/util registry.ts"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph callers CacheRegistry --root ."],
+      "args": ["agentgraph", "who-calls", "CacheRegistry"],
       "ok": true,
-      "summary": {
-        "refs": 2,
-        "paths": ["src/app/bootstrap.ts"]
-      },
-      "note": "exact import+construct resolved to src/cache/registry.ts"
+      "summary": {"selected": ["src/app/bootstrap.ts"], "pruned": [], "file_budget": 5},
+      "note": "exact import + call in bootstrap.ts; no implementor flood"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph impact CacheRegistry --root ."],
+      "args": ["agentgraph", "blast-radius", "CacheRegistry"],
       "ok": true,
       "summary": {
-        "edges": 2
+        "selected": ["src/app/bootstrap.ts", "src/cache/registry.ts"],
+        "pruned": [],
+        "window": "sound",
+        "subset_ok": true
       },
-      "note": "only bootstrap depends on CacheRegistry"
+      "note": "product selected[] = bootstrap.ts (constructs) + cache/registry.ts (defines)"
     },
     {
       "tool": "bash",
-      "args": ["agentgraph related CacheRegistry --root ."],
+      "args": ["agentgraph", "importers", "src/cache/registry.ts"],
       "ok": true,
-      "summary": {
-        "files": 10
-      },
-      "note": "all definition:class rows, equal score"
+      "summary": {"importers": 1},
+      "note": "only bootstrap.ts imports the selected definition"
     },
     {
-      "tool": "bash",
-      "args": ["agentgraph who-calls CacheRegistry --root ."],
+      "tool": "read",
+      "args": ["src/app/bootstrap.ts"],
       "ok": true,
-      "summary": {
-        "selected": ["src/app/bootstrap.ts"],
-        "window": "default"
-      },
-      "note": "file_budget=8; honesty payload not a complete runtime graph"
+      "summary": {"imports": ["../cache/registry"], "constructs": "new CacheRegistry()"},
+      "note": "selected; direct import already in selected[]"
     },
     {
-      "tool": "grep",
-      "args": ["CacheRegistry", "."],
+      "tool": "read",
+      "args": ["src/cache/registry.ts"],
       "ok": true,
-      "summary": {
-        "files_with_class_name": 11,
-        "matches": 14
-      },
-      "note": "10 definitions + src/app/bootstrap.ts (import/construct/return type)"
+      "summary": {"imports": ["./ttlCache"], "defines": "class CacheRegistry"},
+      "note": "selected; direct import ttlCache.ts added to file_set"
     },
     {
-      "tool": "bash",
-      "args": ["Get-ChildItem -Recurse -Include *.ts,*.json"],
+      "tool": "read",
+      "args": ["src/cache/ttlCache.ts"],
       "ok": true,
-      "summary": {
-        "read_all_source": true
-      },
-      "note": "read every workdir source file to classify defines/constructs/wraps/documents and separate same-name decoys + logCache helpers"
+      "summary": {"imports": [], "defines": "class TtlCache"},
+      "note": "directly imported by selected cache/registry.ts"
     }
   ],
   "chose_correct_workspace_root": null,

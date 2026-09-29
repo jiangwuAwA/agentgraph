@@ -705,18 +705,32 @@ pub fn run_blast_radius(
         )?;
         hits.iter().map(|n| n.to_query_json()).collect()
     };
-    // I2: always include the symbol definition file as a top candidate.
-    if let Ok(defs) = store.find_symbol(&args.symbol, 20) {
-        for d in defs {
+    // I2/I3: definition file from import `resolved` (true home), else one find_symbol hit.
+    {
+        let mut def_paths: Vec<String> = nodes
+            .iter()
+            .filter_map(|n| n.get("resolved").and_then(|p| p.as_str()))
+            .map(|s| s.to_string())
+            .collect();
+        def_paths.sort();
+        def_paths.dedup();
+        if def_paths.is_empty() {
+            if let Ok(defs) = store.find_symbol(&args.symbol, 20) {
+                if let Some(d) = defs.first() {
+                    def_paths.push(d.path.clone());
+                }
+            }
+        }
+        for dpath in def_paths {
             nodes.push(json!({
-                "name": d.name,
-                "path": d.path,
-                "line": d.start_line,
+                "name": args.symbol,
+                "path": dpath,
+                "line": 0,
                 "kind": "define",
                 "depth": 0,
                 "confidence": "exact",
                 "edge_role": "define",
-                "at": format!("{}:{}", d.path, d.start_line),
+                "at": "definition",
             }));
         }
     }

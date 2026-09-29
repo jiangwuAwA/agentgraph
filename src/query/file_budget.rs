@@ -8,18 +8,25 @@
 
 use serde_json::{json, Value};
 
-pub const DEFAULT_FILE_BUDGET: usize = 8;
+pub const DEFAULT_FILE_BUDGET: usize = 5;
 
-/// Directory segments that are usually noise for product blast (I2 demotion).
+/// Directory segments that are usually noise for product blast (I2/I3 demotion).
 const LOW_PRIORITY_DIRS: &[&str] = &[
     "legacy",
     "admin",
+    "deprecated",
+    "demo",
+    "demos",
+    "mock",
+    "mocks",
+    "fake",
+    "fakes",
+    "seed",
+    "seeds",
     "noise",
     "test",
     "tests",
     "__tests__",
-    "mock",
-    "mocks",
     "fixture",
     "fixtures",
     "docs",
@@ -30,6 +37,32 @@ const LOW_PRIORITY_DIRS: &[&str] = &[
     "benches",
     "generated",
 ];
+
+/// I3: hard decoy dirs — pruned unless unique exact call site.
+fn is_hard_decoy_dir(path: &str) -> bool {
+    let segs = path_segments(path);
+    segs[..segs.len().saturating_sub(1)].iter().any(|s| {
+        let low = s.to_ascii_lowercase();
+        matches!(
+            low.as_str(),
+            "legacy"
+                | "admin"
+                | "deprecated"
+                | "demo"
+                | "demos"
+                | "mock"
+                | "mocks"
+                | "fake"
+                | "fakes"
+                | "seed"
+                | "seeds"
+                | "noise"
+        )
+    })
+}
+
+/// Eval/flag default when a tighter budget is requested (I3).
+pub const EVAL_FILE_BUDGET: usize = 5;
 
 /// Basename stems that often collide (common-name demotion).
 const COMMON_BASENAMES: &[&str] = &[
@@ -131,9 +164,11 @@ pub fn path_penalty(path: &str) -> f64 {
 }
 
 fn edge_role_score(role: Option<&str>) -> f64 {
+    // I3 rank: exact call site > registration > definition > implementor.
     match role {
-        Some("call") | Some("import") | Some("define") => 10.0,
-        Some("registration") => 8.0,
+        Some("call") | Some("import") => 12.0,
+        Some("registration") => 10.0,
+        Some("define") => 8.0,
         Some("implementor") => 3.0,
         Some("dynamic") => 1.0,
         _ => 4.0,
@@ -171,63 +206,67 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         };
     }
 
-    // Unique by path, keep max score.
-    let mut best: std::collections::BTreeMap<String, (f64, Option<String>, usize)> =
+    let mut best: std::collections::BTreeMap<String, (f64, bool)> =
         std::collections::BTreeMap::new();
     for c in &candidates {
         let s = score_candidate(c);
+        let exact_call = matches!(
+            c.edge_role.as_deref(),
+            Some("call") | Some("import") | Some("define")
+        ) && c.depth <= 1;
         let e = best
             .entry(c.path.replace('\\', "/"))
-            .or_insert((s, c.edge_role.clone(), c.depth));
+            .or_insert((s, exact_call));
         if s > e.0 {
-            *e = (s, c.edge_role.clone(), c.depth);
+            *e = (s, exact_call);
         }
     }
 
-    // Diversity: same-dir count demotion.
-    let mut dir_counts: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    for path in best.keys() {
-        let segs = path_segments(path);
-        let dir = if segs.len() >= 2 {
-            segs[..segs.len() - 1].join("/")
-        } else {
-            String::new()
-        };
-        *dir_counts.entry(dir).or_insert(0) += 1;
-    }
-
-    let mut scored: Vec<(String, f64)> = best
-        .into_iter()
-        .map(|(path, (s, _role, _d))| {
-            let segs = path_segments(&path);
-            let dir = if segs.len() >= 2 {
-                segs[..segs.len() - 1].join("/")
-            } else {
-                String::new()
-            };
-            let n = dir_counts.get(&dir).copied().unwrap_or(1);
-            let diversity_pen = if n > 2 { 4.0 * (n as f64 - 2.0) } else { 0.0 };
-            (path, s - diversity_pen)
-        })
-        .collect();
-
+    let mut scored: Vec<(String, f64, bool)> =
+        best.into_iter().map(|(p, (s, e))| (p, s, e)).collect();
     scored.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.cmp(&b.0))
     });
 
-    // If any non-low-priority file exists, never select low-priority-dir files.
-    let has_high = scored.iter().any(|(p, _)| path_penalty(p) < 8.0);
     let mut selected: Vec<String> = Vec::new();
     let mut pruned: Vec<String> = Vec::new();
-    for (p, _s) in &scored {
-        let low = has_high && path_penalty(p) >= 8.0;
-        if !low && selected.len() < budget {
-            selected.push(p.clone());
+    let mut dir_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut decoy_selected = 0usize;
+
+    for (path, _s, exact_call) in &scored {
+        if is_hard_decoy_dir(path) {
+            if !(*exact_call && selected.is_empty()) {
+                pruned.push(path.clone());
+                continue;
+            }
+        }
+        let segs = path_segments(path);
+        let dir = if segs.len() >= 2 {
+            segs[..segs.len() - 1].join("/")
         } else {
-            pruned.push(p.clone());
+            String::new()
+        };
+        let n = dir_counts.get(&dir).copied().unwrap_or(0);
+        if n >= 2 {
+            pruned.push(path.clone());
+            continue;
+        }
+        let pure_decoy = path_penalty(path) >= 8.0 && !*exact_call;
+        if pure_decoy && decoy_selected >= 1 {
+            pruned.push(path.clone());
+            continue;
+        }
+        if selected.len() >= budget {
+            pruned.push(path.clone());
+            continue;
+        }
+        selected.push(path.clone());
+        *dir_counts.entry(dir).or_insert(0) += 1;
+        if pure_decoy {
+            decoy_selected += 1;
         }
     }
 
@@ -235,8 +274,7 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
         format!("all_{}_files_within_budget_{}", selected.len(), budget)
     } else {
         format!(
-            "precision_budget_{}: kept_top_exact_registration_paths; demoted_legacy_admin_common; pruned_{}",
-            budget,
+            "precision_budget_{budget}: exact_call_gt_registration_gt_definition; hard_decoy_dir_prune; dir_max2; pure_decoy_cap1; pruned_{}",
             pruned.len()
         )
     };
@@ -324,13 +362,45 @@ mod tests {
     fn budget_prunes_overflow() {
         let mut cs = Vec::new();
         for i in 0..20 {
-            cs.push(cand(&format!("src/mod/file{i}.ts"), "call", 1));
+            cs.push(cand(&format!("src/mod{i}/file.ts"), "call", 1));
         }
         let sel = select_files_budgeted(cs, 8);
         assert_eq!(sel.selected.len(), 8);
         assert_eq!(sel.pruned_count, 12);
         assert_eq!(sel.file_budget, 8);
         assert!(sel.selected.iter().all(|p| !sel.pruned.contains(p)));
+    }
+
+    #[test]
+    fn i3_hard_decoy_dir_pruned() {
+        let cs = vec![
+            cand("src/orders/createOrder.ts", "call", 0),
+            cand("src/legacy/createOrder.ts", "call", 1),
+            cand("src/admin/orderAdmin.ts", "call", 1),
+            cand("src/deprecated/oldOrder.ts", "call", 1),
+        ];
+        let sel = select_files_budgeted(cs, 8);
+        assert!(sel
+            .selected
+            .contains(&"src/orders/createOrder.ts".to_string()));
+        assert!(sel.pruned.iter().any(|p| p.contains("legacy")));
+        assert!(sel.pruned.iter().any(|p| p.contains("admin")));
+        assert!(sel.pruned.iter().any(|p| p.contains("deprecated")));
+    }
+
+    #[test]
+    fn i3_dir_max_two_selected() {
+        let mut cs = Vec::new();
+        for i in 0..5 {
+            cs.push(cand(&format!("src/orders/order{i}.ts"), "call", 1));
+        }
+        let sel = select_files_budgeted(cs, 8);
+        let n = sel
+            .selected
+            .iter()
+            .filter(|p| p.contains("src/orders/"))
+            .count();
+        assert!(n <= 2, "dir diversity max 2, got {n}");
     }
 
     #[test]

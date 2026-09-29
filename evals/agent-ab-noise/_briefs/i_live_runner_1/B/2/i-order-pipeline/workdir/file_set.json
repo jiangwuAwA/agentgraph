@@ -9,53 +9,36 @@
     "src/payments/chargeCard.ts",
     "src/orders/orderService.ts",
     "src/legacy/createOrder.ts",
-    "src/legacy/chargeCard.ts",
-    "src/legacy/orderHandler.ts",
-    "src/admin/orderAdmin.ts",
-    "src/orders/orderMetrics.ts"
+    "src/legacy/chargeCard.ts"
   ],
   "tool_calls": [
     {
       "tool": "bash",
-      "args": ["Get-ChildItem -Recurse -File"],
+      "args": ["Get-ChildItem -Force"],
       "ok": true,
-      "summary": {"files_listed": 58},
-      "note": "enumerate workdir tree; ignored .agentgraph/.mimocode artifacts"
+      "summary": {"entries": 4, "dirs": [".agentgraph", ".mimocode", "src"], "files": ["package.json"]},
+      "note": "workdir top-level listing"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File src"],
+      "ok": true,
+      "summary": {"files": 52, "subdirs": ["admin", "invoices", "legacy", "orders", "payments", "shared", "users"]},
+      "note": "full source inventory"
     },
     {
       "tool": "grep",
-      "args": ["createOrder|chargeCard", "workdir"],
+      "args": ["createOrder|chargeCard", "src"],
       "ok": true,
       "summary": {"matches": 14, "files": 9},
-      "note": "primary symbol scan"
+      "note": "exact identifier scan; later re-ran with kebab/snake variants across whole workdir — no extra hits"
     },
     {
-      "tool": "grep",
-      "args": ["from ['\"].*(createOrder|chargeCard|orderHandler|refundCard)", "workdir"],
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -File src | Get-Content"],
       "ok": true,
-      "summary": {"matches": 2, "files": 1},
-      "note": "import/call sites; only src/orders/orderService.ts"
-    },
-    {
-      "tool": "grep",
-      "args": ["createOrder|chargeCard", "package.json"],
-      "ok": true,
-      "summary": {"matches": 0},
-      "note": "no package-level mention"
-    },
-    {
-      "tool": "grep",
-      "args": ["createOrder|chargeCard|orderHandler|refundCard|legacy", "src/**/*Index.ts"],
-      "ok": true,
-      "summary": {"matches": 0},
-      "note": "no barrel re-exports of these symbols"
-    },
-    {
-      "tool": "read",
-      "args": ["src/orders/createOrder.ts", "src/payments/chargeCard.ts", "src/orders/orderService.ts", "src/legacy/*.ts", "src/admin/orderAdmin.ts", "src/orders/orderMetrics.ts", "src/payments/refundCard.ts"],
-      "ok": true,
-      "summary": {"files_read": 9},
-      "note": "verified define vs comment-only vs name-collision decoy"
+      "summary": {"files_read": 52},
+      "note": "read every source file to catch indirect imports/re-exports without the identifier"
     }
   ],
   "chose_correct_workspace_root": null,

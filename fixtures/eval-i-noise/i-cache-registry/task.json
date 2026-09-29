@@ -117,7 +117,7 @@
       "src/admin/registry.ts",
       "src/shared/registry.ts"
     ],
-    "file_budget": 8,
+    "file_budget": 5,
     "notes_extra": "Review wording invites over-collection of name-only registries."
   },
   "recommended_tools": [

@@ -9,67 +9,43 @@
     "src/payments/chargeCard.ts",
     "src/orders/orderService.ts",
     "src/legacy/createOrder.ts",
-    "src/legacy/chargeCard.ts",
-    "src/legacy/orderHandler.ts",
-    "src/orders/orderMetrics.ts",
-    "src/admin/orderAdmin.ts"
+    "src/legacy/chargeCard.ts"
   ],
   "tool_calls": [
     {
       "tool": "bash",
+      "args": ["Get-ChildItem -Force"],
+      "ok": true,
+      "summary": {"entries": [".agentgraph", ".mimocode", "src", "package.json"]},
+      "note": "workdir root listing"
+    },
+    {
+      "tool": "bash",
       "args": ["Get-ChildItem -Recurse -File"],
       "ok": true,
-      "summary": {"files": 58},
-      "note": "enumerate workdir tree"
+      "summary": {"file_count": 55},
+      "note": "full file inventory excluding .agentgraph/.mimocode"
     },
     {
       "tool": "grep",
-      "args": ["createOrder|chargeCard"],
+      "args": ["createOrder|chargeCard", "."],
       "ok": true,
       "summary": {"matches": 14, "files": 9},
-      "note": "primary symbol scan"
+      "note": "primary symbol search"
+    },
+    {
+      "tool": "bash",
+      "args": ["Get-ChildItem -Recurse -Filter *.ts | Get-Content"],
+      "ok": true,
+      "summary": {"files_read": 54},
+      "note": "read all TS sources to rank define/import/call/document hits"
     },
     {
       "tool": "grep",
-      "args": ["create[-_]?order|charge[-_]?card|CreateOrder|ChargeCard"],
+      "args": ["createOrder|chargeCard|orderHandler|refundCard|legacy", "."],
       "ok": true,
-      "summary": {"matches": 0},
-      "note": "variant/case scan; no extra hits"
-    },
-    {
-      "tool": "bash",
-      "args": ["Select-String -Pattern 'createOrder|chargeCard' -CaseSensitive:$false"],
-      "ok": true,
-      "summary": {"src_files": 9, "other": [".agentgraph/refs.snapshot.json"]},
-      "note": "case-insensitive confirm; snapshot is index artifact, not source"
-    },
-    {
-      "tool": "bash",
-      "args": ["Select-String -Pattern 'from .*(createOrder|chargeCard|orderHandler|refundCard)'"],
-      "ok": true,
-      "summary": {"imports": 2, "file": "src/orders/orderService.ts"},
-      "note": "only importer of both symbols"
-    },
-    {
-      "tool": "bash",
-      "args": ["Get-Content src/payments/refundCard.ts src/legacy/chargeCard.ts src/legacy/createOrder.ts src/legacy/orderHandler.ts src/orders/orderMetrics.ts src/admin/orderAdmin.ts"],
-      "ok": true,
-      "summary": {"read": 6},
-      "note": "rank weaker candidates"
-    },
-    {
-      "tool": "bash",
-      "args": ["Get-Content src/orders/createOrder.ts src/payments/chargeCard.ts src/orders/orderService.ts"],
-      "ok": true,
-      "summary": {"read": 3},
-      "note": "confirm core define/call sites"
-    },
-    {
-      "tool": "bash",
-      "args": ["Get-Content src/orders/orderIndex.ts src/payments/paymentIndex.ts src/shared/index.ts src/orders/orderConfig.ts src/payments/paymentConfig.ts package.json"],
-      "ok": true,
-      "summary": {"read": 6, "mentions": 0},
-      "note": "checked index/config re-exports; none mention the symbols"
+      "summary": {"matches": 14, "files": 9},
+      "note": "re-export/alias check; no extra importers found"
     }
   ],
   "chose_correct_workspace_root": null,

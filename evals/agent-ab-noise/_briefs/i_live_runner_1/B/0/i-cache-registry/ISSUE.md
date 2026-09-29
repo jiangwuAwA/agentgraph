@@ -11,5 +11,5 @@ Security review: every file that defines, constructs, wraps, or documents CacheR
 
 ## Constraints
 
-- Return **at most 8 files** in `file_set`.
+- Return **at most 5 files** in `file_set`.
 - Prefer precision over coverage.

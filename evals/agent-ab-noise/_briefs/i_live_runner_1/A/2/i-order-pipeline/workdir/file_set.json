@@ -1,0 +1,28 @@
+﻿{
+  "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+  "task_id": "i-order-pipeline",
+  "runner_id": "i_live_runner_1",
+  "arm": "A",
+  "seed": 2,
+  "file_set": [
+    "src/orders/orderService.ts",
+    "src/orders/createOrder.ts",
+    "src/payments/chargeCard.ts"
+  ],
+  "tool_calls": [
+    {"tool": "agentgraph", "args": ["stats"], "ok": true, "summary": {"files": 56, "symbols": 129, "references": 83, "root": "workdir"}, "note": "index present, exact-only refs"},
+    {"tool": "agentgraph", "args": ["find", "createOrder"], "ok": true, "summary": {"defs": ["src/legacy/createOrder.ts", "src/legacy/orderHandler.ts", "src/orders/createOrder.ts"]}, "note": "3 defs same name"},
+    {"tool": "agentgraph", "args": ["find", "chargeCard"], "ok": true, "summary": {"defs": ["src/legacy/chargeCard.ts", "src/payments/chargeCard.ts", "src/payments/refundCard.ts"]}, "note": "3 defs same name"},
+    {"tool": "agentgraph", "args": ["who-calls", "createOrder"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts"], "pruned": [], "window": "default", "subset_ok": true}, "note": "import+call at orderService.ts:1,6"},
+    {"tool": "agentgraph", "args": ["who-calls", "chargeCard"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts"], "pruned": [], "window": "default", "subset_ok": true}, "note": "import+call at orderService.ts:2,7"},
+    {"tool": "agentgraph", "args": ["blast-radius", "createOrder"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts", "src/orders/createOrder.ts"], "pruned": [], "window": "sound", "subset_ok": true}, "note": "depth 3: def + caller"},
+    {"tool": "agentgraph", "args": ["blast-radius", "chargeCard"], "ok": true, "summary": {"selected": ["src/orders/orderService.ts", "src/payments/chargeCard.ts"], "pruned": [], "window": "sound", "subset_ok": true}, "note": "depth 3: def + caller"},
+    {"tool": "agentgraph", "args": ["importers", "src/orders/createOrder.ts"], "ok": true, "summary": {"importers": ["src/orders/orderService.ts"]}, "note": "only orderService"},
+    {"tool": "agentgraph", "args": ["importers", "src/payments/chargeCard.ts"], "ok": true, "summary": {"importers": ["src/orders/orderService.ts"]}, "note": "only orderService"},
+    {"tool": "read", "args": ["src/orders/orderService.ts"], "ok": true, "summary": {"imports": ["./createOrder", "../payments/chargeCard"], "calls": ["createOrder", "chargeCard"]}, "note": "selected file direct imports"},
+    {"tool": "read", "args": ["src/orders/createOrder.ts"], "ok": true, "summary": {"imports": [], "defines": ["createOrder"]}, "note": "no further imports"},
+    {"tool": "read", "args": ["src/payments/chargeCard.ts"], "ok": true, "summary": {"imports": [], "defines": ["chargeCard"]}, "note": "no further imports"}
+  ],
+  "chose_correct_workspace_root": null,
+  "approx_tokens": null
+}

@@ -1,42 +1,99 @@
 [
   {
-    "status": "ok",
+    "status": "skip",
     "task": "i-order-pipeline",
     "runner": "i_live_runner_1",
     "arm": "A",
-    "seed": 0,
-    "seconds": 190.4
+    "seed": 0
+  },
+  {
+    "status": "skip",
+    "task": "i-cache-registry",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 0
+  },
+  {
+    "status": "skip",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "B",
+    "seed": 0
+  },
+  {
+    "status": "skip",
+    "task": "i-cache-registry",
+    "runner": "i_live_runner_1",
+    "arm": "B",
+    "seed": 0
+  },
+  {
+    "status": "skip",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 1
+  },
+  {
+    "status": "skip",
+    "task": "i-cache-registry",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 1
+  },
+  {
+    "status": "skip",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "B",
+    "seed": 1
   },
   {
     "status": "timeout_or_missing",
     "task": "i-cache-registry",
     "runner": "i_live_runner_1",
-    "arm": "A",
-    "seed": 0,
-    "seconds": 300.1
-  },
-  {
-    "status": "ok",
-    "task": "i-order-pipeline",
-    "runner": "i_live_runner_1",
     "arm": "B",
-    "seed": 0,
-    "seconds": 150.0
-  },
-  {
-    "status": "timeout_or_missing",
-    "task": "i-cache-registry",
-    "runner": "i_live_runner_1",
-    "arm": "B",
-    "seed": 0,
-    "seconds": 300.1
-  },
-  {
-    "status": "ok",
-    "task": "i-order-pipeline",
-    "runner": "i_live_runner_1",
-    "arm": "A",
     "seed": 1,
-    "seconds": 280.1
+    "seconds": 300.0
+  },
+  {
+    "status": "timeout_or_missing",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 2,
+    "seconds": 300.1
+  },
+  {
+    "status": "ok",
+    "task": "i-cache-registry",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 2,
+    "seconds": 140.1
+  },
+  {
+    "status": "ok",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "B",
+    "seed": 2,
+    "seconds": 120.0
+  },
+  {
+    "status": "ok",
+    "task": "i-cache-registry",
+    "runner": "i_live_runner_1",
+    "arm": "B",
+    "seed": 2,
+    "seconds": 135.0
+  },
+  {
+    "status": "timeout_or_missing",
+    "task": "i-order-pipeline",
+    "runner": "i_live_runner_1",
+    "arm": "A",
+    "seed": 3,
+    "seconds": 300.1
   }
 ]

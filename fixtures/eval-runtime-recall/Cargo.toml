@@ -1,0 +1,12 @@
+[package]
+name = "runtime-recall-fixture"
+version = "0.0.1"
+edition = "2021"
+
+[[bin]]
+name = "rr-main"
+path = "src/main.rs"
+
+[lib]
+name = "rr_fixture"
+path = "src/lib.rs"

@@ -1,0 +1,5 @@
+{
+  "schema": "agentgraph.eval_runtime_recall.gap_ledger.v1",
+  "edges": [],
+  "note": "fixture expect zero-miss without allowlist"
+}

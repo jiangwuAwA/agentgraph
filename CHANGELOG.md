@@ -3,6 +3,19 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.6.0
+
+### Added (R-track — runtime recall)
+- **Covered paths zero-miss** spec: docs/eval-runtime-recall.md.
+- Rust call tracer MVP: scripts/rs_trace.py + fixtures/eval-runtime-recall/.
+- Diff gate: scripts/eval_runtime_recall.py (trace x static - gap ledger).
+- Fixture gate: tests/runtime_recall.rs (**0 miss** on covered path).
+
+### Honesty
+- Covered paths zero-miss / measured recall only.
+- Not production absolute zero-miss; not ecosystem sound.
+- Stock runtime batch is operator-only (private corpus not committed).
+
 ## v0.5.15
 
 ### Added

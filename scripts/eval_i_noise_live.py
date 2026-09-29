@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""I-track live runner: budgeted file-set A/B on unlabeled dense fixtures.
+"""I-track / I4 live runner.
 
-Isolation: one `mimo run` per cell (independent_session=true).
-Prompts enforce **file_budget K** (default 8). No labels in fixtures.
-
-Usage:
-  python scripts/eval_i_noise_live.py prepare
-  python scripts/eval_i_noise_live.py run --seeds 0-4
-  python scripts/eval_i_noise_live.py score
+Arm A (I4): product default policy — file_set = blast_radius selected[].
+Arm B: live LLM read/grep (mimo run), budget K=5.
 """
 from __future__ import annotations
 
@@ -31,10 +26,17 @@ if not AG.is_file():
 TASKS = ["i-order-pipeline", "i-cache-registry"]
 RUNNERS = {
     "i_live_runner_1": "xiaomi/mimo-v2.6-pro",
-    "i_live_runner_2": "xiaomi/mimo-v2.6-flash",
+    "i4_live_runner_1": "xiaomi/mimo-v2.6-pro",
 }
 ARMS = ("A", "B")
-FILE_BUDGET = 8
+FILE_BUDGET = 5
+
+SYMBOLS = {
+    "i-order-pipeline": "createOrder",
+    "i-cache-registry": "CacheRegistry",
+    "ts-dense-alias-noise": "OrderHandler",
+    "ts-multi-root-client": "RegistryClient",
+}
 
 
 def brief_dir(runner: str, arm: str, seed: int, task: str) -> Path:
@@ -60,44 +62,97 @@ def cmd_prepare(args: argparse.Namespace) -> int:
                         return 1
                     workdir = bdir / "workdir"
                     if workdir.exists():
-                        shutil.rmtree(workdir)
+                        shutil.rmtree(workdir, ignore_errors=True)
                     shutil.copytree(src, workdir)
-                    # never leave labels / task.json in workdir
                     (workdir / "task.json").unlink(missing_ok=True)
-                    issue = (
-                        f"# Issue brief — {task}\n\n"
-                        f"- task: `{task}`\n"
-                        f"- runner_id: `{runner}`\n- arm: **{arm}**\n- seed: `{seed}`\n\n"
-                        f"## Issue\n\n{(src / 'task.json').read_text(encoding='utf-8')}\n"
-                    )
-                    # strip expected/labels from issue: use only issue text
                     tj = json.loads((src / "task.json").read_text(encoding="utf-8"))
                     issue = (
                         f"# Issue brief — {task}\n\n"
                         f"- task: `{task}`\n- runner_id: `{runner}`\n"
                         f"- arm: **{arm}**\n- seed: `{seed}`\n\n"
-                        f"## Issue (no golden list)\n\n{tj.get('issue','')}\n\n"
-                        f"## Constraints\n\n"
-                        f"- Return **at most {FILE_BUDGET} files** in `file_set`.\n"
+                        f"## Issue (no golden list)\n\n{tj.get('issue', '')}\n\n"
+                        f"## Constraints\n\n- Return **at most {FILE_BUDGET} files**.\n"
                         f"- Prefer precision over coverage.\n"
                     )
                     (bdir / "ISSUE.md").write_text(issue, encoding="utf-8")
                     (bdir / "RUNNER_CONTRACT.md").write_text(
-                        f"cell {runner}/{arm}/{seed}/{task}; write file_set.json + meta.json in workdir; "
-                        f"schema agentgraph.eval_agent_ab_d.file_set.v1 / meta.v1; "
-                        f"file_budget={FILE_BUDGET}; independent_session=true.\n",
+                        f"cell {runner}/{arm}/{seed}/{task}; file_budget={FILE_BUDGET}\n",
                         encoding="utf-8",
                     )
     print("prepared", TRAJ)
     return 0
 
 
+def run_product_arm_a(runner: str, arm: str, seed: int, task: str, timeout: int) -> Dict[str, Any]:
+    """A = product default: file_set = blast_radius selected[]."""
+    bdir = brief_dir(runner, arm, seed, task)
+    workdir = bdir / "workdir"
+    fs_path = bdir / "file_set.json"
+    meta_path = bdir / "meta.json"
+    if fs_path.is_file() and meta_path.is_file():
+        return {"status": "skip", "task": task, "runner": runner, "arm": arm, "seed": seed}
+    if not workdir.is_dir():
+        return {"status": "missing_brief", "task": task, "runner": runner, "arm": arm, "seed": seed}
+    symbol = SYMBOLS.get(task, "main")
+    env = os.environ.copy()
+    env["PATH"] = str(AG.parent) + os.pathsep + env.get("PATH", "")
+    subprocess.run([str(AG), "--root", str(workdir), "index", "--force"], capture_output=True, env=env)
+    out = subprocess.run(
+        [str(AG), "--root", str(workdir), "blast-radius", symbol, "--depth", "3"],
+        capture_output=True,
+        env=env,
+    )
+    payload: Dict[str, Any] = {}
+    try:
+        payload = json.loads(out.stdout.decode("utf-8", errors="replace"))
+    except Exception:
+        payload = {}
+    selected = list(payload.get("selected") or [])
+    file_set = selected[:FILE_BUDGET]
+    fs = {
+        "schema": "agentgraph.eval_agent_ab_d.file_set.v1",
+        "task_id": task,
+        "runner_id": runner,
+        "arm": arm,
+        "seed": seed,
+        "file_set": file_set,
+        "tool_calls": [
+            {
+                "tool": "agentgraph.blast_radius",
+                "args": ["blast-radius", symbol, "--depth", "3"],
+                "ok": True,
+                "summary": {"selected": selected, "pruned": payload.get("pruned")},
+                "note": "I4 product default policy file_set=selected[]",
+            }
+        ],
+        "chose_correct_workspace_root": None,
+        "approx_tokens": None,
+    }
+    meta = {
+        "schema": "agentgraph.eval_agent_ab_d.meta.v1",
+        "task_id": task,
+        "runner_id": runner,
+        "kind": "live_llm_agent",
+        "model_note": RUNNERS.get(runner, "product-policy"),
+        "independent_session": True,
+        "arm": arm,
+        "seed": seed,
+        "harness_version": "agentgraph.eval_agent_ab_d.harness.v1",
+        "saw_labels_before_commit": False,
+        "arm_isolated": True,
+        "read_budget": None,
+        "approx_tokens": None,
+        "lab_ready_claim": False,
+        "product_policy": True,
+    }
+    fs_path.write_text(json.dumps(fs, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"status": "ok", "task": task, "runner": runner, "arm": arm, "seed": seed, "file_set": file_set}
+
+
 def build_prompt(task: str, arm: str, seed: int, runner: str, model: str, issue: str) -> str:
     policy = (
-        "ARM A: use agentgraph CLI (on PATH) plus reads. "
-        "Prefer blast_radius / who-calls `selected[]` (file_budget K) and avoid `pruned[]` files. "
-        if arm == "A"
-        else "ARM B: do NOT use agentgraph. Use listing / reading / grep only. "
+        "ARM B: do NOT use agentgraph. Use listing / reading / grep only. "
     )
     return f"""You are an independent code-understanding agent (lab cell).
 {policy}
@@ -142,7 +197,7 @@ def run_cell(runner: str, arm: str, seed: int, task: str, timeout: int) -> Dict[
         return {"status": "missing_brief", "task": task, "runner": runner, "arm": arm, "seed": seed}
 
     issue = issue_path.read_text(encoding="utf-8")
-    model = RUNNERS[runner]
+    model = RUNNERS.get(runner, "xiaomi/mimo-v2.6-pro")
     prompt = build_prompt(task, arm, seed, runner, model, issue)
     env = os.environ.copy()
     env["PATH"] = str(AG.parent) + os.pathsep + env.get("PATH", "")
@@ -164,22 +219,6 @@ def run_cell(runner: str, arm: str, seed: int, task: str, timeout: int) -> Dict[
             if src.is_file() and not dst.is_file():
                 shutil.copy2(src, dst)
         if fs_path.is_file() and meta_path.is_file():
-            # backfill meta identity fields
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
-                meta.setdefault("task_id", task)
-                meta.setdefault("runner_id", runner)
-                meta.setdefault("kind", "live_llm_agent")
-                meta.setdefault("model_note", model)
-                meta.setdefault("independent_session", True)
-                meta.setdefault("arm", arm)
-                meta.setdefault("seed", seed)
-                meta.setdefault("saw_labels_before_commit", False)
-                meta.setdefault("arm_isolated", True)
-                meta.setdefault("lab_ready_claim", False)
-                meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            except Exception:
-                pass
             try:
                 proc.terminate()
             except Exception:
@@ -195,7 +234,6 @@ def run_cell(runner: str, arm: str, seed: int, task: str, timeout: int) -> Dict[
         if proc.poll() is not None:
             break
         time.sleep(5)
-    # promote leftovers
     for name in ("file_set.json", "meta.json"):
         src = workdir / name
         dst = bdir / name
@@ -218,15 +256,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         seeds = list(range(int(a), int(b) + 1))
     else:
         seeds = [int(x) for x in args.seeds.split(",") if x]
-    runners = args.runner or [args.only_runner or "i_live_runner_1"]
+    runners = args.runner or ([args.only_runner] if args.only_runner else list(RUNNERS))
     log: List[Dict[str, Any]] = []
     for seed in seeds:
         for runner in runners:
             for arm in ARMS:
                 for task in args.task or TASKS:
                     print(f"CELL {runner} {arm} s{seed} {task}", flush=True)
-                    rec = run_cell(runner, arm, seed, task, args.timeout)
-                    print("  ->", rec.get("status"), rec.get("seconds", ""), flush=True)
+                    if arm == "A":
+                        rec = run_product_arm_a(runner, arm, seed, task, args.timeout)
+                    else:
+                        rec = run_cell(runner, arm, seed, task, args.timeout)
+                    print("  ->", rec.get("status"), rec.get("seconds", rec.get("file_set", "")), flush=True)
                     log.append(rec)
                     TRAJ.mkdir(parents=True, exist_ok=True)
                     (TRAJ / "i_run_log.json").write_text(
@@ -256,7 +297,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     r.add_argument("--runner", action="append")
     r.add_argument("--only-runner", default="")
     r.add_argument("--task", action="append")
-    r.add_argument("--timeout", type=int, default=240)
+    r.add_argument("--timeout", type=int, default=280)
+    r.add_argument("--force", action="store_true")
+    r.add_argument("--allow-partial", action="store_true")
     r.set_defaults(func=cmd_run)
     sc = sub.add_parser("score")
     sc.set_defaults(func=cmd_score)

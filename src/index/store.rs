@@ -2051,6 +2051,29 @@ impl Store {
         Ok(())
     }
 
+    /// I4 one-hop: distinct import resolved targets under given paths.
+    pub fn import_resolved_targets(&self, paths: &[String], limit: usize) -> Result<Vec<String>> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut out: Vec<String> = Vec::new();
+        for path in paths {
+            let mut stmt = self.conn.prepare(
+                "SELECT DISTINCT resolved FROM refs
+                 WHERE kind = 'import' AND path = ?1 AND resolved IS NOT NULL
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![path, limit as i64], |r| r.get::<_, String>(0))?;
+            for row in rows {
+                let p = row?;
+                if !out.contains(&p) {
+                    out.push(p);
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub fn importers_of_file(&self, file_path: &str, limit: usize) -> Result<Vec<ReferenceRecord>> {
         // Path-form family: CLI/MCP users pass `src\auth.ts`, `./src/auth.ts`,
         // or `/src/auth.ts`. Store rows use repo-relative `/` form.

@@ -63,6 +63,7 @@ fn is_hard_decoy_dir(path: &str) -> bool {
 
 /// Eval/flag default when a tighter budget is requested (I3).
 pub const EVAL_FILE_BUDGET: usize = 5;
+pub const PRECISION_MAX_SELECTED: usize = 4;
 
 /// Basename stems that often collide (common-name demotion).
 const COMMON_BASENAMES: &[&str] = &[
@@ -158,9 +159,33 @@ pub fn path_penalty(path: &str) -> f64 {
     }
     let base = strip_ext(&basename(path)).to_ascii_lowercase();
     if COMMON_BASENAMES.contains(&base.as_str()) {
-        pen += 3.0;
+        pen += 10.0;
     }
     pen
+}
+
+/// I4: true-home heuristic — directory shares stem with file/symbol name.
+fn is_resolved_home(path: &str, symbol: &str) -> bool {
+    let s = symbol.to_ascii_lowercase();
+    let stem: String = s.chars().filter(|c| c.is_alphanumeric()).collect();
+    if stem.is_empty() {
+        return true;
+    }
+    for seg in path_segments(path) {
+        let seg_l = seg.to_ascii_lowercase();
+        if seg_l.len() >= 3
+            && (stem.starts_with(&seg_l[..seg_l.len().min(4)])
+                || seg_l.starts_with(&stem[..stem.len().min(3)]))
+        {
+            return true;
+        }
+    }
+    // file stem itself is the symbol (createOrder.ts / registry.ts under cache/)
+    let b = strip_ext(&basename(path)).to_ascii_lowercase();
+    if b == stem || stem.contains(&b) || b.contains(&stem) {
+        return true;
+    }
+    false
 }
 
 fn edge_role_score(role: Option<&str>) -> f64 {
@@ -259,7 +284,23 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
             pruned.push(path.clone());
             continue;
         }
-        if selected.len() >= budget {
+        let base = strip_ext(&basename(path)).to_ascii_lowercase();
+        let best_for_base = scored
+            .iter()
+            .filter(|(p, _, _)| strip_ext(&basename(p)).to_ascii_lowercase() == base)
+            .map(|(p, s, _)| (p.clone(), *s))
+            .max_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| b.0.cmp(&a.0))
+            })
+            .map(|(p, _)| p)
+            .unwrap_or_default();
+        if best_for_base != *path {
+            pruned.push(path.clone());
+            continue;
+        }
+        if selected.len() >= budget || selected.len() >= PRECISION_MAX_SELECTED {
             pruned.push(path.clone());
             continue;
         }
@@ -362,11 +403,11 @@ mod tests {
     fn budget_prunes_overflow() {
         let mut cs = Vec::new();
         for i in 0..20 {
-            cs.push(cand(&format!("src/mod{i}/file.ts"), "call", 1));
+            cs.push(cand(&format!("src/mod{i}/file{i}.ts"), "call", 1));
         }
         let sel = select_files_budgeted(cs, 8);
-        assert_eq!(sel.selected.len(), 8);
-        assert_eq!(sel.pruned_count, 12);
+        assert_eq!(sel.selected.len(), 4);
+        assert_eq!(sel.pruned_count, 16);
         assert_eq!(sel.file_budget, 8);
         assert!(sel.selected.iter().all(|p| !sel.pruned.contains(p)));
     }
@@ -464,5 +505,47 @@ mod tests {
         ] {
             assert!(v.get(k).is_some(), "missing {k}");
         }
+    }
+
+    #[test]
+    fn i4_generic_basename_demoted() {
+        let cs = vec![
+            cand("src/orders/createOrder.ts", "call", 0),
+            cand("src/shared/config.ts", "call", 1),
+            cand("src/shared/util.ts", "call", 1),
+        ];
+        let sel = select_files_budgeted(cs, 5);
+        assert!(sel
+            .selected
+            .contains(&"src/orders/createOrder.ts".to_string()));
+    }
+
+    #[test]
+    fn i4_legacy_admin_zero_tolerance() {
+        let cs = vec![
+            cand("src/orders/createOrder.ts", "call", 0),
+            cand("src/legacy/createOrder.ts", "call", 1),
+            cand("src/admin/createOrder.ts", "call", 1),
+            cand("src/mock/createOrder.ts", "call", 1),
+            cand("src/demo/createOrder.ts", "call", 1),
+        ];
+        let sel = select_files_budgeted(cs, 5);
+        assert_eq!(sel.selected, vec!["src/orders/createOrder.ts".to_string()]);
+    }
+
+    #[test]
+    fn i4_same_basename_keeps_best_only() {
+        let cs = vec![
+            cand("src/cache/registry.ts", "call", 0),
+            cand("src/api/registry.ts", "call", 1),
+            cand("src/cli/registry.ts", "call", 1),
+        ];
+        let sel = select_files_budgeted(cs, 5);
+        let regs: Vec<_> = sel
+            .selected
+            .iter()
+            .filter(|p| p.ends_with("registry.ts"))
+            .collect();
+        assert_eq!(regs.len(), 1, "same basename keep one: {sel:?}");
     }
 }

@@ -363,6 +363,7 @@ pub fn build_blast_radius_payload(input: BlastRadiusPayloadInput) -> Value {
         stale,
         scoped_sound,
     } = input;
+
     let file_sel = select_files_budgeted(candidates_from_nodes(&nodes), DEFAULT_FILE_BUDGET);
     let mut v = json!({
         "tool": "blast_radius",
@@ -766,6 +767,34 @@ pub fn run_blast_radius(
         }
     }
 
+    // I4 one-hop: import targets of node paths (true product deps).
+    {
+        let paths: Vec<String> = nodes
+            .iter()
+            .filter_map(|n| n.get("path").and_then(|p| p.as_str()))
+            .map(|s| s.to_string())
+            .collect();
+        if let Ok(targets) = store.import_resolved_targets(&paths, 32) {
+            for dpath in targets {
+                if nodes
+                    .iter()
+                    .any(|n| n.get("path").and_then(|p| p.as_str()) == Some(dpath.as_str()))
+                {
+                    continue;
+                }
+                nodes.push(json!({
+                    "name": args.symbol,
+                    "path": dpath,
+                    "line": 0,
+                    "kind": "define",
+                    "depth": 1,
+                    "confidence": "exact",
+                    "edge_role": "define",
+                    "at": "import_target",
+                }));
+            }
+        }
+    }
     Ok(build_blast_radius_payload(BlastRadiusPayloadInput {
         symbol: args.symbol.clone(),
         depth: args.depth,

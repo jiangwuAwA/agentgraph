@@ -884,3 +884,36 @@ Trajectories: `evals/agent-ab-noise/`.
 - Success via **precision gap** + recall not worse. **Budgeted** slice only.
 
 **Citable:** 「在预算化 unlabeled 任务上噪音更少」(delta ~0.75 / precision +0.15).
+
+
+## I4 — product default policy vs live B (full matrix)
+
+### Product (v0.5.14)
+
+1. Keep K=5 + hard-decoy prune + dir max2 + same-basename keep-best.
+2. One-hop import targets of selected paths enter candidates.
+3. selected hard cap 4.
+4. Arm A decision = product default blast_radius.selected[]; Arm B = live LLM read/grep <=K.
+
+### Split tables (additive; evals/agent-ab-i4/)
+
+**I-track (main)** — i-order-pipeline + i-cache-registry
+
+| arm | N | recall | extra-noise | precision@5 |
+|---|---|---|---|---|
+| A product default | 6 | **1.000** | **0.00** | **1.000** |
+| B live read/grep | 8 | 0.833 | **2.50** | 0.500 |
+
+**Delta (B-A) extra-noise = 2.50 >= 1.0**; recall A >= B-0.1; success line met.
+
+**Full (I-track + hard)**
+
+| arm | N | recall | extra-noise | precision |
+|---|---|---|---|---|
+| A product default | 12 | 0.875 | 0.75 | 0.813 |
+| B live read/grep | 16 | 0.854 | 1.25 | 0.750 |
+
+Full delta ~0.50 (hard alias noise). Not in main claim.
+
+**Citable:** 「在预算化 unlabeled 任务上噪音更少」— I-track measured **delta=2.5**.
+**No** H4 / easy self-label / ecosystem extrapolation.

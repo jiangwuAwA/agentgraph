@@ -3,6 +3,16 @@
 All notable product cuts. Honesty: package map stays **partial** (not full TypeScript
 resolution / not complete npm graph / not ecosystem sound).
 
+## v0.5.14
+
+### Added
+- **I4 precision:** one-hop import targets; selected cap 4; same-basename keep-best; generic-name penalty.
+  Arm A eval path = product selected[].
+
+### Eval (I-track main, additive)
+- I-track: A extra-noise **0.00** vs B **2.50** (**delta=2.5 >= 1.0**); recall A 1.00 vs B 0.83.
+- Full 4-task delta ~0.50. Budgeted slice only. Not H4 / not 生态 sound.
+
 ## v0.5.13
 
 ### Added

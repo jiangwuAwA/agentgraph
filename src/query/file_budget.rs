@@ -163,31 +163,6 @@ pub fn path_penalty(path: &str) -> f64 {
     }
     pen
 }
-
-/// I4: true-home heuristic — directory shares stem with file/symbol name.
-fn is_resolved_home(path: &str, symbol: &str) -> bool {
-    let s = symbol.to_ascii_lowercase();
-    let stem: String = s.chars().filter(|c| c.is_alphanumeric()).collect();
-    if stem.is_empty() {
-        return true;
-    }
-    for seg in path_segments(path) {
-        let seg_l = seg.to_ascii_lowercase();
-        if seg_l.len() >= 3
-            && (stem.starts_with(&seg_l[..seg_l.len().min(4)])
-                || seg_l.starts_with(&stem[..stem.len().min(3)]))
-        {
-            return true;
-        }
-    }
-    // file stem itself is the symbol (createOrder.ts / registry.ts under cache/)
-    let b = strip_ext(&basename(path)).to_ascii_lowercase();
-    if b == stem || stem.contains(&b) || b.contains(&stem) {
-        return true;
-    }
-    false
-}
-
 fn edge_role_score(role: Option<&str>) -> f64 {
     // I3 rank: exact call site > registration > definition > implementor.
     match role {
@@ -262,11 +237,9 @@ pub fn select_files_budgeted(candidates: Vec<FileCandidate>, budget: usize) -> F
     let mut decoy_selected = 0usize;
 
     for (path, _s, exact_call) in &scored {
-        if is_hard_decoy_dir(path) {
-            if !(*exact_call && selected.is_empty()) {
-                pruned.push(path.clone());
-                continue;
-            }
+        if is_hard_decoy_dir(path) && !(*exact_call && selected.is_empty()) {
+            pruned.push(path.clone());
+            continue;
         }
         let segs = path_segments(path);
         let dir = if segs.len() >= 2 {
